@@ -9,7 +9,7 @@
   };
 
   /* ============================ ЭКРАНЫ ============================ */
-  const screens = ['menu', 'coop', 'lobby', 'joining', 'help', 'pause', 'over'];
+  const screens = ['menu', 'coop', 'lobby', 'joining', 'help', 'pause', 'over', 'prof'];
   function show(id) {
     screens.forEach(s => $(s).classList.toggle('hidden', s !== id));
     document.body.classList.toggle('in-game', id === null);
@@ -46,8 +46,29 @@
 
   function startSolo() {
     const G = AB.Sim.create((Math.random() * 1e9) | 0, 'solo');
-    AB.Sim.addPlayer(G, 0, playerName());
+    AB.Sim.addPlayer(G, 0, playerName(), App.prof);
     beginGame(G, 'solo', 0);
+  }
+
+  // ----- выбор профессии
+  function chooseProf(next, back) {
+    const cfg = C();
+    const box = $('profCards');
+    box.innerHTML = '';
+    for (const key in cfg.PROFESSIONS) {
+      const pd = cfg.PROFESSIONS[key];
+      const lines = AB.Skills.lines({ stats: pd.stats }, 1).map(l => l.s);
+      const el = document.createElement('div');
+      el.className = 'prof';
+      el.style.borderColor = pd.color;
+      el.innerHTML = `<div class="pico" style="border-color:${pd.color};color:${pd.color}">${pd.icon}</div>
+        <div class="pname" style="color:${pd.color}">${pd.name}</div><div class="pdesc">${pd.desc}</div>
+        <div class="pstats">${lines.join('<br>')}</div>`;
+      el.addEventListener('click', () => { AB.Sound.play('click', 1); App.prof = key; try { localStorage.setItem('avibro-prof', key); } catch (e) { /* */ } next(); });
+      box.appendChild(el);
+    }
+    $('btnProfBack').onclick = () => show(back);
+    show('prof');
   }
 
   // ----- хост
@@ -74,12 +95,12 @@
           let G = App.G;
           if (App.state !== 'play' || App.mode !== 'host') {
             G = AB.Sim.create(hostSeed, 'host');
-            AB.Sim.addPlayer(G, 0, name);
-            AB.Sim.addPlayer(G, 1, (m.name || 'Друг').slice(0, 12));
+            AB.Sim.addPlayer(G, 0, name, App.prof);
+            AB.Sim.addPlayer(G, 1, (m.name || 'Друг').slice(0, 12), m.prof);
             beginGame(G, 'host', 0);
           } else {
             let p = G.players.find(q => q.id === 1);
-            if (!p) { p = AB.Sim.addPlayer(G, 1, (m.name || 'Друг').slice(0, 12)); }
+            if (!p) { p = AB.Sim.addPlayer(G, 1, (m.name || 'Друг').slice(0, 12), m.prof); }
             else p.name = (m.name || p.name).slice(0, 12);
             AB.Sim.msg(G, `${p.name} подключился!`, -1, '#8fe08a');
           }
@@ -112,7 +133,7 @@
     const name = playerName();
     let G = null;
     AB.Net.join(code, {
-      open() { $('joinStatus').textContent = 'Соединение установлено, загрузка мира…'; AB.Net.send({ t: 'hello', name }); },
+      open() { $('joinStatus').textContent = 'Соединение установлено, загрузка мира…'; AB.Net.send({ t: 'hello', name, prof: App.prof }); },
       data(m) {
         if (m.t === 'full') { $('joinStatus').textContent = 'В комнате уже два игрока.'; return; }
         if (m.t === 'init') {
@@ -148,11 +169,20 @@
       const k = e.code;
       if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(k)) e.preventDefault();
       if (App.state !== 'play') return;
+      if (k === 'Tab') { e.preventDefault(); if (!e.repeat) toggleBuild(); return; }
       if (k === 'Escape') { togglePause(); return; }
       if (App.paused) return;
       App.keys.add(k);
       if (e.repeat) return;
-      if (k.startsWith('Digit')) { const i = parseInt(k.slice(5), 10) - 1; selectWeapon(i); }
+      const me0 = App.me();
+      if (k.startsWith('Digit')) {
+        const i = parseInt(k.slice(5), 10) - 1;
+        if (me0 && me0.offers && i < me0.offers.length) { pickSkill(i); return; }
+        selectWeapon(i);
+      }
+      if (k === 'KeyT') command('build1');
+      if (k === 'KeyY') command('build2');
+      if (k === 'KeyU') command('upfire');
       if (k === 'KeyE') command('eat');
       if (k === 'KeyR') command('plant');
       if (k === 'KeyG') command('bed');
@@ -208,6 +238,78 @@
     if (App.mode === 'guest') AB.Net.send({ t: 'cmd', c, x: mw.x, y: mw.y });
     else AB.Sim.command(App.G, App.myId, c, mw.x, mw.y);
   }
+  function pickSkill(i) {
+    AB.Sound.play('click', 1);
+    if (App.mode === 'guest') AB.Net.send({ t: 'cmd', c: 'pick', x: i, y: 0 });
+    else AB.Sim.command(App.G, App.myId, 'pick', i, 0);
+    App.lvSig = null;
+  }
+  function reroll() {
+    if (App.mode === 'guest') AB.Net.send({ t: 'cmd', c: 'reroll', x: 0, y: 0 });
+    else AB.Sim.command(App.G, App.myId, 'reroll', 0, 0);
+  }
+  // Карточки выбора умения
+  function updateLevelUI(me) {
+    const cfg = C();
+    const box = $('levelup');
+    const offers = me && !me.dead && me.offers && App.state === 'play' ? me.offers : null;
+    if (!offers) { box.classList.add('hidden'); App.lvSig = null; return; }
+    const sig = JSON.stringify(offers) + '|' + me.rr + '|' + me.queue.length + '|' + me.inv.wood;
+    box.classList.remove('hidden');
+    if (sig === App.lvSig) return;
+    App.lvSig = sig;
+    const sup = me.queue[0] === 's';
+    $('lvTitle').textContent = sup ? `Уровень ${me.level}: СУПЕР-УМЕНИЕ!` : `Уровень ${me.level}!`;
+    $('lvTitle').className = 'lvtitle' + (sup ? ' super' : '');
+    $('lvSub').textContent = (me.queue.length > 1 ? `Ещё выборов: ${me.queue.length - 1}. ` : '') + (App.mode === 'solo' ? 'Игра на паузе.' : 'Игра не останавливается — будьте осторожны!') + ` Редкость умений зависит от уровня костра (сейчас ${App.G.fireLevel}).`;
+    const cards = $('lvCards');
+    cards.innerHTML = '';
+    offers.forEach((o, i) => {
+      const def = AB.Skills.find(o.id);
+      if (!def) return;
+      const col = o.sup ? '#ff7a5a' : cfg.TIER_COLORS[o.tier - 1];
+      const own = me.skills.filter(s => s.id === o.id).length;
+      const el = document.createElement('div');
+      el.className = 'skill';
+      el.style.borderColor = col;
+      el.style.boxShadow = `0 0 ${6 + o.tier * 4}px ${col}44 inset`;
+      const partner = def.partner ? cfg.PROFESSIONS[def.partner] : null;
+      el.innerHTML = `<div class="key">${i + 1}</div><div class="sico" style="color:${col}">${def.icon || '✦'}</div>
+        <div class="sname">${def.name}${own ? ` <span style="color:var(--muted);font-size:12px">(есть ×${own})</span>` : ''}</div>
+        <div class="stier" style="color:${col}">${o.sup ? 'Супер-умение' : cfg.TIER_NAMES[o.tier - 1]}</div>
+        ${partner ? `<div class="syn">Синергия с профессией «${partner.name}»</div>` : ''}
+        ${AB.Skills.lines(def, o.tier).map(l => `<div class="sline${l.bad ? ' bad' : ''}">${l.s}</div>`).join('')}
+        ${def.note ? `<div class="snote">${def.note}</div>` : ''}`;
+      el.addEventListener('click', () => pickSkill(i));
+      cards.appendChild(el);
+    });
+    const cost = AB.Skills.rerollCost(me);
+    $('btnReroll').textContent = `Перебросить (${cost} дерева)`;
+    $('btnReroll').disabled = me.inv.wood < cost;
+    $('btnReroll').style.opacity = me.inv.wood < cost ? 0.5 : 1;
+  }
+  function toggleBuild() { App.showBuild = !App.showBuild; App.buildSig = null; }
+  function updateBuildUI(me) {
+    const cfg = C();
+    const box = $('build');
+    if (!App.showBuild || !me || App.state !== 'play') { box.classList.add('hidden'); return; }
+    box.classList.remove('hidden');
+    const sig = JSON.stringify(me.skills) + JSON.stringify(me.st);
+    if (sig === App.buildSig) return;
+    App.buildSig = sig;
+    const agg = {};
+    me.skills.forEach(s => { const a = agg[s.id] || (agg[s.id] = { n: 0, tier: 0, sup: s.sup }); a.n++; a.tier = Math.max(a.tier, s.tier); });
+    $('buildSkills').innerHTML = Object.keys(agg).length ? Object.keys(agg).map(id => {
+      const d = AB.Skills.find(id), a = agg[id], col = a.sup ? '#ff7a5a' : cfg.TIER_COLORS[a.tier - 1];
+      return `<span class="bskill" style="border-color:${col};color:${col}">${d.icon || ''} ${d.name}${a.n > 1 ? ' ×' + a.n : ''}</span>`;
+    }).join('') : '<span class="note">Пока нет умений. Переживите ночь!</span>';
+    const L = cfg.STAT_LABELS;
+    $('buildStats').innerHTML = Object.keys(L).filter(k => me.st[k]).map(k => {
+      const v = Math.round(me.st[k] * 100) / 100;
+      return `<span>${L[k][0]}</span><span class="v${v < 0 ? ' neg' : ''}">${v > 0 ? '+' : ''}${v}${L[k][1] ? '%' : ''}</span>`;
+    }).join('') || '<span class="note">Базовые характеристики</span>';
+  }
+
   function togglePause() {
     App.paused = !App.paused;
     show(App.paused ? 'pause' : null);
@@ -268,7 +370,8 @@
       return;
     }
     const me = App.me();
-    const running = !(App.paused && App.mode === 'solo') && !G.over;
+    const choosing = App.mode === 'solo' && me && me.offers && !me.dead;
+    const running = !(App.paused && App.mode === 'solo') && !choosing && !G.over;
     if (running) {
       controlLocal(me, dt);
       if (App.mode === 'solo' || App.mode === 'host') {
@@ -300,6 +403,8 @@
     AB.FX.update(dt);
     R.draw(G, me, App.cam, dt, { clickMark: App.clickMark });
     R.hud(G, me, { mouse: App.mouse.onCanvas ? App.mouse : null, hoverSlot: App.hoverSlot });
+    updateLevelUI(me);
+    updateBuildUI(me);
   }
 
   function smoothRemote(G, dt) {
@@ -348,19 +453,21 @@
     $('name').addEventListener('input', () => $('name2').value = $('name').value);
     $('name2').addEventListener('input', () => $('name').value = $('name2').value);
     const bind = (id, fn) => $(id).addEventListener('click', () => { AB.Sound.unlock(); AB.Sound.play('click', 1); fn(); });
-    bind('btnSolo', startSolo);
+    try { App.prof = localStorage.getItem('avibro-prof') || 'hunter'; } catch (e) { App.prof = 'hunter'; }
+    bind('btnSolo', () => chooseProf(startSolo, 'menu'));
+    bind('btnReroll', reroll);
     bind('btnCoop', () => { show('coop'); $('coopErr').textContent = ''; $('peerWarn').classList.toggle('hidden', AB.Net.available()); });
     bind('btnHelp', () => show('help'));
-    bind('btnHost', startHost);
-    bind('btnJoin', () => startJoin($('code').value));
+    bind('btnHost', () => chooseProf(startHost, 'coop'));
+    bind('btnJoin', () => { const code = $('code').value; if (code.replace(/\D/g, '').length < 3) { $('coopErr').textContent = 'Введите код комнаты'; return; } chooseProf(() => startJoin(code), 'coop'); });
     document.querySelectorAll('[data-back]').forEach(b => b.addEventListener('click', () => { AB.Net.close(); show(b.dataset.back); }));
     bind('btnCopy', () => { const i = $('roomLink'); i.select(); try { navigator.clipboard.writeText(i.value); } catch (e) { document.execCommand('copy'); } $('btnCopy').textContent = 'Скопировано!'; setTimeout(() => $('btnCopy').textContent = 'Копировать', 1500); });
     bind('btnSoloFromLobby', () => { AB.Net.close(); startSolo(); });
     bind('btnResume', togglePause);
     bind('btnQuit', () => endToMenu());
     bind('btnMenu', () => endToMenu());
-    bind('btnRetry', () => { show(null); startSolo(); });
-    $('code').addEventListener('keydown', (e) => { if (e.key === 'Enter') startJoin($('code').value); });
+    bind('btnRetry', () => chooseProf(startSolo, 'menu'));
+    $('code').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('btnJoin').click(); });
 
     startAttract();
     show('menu');

@@ -48,10 +48,36 @@
       case 'shoot': Sound.play(ev.w === 'rifle' ? 'gun' : 'bow', near);
         if (ev.w === 'rifle') FX.add({ t: 'flash', x: ev.x + Math.cos(ev.a) * 30, y: ev.y + Math.sin(ev.a) * 30, z: 10, vx: 0, vy: 0, vz: 0, g: 0, life: 0.08, size: 18 });
         break;
-      case 'hit':
-        burst(ev.x, ev.y, 8, BLOOD[ev.t] || BLOOD.wolf, 160, { size: 1.1 });
-        if (window.CONFIG.SHOW_DAMAGE_NUMBERS) FX.text(ev.x, ev.y - 20, String(ev.n), '#ffffff');
-        Sound.play('hit', near); break;
+      case 'hit': {
+        const minor = ev.s === 'burn' || ev.s === 'aura' || ev.s === 'fence';
+        burst(ev.x, ev.y, minor ? 2 : 8, ev.s === 'burn' || ev.s === 'aura' ? ['#ff9a2a', '#ffd24a'] : (BLOOD[ev.t] || BLOOD.wolf), 160, { size: 1.1 });
+        if (window.CONFIG.SHOW_DAMAGE_NUMBERS && ev.n > 0) FX.text(ev.x + (Math.random() - 0.5) * 12, ev.y - 20, String(ev.n), ev.c ? '#ffd24a' : minor ? '#ffb070' : '#ffffff', ev.c);
+        if (!minor) Sound.play('hit', near);
+        break;
+      }
+      case 'dodge': FX.text(ev.x, ev.y - 30, 'Уклон!', '#9fe0ff'); break;
+      case 'revive': burst(ev.x, ev.y, 30, ['#9fe0ff', '#ffffff'], 180, { type: 'spark', g: -40, life: 1.2 }); Sound.play('chest', 1); break;
+      case 'boom':
+        FX.add({ t: 'ring', x: ev.x, y: ev.y, z: 0, vx: 0, vy: 0, vz: 0, g: 0, life: 0.35, size: ev.r, c: '#ffb24a' });
+        burst(ev.x, ev.y, 12, ['#ffd24a', '#ff8a2a', '#fff2a8'], 200, { type: 'spark', g: 60, life: 0.7 });
+        Sound.play('boom', near); break;
+      case 'bolt': FX.add({ t: 'bolt', x: ev.pts[0][0], y: ev.pts[0][1], z: 0, vx: 0, vy: 0, vz: 0, g: 0, life: 0.25, pts: ev.pts }); Sound.play('zap', 0.8); break;
+      case 'zap': burst(ev.x, ev.y, 3, ['#bfe8ff', '#5aa8ff'], 100, { type: 'spark', g: 0, life: 0.3 }); break;
+      case 'strike':
+        FX.add({ t: 'strike', x: ev.x, y: ev.y, z: 0, vx: 0, vy: 0, vz: 0, g: 0, life: 0.4, sh: ev.sh, r: ev.r, a: ev.a, len: ev.len, w: ev.w, fr: ev.fr });
+        burst(ev.x, ev.y, 14, ev.fr ? ['#ffd24a', '#ff8a2a'] : ['#8a7a60', '#5e5040', '#c0a080'], 220);
+        FX.shake = Math.min(14, FX.shake + (near > 0.6 ? 7 : 2)); Sound.play('boom', near); break;
+      case 'howl': FX.add({ t: 'ring', x: ev.x, y: ev.y, z: 0, vx: 0, vy: 0, vz: 0, g: 0, life: 0.6, size: 160, c: '#ff5a4a' }); Sound.play('night', near); break;
+      case 'blink': burst(ev.x, ev.y, 24, ['#9b6ad8', '#6a3fa0', '#e0c0ff'], 160, { type: 'spark', g: -30, life: 0.8 }); break;
+      case 'shit': burst(ev.x, ev.y, 4, ['#8a5a30', '#c8a06a'], 90); break;
+      case 'sbreak': burst(ev.x, ev.y, 24, ['#8a5a30', '#c8a06a', '#5e3c20'], 180); Sound.play('fell', near); break;
+      case 'splat': burst(ev.x, ev.y, 6, ['#8fd14a', '#5a9a2a'], 90); break;
+      case 'module': burst(ev.x, ev.y - 10, 20, ['#5aa8ff', '#bfe8ff'], 130, { type: 'spark', g: -20, life: 1 }); Sound.play('build', near); break;
+      case 'fireup': burst(ev.x, ev.y - 10, 60, ['#ffd24a', '#ff8a2a', '#fff2a8', '#ff5a2a'], 220, { type: 'spark', g: -80, life: 1.8 }); Sound.play('chest', 1); break;
+      case 'lvl': if (ev.pid === FX.myId) { FX.toast(ev.sup ? `Уровень ${ev.n}! Доступно СУПЕР-УМЕНИЕ` : `Уровень ${ev.n}! Выберите умение`, ev.sup ? '#ff7a5a' : '#8fe08a'); Sound.play('chest', 1); }
+        burst(ev.x, ev.y - 20, 30, ['#8fe08a', '#ffffff', '#ffd24a'], 150, { type: 'spark', g: -60, life: 1.4 }); break;
+      case 'skill': if (ev.pid === FX.myId) FX.toast(`Получено: ${ev.s}`, window.CONFIG.TIER_COLORS[(ev.t || 1) - 1]);
+        burst(ev.x, ev.y - 20, 16, [window.CONFIG.TIER_COLORS[(ev.t || 1) - 1], '#ffffff'], 120, { type: 'spark', g: -60, life: 1 }); break;
       case 'die':
         burst(ev.x, ev.y, 22, BLOOD[ev.t] || BLOOD.wolf, 200, { size: 1.3 });
         FX.add({ t: 'smoke', x: ev.x, y: ev.y, z: 0, vx: 0, vy: 0, vz: 0, g: 0, life: 0.7, size: 22, c: ev.t === 'shade' ? 'rgba(120,80,190,' : 'rgba(70,60,50,' });
@@ -137,6 +163,9 @@
         case 'chest': [523, 659, 784, 1046].forEach((f, i) => tone(f, 0.25, 'triangle', V * 0.35, 1, i * 0.08)); break;
         case 'night': tone(220, 1.6, 'sine', V * 0.4, 0.5); tone(330, 1.6, 'sine', V * 0.2, 0.5, 0.3); break;
         case 'click': tone(660, 0.05, 'sine', V * 0.3, 1.2); break;
+        case 'boom': noise(0.35, V * 1.1, 250, 0.8); tone(70, 0.3, 'sine', V * 0.5, 0.5); break;
+        case 'zap': noise(0.08, V * 0.5, 4000, 3); tone(1200, 0.06, 'square', V * 0.15, 0.4); break;
+        case 'boss': tone(110, 2.2, 'sawtooth', V * 0.3, 0.6); tone(82, 2.2, 'sine', V * 0.5, 0.7, 0.2); noise(1.2, V * 0.4, 150, 0.5); break;
       }
     } catch (e) { /* звук не критичен */ }
   };

@@ -78,6 +78,16 @@
     </div>
   </div>
 
+  <!-- Выбор профессии -->
+  <div id="prof" class="screen hidden">
+    <div class="card wide">
+      <h2>Выберите профессию</h2>
+      <p class="note">У каждой профессии свои способности и умения. Вдвоём профессии усиливают друг друга синергиями.</p>
+      <div id="profCards" class="profs"></div>
+      <button class="btn ghost" id="btnProfBack">Назад</button>
+    </div>
+  </div>
+
   <!-- Помощь -->
   <div id="help" class="screen hidden">
     <div class="card wide">
@@ -94,6 +104,8 @@
             <li><kbd>1</kbd>–<kbd>5</kbd> или колесо — выбор оружия</li>
             <li><kbd>E</kbd> съесть · <kbd>R</kbd> посадить семя</li>
             <li><kbd>G</kbd> грядка · <kbd>B</kbd> костёр (у курсора)</li>
+            <li><kbd>T</kbd> / <kbd>Y</kbd> — постройка вашей профессии</li>
+            <li><kbd>U</kbd> — улучшить главный костёр · <kbd>Tab</kbd> — сборка</li>
             <li><kbd>Esc</kbd> пауза</li>
           </ul>
         </div>
@@ -108,9 +120,38 @@
             <li>Костёр лечит и отпугивает теней. Дрова подкидываются сами, если стоять рядом.</li>
             <li>Оружие лежит в руинах под охраной — чем дальше от лагеря, тем сильнее охрана и лучше награда.</li>
           </ul>
+          <h3>Развитие</h3>
+          <ul>
+            <li>Каждый рассвет — новый уровень и выбор 1 из 3 умений. Каждые 10 уровней — супер-умение.</li>
+            <li>Улучшайте главный костёр (<kbd>U</kbd>): чем выше его уровень, тем редче и сильнее предлагаемые умения.</li>
+            <li>Монстры растут каждую ночь. Без удачной сборки до 99-й ночи не дожить.</li>
+            <li>Каждые 5–7 ночей приходит босс. Перед ударом на земле видна <b style="color:#ff6a5a">красная зона</b> — выйдите из неё!</li>
+          </ul>
         </div>
       </div>
       <button class="btn ghost" data-back="menu">Назад</button>
+    </div>
+  </div>
+
+  <!-- Повышение уровня -->
+  <div id="levelup" class="overlay hidden">
+    <div class="lvpanel">
+      <div id="lvTitle" class="lvtitle">Новый уровень!</div>
+      <div id="lvSub" class="note"></div>
+      <div id="lvCards" class="skills"></div>
+      <div class="lvfoot">
+        <button id="btnReroll" class="btn small ghost">Перебросить</button>
+        <span class="note">Клавиши <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> · <kbd>Tab</kbd> — ваша сборка</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Сборка -->
+  <div id="build" class="overlay side hidden">
+    <div class="buildpanel">
+      <div class="lvtitle small">Ваша сборка</div>
+      <div id="buildSkills" class="bskills"></div>
+      <div id="buildStats" class="bstats"></div>
     </div>
   </div>
 
@@ -144,6 +185,7 @@
   <script src="config.js"></script>
   <script src="js/utils.js"></script>
   <script src="js/world.js"></script>
+  <script src="js/skills.js"></script>
   <script src="js/sim.js"></script>
   <script src="js/sprites.js"></script>
   <script src="js/fx.js"></script>

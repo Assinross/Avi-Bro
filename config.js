@@ -40,7 +40,8 @@ window.CONFIG = {
   SHOW_EYES_IN_FOG: true,     // Ночью в тумане видны светящиеся глаза монстров рядом с границей видимости
 
   /* ------------------------------ ИГРОК ----------------------------- */
-  PLAYER_SPEED: 155,          // Скорость ходьбы
+  MOVE_SPEED_MULT: 0.8,       // Общий множитель скорости движения игроков, монстров и боссов (0.8 = на 20% медленнее)
+  PLAYER_SPEED: 155,          // Базовая скорость ходьбы (до множителя MOVE_SPEED_MULT)
   PLAYER_RADIUS: 11,          // Радиус столкновения игрока
   PLAYER_MAX_HP: 100,         // Максимальное здоровье
   PLAYER_MAX_FOOD: 100,       // Максимальная сытость
@@ -82,26 +83,85 @@ window.CONFIG = {
    * hp — здоровье; speed — скорость; damage — урон за удар; attackCd — пауза
    * sight — радиус обнаружения игрока; radius — размер тела
    * meat — [мин, макс] выпадающего мяса; seedChance — шанс семени (0..1)
-   * night — появляется только ночью; fearFire — боится света костра       */
+   * fearFire — боится света костра
+   * ranged — стреляет издалека: { range — дистанция, cd — пауза, speed — скорость плевка } */
   MONSTERS: {
-    wolf:  { name: 'Волк',       hp: 32,  speed: 128, damage: 7,  attackCd: 0.8, sight: 230, radius: 12, meat: [1, 2], seedChance: 0.03 },
-    ghoul: { name: 'Упырь',      hp: 55,  speed: 78,  damage: 11, attackCd: 1.0, sight: 190, radius: 12, meat: [0, 1], seedChance: 0.05 },
-    shade: { name: 'Тень',       hp: 40,  speed: 108, damage: 9,  attackCd: 0.9, sight: 600, radius: 12, meat: [0, 0], seedChance: 0.02, night: true, fearFire: true },
-    brute: { name: 'Громила',    hp: 240, speed: 92,  damage: 22, attackCd: 1.3, sight: 270, radius: 21, meat: [3, 5], seedChance: 0.35 },
-    alpha: { name: 'Вожак',      hp: 120, speed: 150, damage: 14, attackCd: 0.7, sight: 300, radius: 15, meat: [2, 3], seedChance: 0.25 },
+    wolf:    { name: 'Волк',          hp: 32,  speed: 128, damage: 7,  attackCd: 0.8, sight: 230, radius: 12, meat: [1, 2], seedChance: 0.03 },
+    ghoul:   { name: 'Упырь',         hp: 55,  speed: 78,  damage: 11, attackCd: 1.0, sight: 190, radius: 12, meat: [0, 1], seedChance: 0.05 },
+    shade:   { name: 'Тень',          hp: 40,  speed: 108, damage: 9,  attackCd: 0.9, sight: 600, radius: 12, meat: [0, 0], seedChance: 0.02, fearFire: true },
+    spider:  { name: 'Паук',          hp: 16,  speed: 150, damage: 4,  attackCd: 0.6, sight: 280, radius: 9,  meat: [0, 1], seedChance: 0.02 },
+    alpha:   { name: 'Вожак',         hp: 120, speed: 150, damage: 14, attackCd: 0.7, sight: 300, radius: 15, meat: [2, 3], seedChance: 0.25 },
+    spitter: { name: 'Плевун',        hp: 45,  speed: 70,  damage: 10, attackCd: 1.0, sight: 320, radius: 12, meat: [0, 1], seedChance: 0.08, ranged: { range: 230, cd: 2.2, speed: 230 } },
+    brute:   { name: 'Громила',       hp: 240, speed: 92,  damage: 22, attackCd: 1.3, sight: 270, radius: 21, meat: [3, 5], seedChance: 0.35 },
   },
-  MONSTER_SCALE_PER_NIGHT: 0.035, // Рост здоровья и урона монстров за каждую ночь (+3.5%)
+  // Рост монстров с каждой ночью n: множитель = 1 + LIN·(n−1) + SQ·(n−1)².
+  // К 99-й ночи здоровье ≈ ×35, урон ≈ ×14 — без удачной сборки не выжить.
+  MONSTER_HP_GROWTH: 0.10,       // Линейный рост здоровья за ночь
+  MONSTER_HP_GROWTH_SQ: 0.0025,  // Квадратичный рост здоровья
+  MONSTER_DMG_GROWTH: 0.05,      // Линейный рост урона за ночь
+  MONSTER_DMG_GROWTH_SQ: 0.0008, // Квадратичный рост урона
+  // Кто появляется в лесу: type — вид, from — с какой ночи, weight — частота, day — появляется и днём.
+  // Сначала только волки (и они крепчают), потом постепенно добавляются остальные.
+  SPAWN_TABLE: [
+    { type: 'wolf',    from: 1,  weight: 10, day: true },
+    { type: 'ghoul',   from: 4,  weight: 7,  day: true },
+    { type: 'shade',   from: 7,  weight: 8,  day: false },
+    { type: 'spider',  from: 10, weight: 9,  day: true },
+    { type: 'alpha',   from: 13, weight: 3,  day: true },
+    { type: 'spitter', from: 16, weight: 4,  day: false },
+    { type: 'brute',   from: 20, weight: 2,  day: false },
+  ],
   GUARD_LEASH: 420,           // Как далеко стражи локаций уходят от своего сундука
-  DAY_MAX_MONSTERS: 18,       // Максимум бродячих монстров днём
-  NIGHT_MAX_MONSTERS: 26,     // Максимум монстров ночью (в первую ночь)
+  DAY_MAX_MONSTERS: 16,       // Максимум бродячих монстров днём
+  NIGHT_MAX_MONSTERS: 22,     // Максимум монстров ночью (в первую ночь)
   NIGHT_MONSTERS_PER_NIGHT: 0.9, // Прибавка к максимуму ночных монстров за каждую ночь
   NIGHT_MONSTERS_CAP: 110,    // Абсолютный потолок монстров
+  COOP_MONSTER_MULT: 1.3,     // Во сколько раз больше монстров при игре вдвоём
   SPAWN_INTERVAL_DAY: 3.0,    // Пауза между появлениями монстров днём
   SPAWN_INTERVAL_NIGHT: 0.9,  // Пауза между появлениями монстров ночью
   SPAWN_MIN_DIST: 520,        // Ближайшее расстояние появления монстра от игрока
   SPAWN_MAX_DIST: 950,        // Дальнее расстояние появления монстра от игрока
   DESPAWN_DIST: 1700,         // Бродячие монстры дальше этого расстояния исчезают
   SAFE_CAMP_RADIUS: 260,      // Днём монстры не появляются ближе этого к центру лагеря
+  ENEMY_SHOT_RADIUS: 7,       // Размер плевка монстра (для попадания)
+
+  /* ------------------------------ БОССЫ ----------------------------- *
+   * Босс приходит в начале ночи каждые BOSS_EVERY_MIN..MAX ночей.
+   * Перед ударом он замахивается: на земле видна КРАСНАЯ зона поражения.
+   * Успейте выйти из неё — урон получают только те, кто остался внутри.
+   * attacks — набор приёмов:
+   *   slam  — удар в точку, где стоит игрок (круг)
+   *   stomp — топот вокруг себя (большой круг)
+   *   charge— рывок по прямой (полоса)
+   *   howl  — призыв волков
+   *   hex   — проклятые круги под игроками и рядом
+   *   blink — телепорт
+   *   cone  — удар конусом перед собой
+   *   quake — трещина в земле (цепочка кругов)                          */
+  BOSS_FIRST_NIGHT: 5,        // Ночь первого босса
+  BOSS_EVERY_MIN: 5,          // Минимум ночей до следующего босса
+  BOSS_EVERY_MAX: 7,          // Максимум ночей до следующего босса
+  BOSS_COOP_HP: 1.6,          // Множитель здоровья босса при игре вдвоём
+  BOSS_ATTACK_PAUSE: 1.3,     // Пауза между приёмами босса
+  BOSS_ORDER: ['giant', 'packlord', 'witch', 'golem'], // Очерёдность боссов (потом повторяются, но сильнее)
+  BOSSES: {
+    giant:    { name: 'Лесной великан',  hp: 1300, speed: 70,  damage: 38, contact: 12, radius: 32, attacks: ['slam', 'slam', 'stomp'] },
+    packlord: { name: 'Повелитель стаи', hp: 1000, speed: 115, damage: 30, contact: 10, radius: 26, attacks: ['charge', 'charge', 'howl'] },
+    witch:    { name: 'Болотная ведьма', hp: 900,  speed: 80,  damage: 28, contact: 8,  radius: 20, attacks: ['hex', 'hex', 'blink'] },
+    golem:    { name: 'Каменный голем',  hp: 1900, speed: 60,  damage: 44, contact: 14, radius: 34, attacks: ['cone', 'quake', 'stomp'] },
+  },
+  // Время замаха (сколько видна красная зона до удара) и размеры зон
+  BOSS_MOVES: {
+    slam:   { windup: 1.1, radius: 100, reach: 260 },
+    stomp:  { windup: 1.4, radius: 175, reach: 170 },
+    charge: { windup: 0.9, length: 420, width: 64, reach: 400, dash: 0.3 },
+    howl:   { windup: 0.8, wolves: 3, reach: 600 },
+    hex:    { windup: 1.3, radius: 72, extra: 2, reach: 460 },
+    blink:  { windup: 0.5, reach: 700 },
+    cone:   { windup: 1.0, length: 200, angle: 100, reach: 190 },
+    quake:  { windup: 0.7, radius: 52, count: 5, step: 70, delay: 0.15, reach: 330 },
+  },
+  BOSS_REWARD: { meat: 8, wood: 12, seeds: 3, bonusLevel: 1 }, // Награда за босса (bonusLevel — сколько доп. умений каждому игроку)
 
   /* ------------------------------- ЕДА ------------------------------ *
    * food — сколько сытости восстанавливает; hp — сколько лечит          */
@@ -139,6 +199,212 @@ window.CONFIG = {
   /* --------------------------- СУНДУКИ ------------------------------ */
   CHEST_OPEN_RADIUS: 34,      // Подойди так близко — сундук откроется сам
   CHEST_SEEDS: [1, 3],        // Сколько семян лежит в сундуке [мин, макс]
+
+  /* ============================ ПРОФЕССИИ ============================ *
+   * Выбираются в начале игры. stats — стартовые бонусы (названия характеристик — см. STAT_LABELS).
+   * weapons — стартовое оружие. Уникальные способности:
+   *   Охотник     — ставит МЕТКИ: помеченные враги получают больше урона от всех (и от турелей!)
+   *   Инженер     — строит турели (T), ставит пушку на вышку архитектора (T рядом с вышкой)
+   *   Программист — боевой дрон; устанавливает МОДУЛИ на любые постройки (T у постройки)
+   *   Архитектор  — строит частокол (T) и вышки (Y), постройки и костёр дешевле        */
+  PROFESSIONS: {
+    hunter:     { name: 'Охотник',     color: '#57c26a', icon: '➶', desc: 'Лук с начала игры, криты и метки на врагах. Больше мяса с добычи.',
+                  weapons: ['knife', 'bow'], stats: { ranged: 3, crit: 8, meatBonus: 40, mark: 1 } },
+    engineer:   { name: 'Инженер',     color: '#ffb23a', icon: '⚙', desc: 'Строит автотурели и ставит пушки на вышки. Сильнее с инженерией.',
+                  weapons: ['knife'], stats: { eng: 3, turretBuild: 1, maxHp: 10 } },
+    programmer: { name: 'Программист', color: '#5aa8ff', icon: '⌨', desc: 'Боевой дрон с начала игры. Ставит модули на постройки: лазер, электрозабор, наведение.',
+                  weapons: ['knife'], stats: { drones: 1, atkSpd: 8, luck: 10, moduleBuild: 1 } },
+    architect:  { name: 'Архитектор',  color: '#d08aff', icon: '⌂', desc: 'Строит частокол и вышки. Постройки на 40% дешевле, костёр улучшается дешевле.',
+                  weapons: ['knife'], stats: { maxHp: 20, armor: 2, buildCost: 40, fireCost: 30, structBuild: 1 } },
+  },
+
+  /* ============================ ПОСТРОЙКИ ============================ *
+   * cost — дерево; hp — прочность (монстры ломают, если упираются);
+   * wall — частокол (не пропускает монстров); tower — вышка (разгоняет туман вокруг,
+   * на неё можно поставить пушку инженера или модуль программиста); turret — турель инженера */
+  STRUCTURES: {
+    wall:   { name: 'Частокол', cost: 5,  hp: 140, radius: 15, prof: 'architect', key: 'T' },
+    tower:  { name: 'Вышка',    cost: 18, hp: 320, radius: 18, prof: 'architect', key: 'Y', vision: 230 },
+    turret: { name: 'Турель',   cost: 15, hp: 160, radius: 14, prof: 'engineer',  key: 'T' },
+  },
+  TURRET: { damage: 8, engScale: 2.0, cooldown: 0.8, range: 260, projSpeed: 620, baseMax: 2, perEng: 4 }, // Турель: урон = damage + инженерия × engScale; максимум = baseMax + инженерия / perEng
+  CANNON: { cost: 15, damage: 22, engScale: 3.5, cooldown: 1.3, range: 330, projSpeed: 560, splash: 55 },   // Пушка на вышке (инженер ставит на вышку архитектора)
+  MODULE_COST: 10,            // Стоимость модуля программиста (дерево)
+  // Модули программиста: что даёт модуль в зависимости от постройки
+  MODULES: {
+    turret: { name: 'Наведение',   dmg: 40, range: 30 },      // +% урона и дальности турели/пушки
+    tower:  { name: 'Лазер',       damage: 7, engScale: 1.5, cooldown: 0.6, range: 250 }, // вышка без пушки начинает стрелять лазером
+    wall:   { name: 'Электрозабор', damage: 10, engScale: 2, slow: 30 }, // бьёт током монстров, которые касаются частокола
+    fire:   { name: 'Маяк',        light: 40, shadeDps: 15 }, // +% света костра, тени в свете горят
+    plot:   { name: 'Автополив',   grow: 100 },               // +% скорости роста грядки
+  },
+  STRUCT_REPAIR_RADIUS: 70,   // Архитектор рядом с постройкой чинит её
+  STRUCT_REPAIR_RATE: 8,      // Прочности в секунду при починке
+
+  /* ======================= РАЗВИТИЕ ПЕРСОНАЖА ======================== *
+   * Каждый пережитый рассвет = +1 уровень и выбор 1 из SKILL_CHOICES умений.
+   * Редкость предлагаемых умений зависит от УРОВНЯ ГЛАВНОГО КОСТРА (1–4):
+   * чем выше костёр, тем сильнее варианты. Каждые SUPER_EVERY уровней — супер-умение. */
+  SKILL_CHOICES: 3,           // Сколько умений предлагается на выбор
+  SUPER_EVERY: 10,            // Раз во сколько уровней даётся супер-умение
+  LUCK_TIER_UP: 0.5,          // Шанс, что умение будет на редкость выше: удача × это значение, %
+  REROLL_COST: 5,             // Цена переброса вариантов (дерево)
+  REROLL_COST_STEP: 5,        // Удорожание каждого следующего переброса в том же уровне
+  FIRE_UPGRADE_COST: [40, 90, 160], // Стоимость улучшения главного костра до уровня 2, 3, 4 (клавиша U рядом с костром)
+  FIRE_LEVEL_LIGHT: 0.2,      // +20% радиуса света за уровень костра
+  FIRE_LEVEL_HEAL: 0.5,       // +50% лечения костра за уровень
+  TIER_NAMES: ['Обычное', 'Улучшенное', 'Редкое', 'Легендарное'],
+  TIER_COLORS: ['#c8d0c4', '#5aa8ff', '#c07aff', '#ff5a4a'],
+  CRIT_MULT: 2.0,             // Базовый множитель критического удара
+  ARMOR_K: 15,                // Броня: урон × K / (K + броня)
+  DODGE_CAP: 60,              // Максимальное уклонение, %
+  HUNGER_CAP: 80,             // Максимальное снижение голода, %
+  MARK_TIME: 4,               // Сколько секунд держится метка охотника
+  MARK_BONUS: 20,             // +% урона по помеченным врагам (базово)
+  BURN_TIME: 3,               // Длительность горения (от характеристики «Огонь»)
+  SLOW_TIME: 1.5,             // Длительность замедления
+  EXPLODE_RADIUS: 60,         // Радиус взрыва от «Взрывных стрел»
+  EXPLODE_DMG: 0.5,           // Доля урона взрыва
+  CHAIN_TARGETS: 2,           // Сколько врагов задевает цепная молния
+  CHAIN_DMG: 0.5,             // Доля урона цепной молнии
+  CHAIN_RANGE: 160,           // Дальность перескока молнии
+  DRONE: { damage: 6, engScale: 1.5, cooldown: 1.0, range: 280, orbit: 34, projSpeed: 600 }, // Дрон: урон = damage + инженерия × engScale
+  MINE: { interval: 6, damage: 22, engScale: 3, radius: 65, trigger: 26, maxPerStack: 3 },    // Мины: интервал делится на число мин
+  BLADE: { damage: 14, radius: 58, speed: 3, hitCd: 0.4 },       // Буря клинков
+  METEOR: { interval: 7, damage: 70, radius: 115, windup: 0.9, levelScale: 0.08 }, // Армагеддон
+  LIGHTNING: { interval: 3, damage: 30, elemScale: 3, targets: 3, range: 360, levelScale: 0.05 }, // Громовержец
+  AURA_RADIUS: 75,            // Радиус огненной ауры
+
+  // Названия характеристик (для карточек). pct — показывать со знаком %
+  STAT_LABELS: {
+    maxHp: ['Макс. здоровье', false], regen: ['Регенерация/с', false], lifesteal: ['Вампиризм', true],
+    dmgPct: ['Урон', true], melee: ['Урон ближнего боя', false], ranged: ['Урон дальнего боя', false],
+    elem: ['Огонь (поджог/с)', false], atkSpd: ['Скорость атаки', true], crit: ['Шанс крита', true], critMult: ['Сила крита', false],
+    eng: ['Инженерия', false], range: ['Дальность', false], armor: ['Броня', false], dodge: ['Уклонение', true],
+    speed: ['Скорость', true], luck: ['Удача', false], harvest: ['Сбор (дерево/рассвет)', false],
+    proj: ['Доп. снаряды', false], pierce: ['Пробивание', false], explode: ['Шанс взрыва', true], thorns: ['Шипы', false],
+    berserk: ['Берсерк: урон за −10% HP', true], adren: ['Адреналин: скор. атаки после удара', true], pickup: ['Радиус подбора', true],
+    hunger: ['Меньше голода', true], meatBonus: ['Шанс доп. мяса', true], secondWind: ['Второе дыхание (за ночь)', false],
+    killHeal: ['Лечение за убийство', false], chain: ['Шанс цепной молнии', true], slow: ['Замедление при ударе', true],
+    knock: ['Отбрасывание', false], drones: ['Дроны', false], mines: ['Мины', false], aura: ['Огненная аура/с', false],
+    meteor: ['Метеориты', false], lightning: ['Удары молний', false], blades: ['Клинки', false],
+    cropBonus: ['Урожай', true], fireHeal: ['Лечение у костра', true], buildCost: ['Скидка на постройки', true],
+    fireCost: ['Скидка на костёр', true], markBonus: ['Урон по меткам', true], structHp: ['Прочность построек', true],
+    turretDmg: ['Урон турелей', true], turretMax: ['Доп. турели', false], droneSpd: ['Скорость дронов', true],
+    syn_loophole: ['Бойницы (охотникам у построек)', true], syn_modular: ['Сила модулей на постройках', true], syn_mount: ['Урон пушек на вышках', true],
+    syn_caliber: ['Урон турелей у частокола/вышек', true], syn_compat: ['Скорость турелей с модулем', true], syn_shrapnel: ['Шрапнель по меткам', true],
+    syn_fence: ['Электрозабор (урон/с)', false], syn_targeting: ['Наведение турелей и дронов', true], syn_thermal: ['Тепловизор: урон по меткам', true],
+    syn_nest: ['Гнездо снайпера (урон у вышки)', true], syn_bait: ['Приманка: турели по меткам', true], syn_scope: ['Цифровой прицел: дроны по меткам', true],
+  },
+
+  /* ------------------------------ УМЕНИЯ ----------------------------- *
+   * Как в Brotato: собирайте сборку! Значения по редкости [обычное, улучшенное, редкое, легендарное].
+   * min — с какой редкости (1–4) умение может выпасть; unique — берётся один раз;
+   * prof — только для этой профессии; partner — СИНЕРГИЯ: выпадает, только если в игре
+   * есть игрок-партнёр этой профессии (усиливает его постройки/эффекты).               */
+  SKILLS: [
+    // --- базовые характеристики
+    { id: 'hp',       name: 'Живучесть',        icon: '♥', stats: { maxHp: [10, 20, 30, 45] } },
+    { id: 'regen',    name: 'Регенерация',      icon: '✚', stats: { regen: [0.3, 0.6, 1.0, 1.6] } },
+    { id: 'steal',    name: 'Вампиризм',        icon: '❦', stats: { lifesteal: [1.5, 3, 4.5, 6] } },
+    { id: 'dmg',      name: 'Сила',             icon: '⚔', stats: { dmgPct: [5, 8, 12, 16] } },
+    { id: 'melee',    name: 'Мощь клинка',      icon: '†', stats: { melee: [2, 4, 6, 9] } },
+    { id: 'ranged',   name: 'Меткость',         icon: '➶', stats: { ranged: [2, 4, 6, 9] } },
+    { id: 'elem',     name: 'Стихия огня',      icon: '☼', stats: { elem: [1, 2, 3, 5] } },
+    { id: 'aspd',     name: 'Скорость атаки',   icon: '⚡', stats: { atkSpd: [5, 10, 15, 20] } },
+    { id: 'crit',     name: 'Глаз сокола',      icon: '✦', stats: { crit: [3, 5, 7, 9] } },
+    { id: 'eng',      name: 'Инженерия',        icon: '⚙', stats: { eng: [1, 2, 3, 4] } },
+    { id: 'range',    name: 'Дальнобойность',   icon: '◎', stats: { range: [15, 30, 45, 60] } },
+    { id: 'armor',    name: 'Броня',            icon: '▣', stats: { armor: [1, 2, 3, 4] } },
+    { id: 'dodge',    name: 'Уклонение',        icon: '≈', stats: { dodge: [3, 6, 9, 12] } },
+    { id: 'speed',    name: 'Быстрые ноги',     icon: '➤', stats: { speed: [3, 6, 9, 12] } },
+    { id: 'luck',     name: 'Удача',            icon: '♣', stats: { luck: [5, 10, 15, 20] } },
+    { id: 'harvest',  name: 'Собиратель',       icon: '❀', stats: { harvest: [3, 5, 8, 12] } },
+    // --- предметы с особыми эффектами и компромиссами
+    { id: 'glass',    name: 'Стеклянная пушка', icon: '◆', min: 2, stats: { dmgPct: [0, 25, 35, 45], armor: [0, -3, -3, -3], maxHp: [0, -10, -10, -10] } },
+    { id: 'multi',    name: 'Мультивыстрел',    icon: '⋔', min: 3, stats: { proj: [0, 0, 1, 1], dmgPct: [0, 0, -10, -5] } },
+    { id: 'pierce',   name: 'Бронебойность',    icon: '➹', min: 2, stats: { pierce: [0, 1, 1, 2] } },
+    { id: 'explode',  name: 'Взрывные заряды',  icon: '✹', stats: { explode: [8, 12, 18, 25] } },
+    { id: 'thorns',   name: 'Шипы',             icon: '✳', stats: { thorns: [3, 6, 10, 15] } },
+    { id: 'berserk',  name: 'Берсерк',          icon: '☠', min: 2, stats: { berserk: [0, 3, 5, 7] } },
+    { id: 'adren',    name: 'Адреналин',        icon: '↯', stats: { adren: [20, 35, 50, 70] } },
+    { id: 'magnet',   name: 'Магнит',           icon: '⊕', stats: { pickup: [30, 50, 70, 100] } },
+    { id: 'stomach',  name: 'Крепкий желудок',  icon: '◒', stats: { hunger: [15, 25, 35, 45] } },
+    { id: 'nose',     name: 'Охотничий нюх',    icon: '∿', stats: { meatBonus: [15, 25, 40, 60] } },
+    { id: 'wind',     name: 'Второе дыхание',   icon: '☯', min: 3, unique: true, stats: { secondWind: [0, 0, 1, 1], maxHp: [0, 0, 0, 20] } },
+    { id: 'reap',     name: 'Кровавая жатва',   icon: '♠', stats: { killHeal: [0.5, 1, 1.5, 2.5] } },
+    { id: 'chain',    name: 'Цепная молния',    icon: 'ϟ', stats: { chain: [8, 12, 16, 22] } },
+    { id: 'frost',    name: 'Ледяной удар',     icon: '❄', stats: { slow: [15, 22, 30, 40] } },
+    { id: 'knock',    name: 'Отбрасывание',     icon: '⇥', stats: { knock: [5, 10, 15, 20] } },
+    { id: 'drone',    name: 'Боевой дрон',      icon: '✈', min: 2, stats: { drones: [0, 1, 1, 1], eng: [0, 0, 1, 2] } },
+    { id: 'mine',     name: 'Мины',             icon: '✺', stats: { mines: [1, 1, 1, 1], eng: [0, 1, 1, 2] } },
+    { id: 'aura',     name: 'Огненная аура',    icon: '☀', min: 2, stats: { aura: [0, 4, 7, 11] } },
+    { id: 'critdmg',  name: 'Смертельный удар', icon: '✠', min: 2, stats: { critMult: [0, 0.25, 0.4, 0.6] } },
+    { id: 'heavy',    name: 'Тяжёлая рука',     icon: '⚒', stats: { dmgPct: [12, 18, 24, 32], atkSpd: [-8, -8, -8, -8] } },
+    { id: 'light',    name: 'Лёгкие ноги',      icon: '➶', stats: { speed: [8, 12, 15, 20], maxHp: [-5, -5, -5, -5] } },
+    { id: 'sniper',   name: 'Снайпер',          icon: '⌖', min: 2, stats: { range: [0, 60, 80, 100], crit: [0, 8, 10, 12], atkSpd: [0, -10, -8, -6] } },
+    { id: 'calm',     name: 'Хладнокровие',     icon: '☾', stats: { armor: [1, 1, 2, 3], dodge: [2, 3, 4, 5] } },
+    { id: 'greed',    name: 'Жадность',         icon: '$', stats: { luck: [15, 25, 35, 50], dmgPct: [-5, -5, -5, -5] } },
+    { id: 'tank',     name: 'Бронированный',    icon: '▦', min: 3, stats: { maxHp: [0, 0, 50, 80], armor: [0, 0, 3, 5], speed: [0, 0, -10, -10] } },
+    { id: 'fury',     name: 'Ярость',           icon: '♨', min: 3, stats: { atkSpd: [0, 0, 25, 35], armor: [0, 0, -2, -2] } },
+    { id: 'eye',      name: 'Глаз охотника',    icon: '◉', stats: { crit: [2, 3, 4, 5], ranged: [1, 2, 3, 4] } },
+    { id: 'warrior',  name: 'Воин',             icon: '⛉', stats: { melee: [2, 3, 4, 6], maxHp: [5, 8, 10, 15] } },
+    { id: 'garden',   name: 'Садовод',          icon: '✿', stats: { cropBonus: [25, 40, 60, 80] } },
+    { id: 'keeper',   name: 'Хранитель огня',   icon: '♁', stats: { fireHeal: [25, 50, 75, 100] } },
+    { id: 'skin',     name: 'Толстая кожа',     icon: '▤', stats: { armor: [2, 3, 4, 6], speed: [-3, -3, -3, -3] } },
+    // --- личные умения профессий
+    { id: 'h_mark',   name: 'Охотничья метка',  icon: '⊗', prof: 'hunter',     stats: { markBonus: [10, 15, 22, 30] } },
+    { id: 'h_volley', name: 'Шквал стрел',      icon: '⋔', prof: 'hunter', min: 2, stats: { proj: [0, 1, 1, 1], ranged: [0, 0, 2, 4] } },
+    { id: 'e_turret', name: 'Турельщик',        icon: '⛭', prof: 'engineer',   stats: { turretDmg: [10, 18, 26, 36], turretMax: [0, 0, 1, 1] } },
+    { id: 'e_sapper', name: 'Сапёр',            icon: '✺', prof: 'engineer',   stats: { mines: [1, 1, 2, 2], eng: [1, 1, 1, 2] } },
+    { id: 'p_swarm',  name: 'Рой',              icon: '✈', prof: 'programmer', min: 2, stats: { drones: [0, 1, 1, 2] } },
+    { id: 'p_boost',  name: 'Разгон',           icon: '⏩', prof: 'programmer', stats: { droneSpd: [15, 25, 35, 50], eng: [0, 1, 1, 2] } },
+    { id: 'a_mason',  name: 'Каменщик',         icon: '▥', prof: 'architect',  stats: { structHp: [25, 40, 60, 90] } },
+    { id: 'a_boss',   name: 'Прораб',           icon: '⌂', prof: 'architect',  stats: { buildCost: [10, 15, 20, 25], armor: [0, 1, 1, 2] } },
+    // --- СИНЕРГИИ между профессиями (выпадают, только если в игре есть партнёр)
+    { id: 'syn_ah', name: 'Бойницы',            icon: '⌸', prof: 'architect',  partner: 'hunter',     stats: { syn_loophole: [20, 30, 40, 50] },
+      note: 'Охотники рядом с вашими постройками получают +% дальности и половину этого в шанс крита' },
+    { id: 'syn_ap', name: 'Модульная конструкция', icon: '⧉', prof: 'architect', partner: 'programmer', stats: { syn_modular: [30, 50, 75, 100] },
+      note: 'Модули программиста на ваших постройках работают сильнее' },
+    { id: 'syn_ae', name: 'Лафет',              icon: '⊞', prof: 'architect',  partner: 'engineer',   stats: { syn_mount: [30, 50, 75, 100], structHp: [10, 15, 20, 30] },
+      note: 'Пушки инженера на ваших вышках бьют сильнее' },
+    { id: 'syn_ea', name: 'Укреплённая позиция', icon: '⛫', prof: 'engineer',  partner: 'architect',  stats: { syn_caliber: [20, 35, 50, 70] },
+      note: 'Ваши турели рядом с частоколом или вышкой бьют сильнее' },
+    { id: 'syn_ep', name: 'Совместимость',      icon: '⇄', prof: 'engineer',   partner: 'programmer', stats: { syn_compat: [20, 30, 45, 60] },
+      note: 'Турели с модулем программиста стреляют быстрее' },
+    { id: 'syn_eh', name: 'Шрапнель',           icon: '✸', prof: 'engineer',   partner: 'hunter',     stats: { syn_shrapnel: [20, 35, 50, 70] },
+      note: 'Выстрелы турелей по помеченным охотником врагам разрываются' },
+    { id: 'syn_pa', name: 'Электрозабор',       icon: 'ϟ', prof: 'programmer', partner: 'architect',  stats: { syn_fence: [10, 18, 26, 36] },
+      note: 'Весь частокол бьёт током касающихся монстров' },
+    { id: 'syn_pe', name: 'Сеть наведения',     icon: '⌖', prof: 'programmer', partner: 'engineer',   stats: { syn_targeting: [15, 25, 35, 50] },
+      note: 'Все турели и пушки получают +% дальности и крит' },
+    { id: 'syn_ph', name: 'Тепловизор',         icon: '◍', prof: 'programmer', partner: 'hunter',     stats: { syn_thermal: [15, 25, 35, 50] },
+      note: 'Метки охотника видны сквозь туман, урон по ним выше' },
+    { id: 'syn_ha', name: 'Гнездо снайпера',    icon: '⛯', prof: 'hunter',     partner: 'architect',  stats: { syn_nest: [25, 40, 55, 75] },
+      note: 'Стоя у вышки архитектора, вы наносите больше урона' },
+    { id: 'syn_he', name: 'Приманка',           icon: '⚲', prof: 'hunter',     partner: 'engineer',   stats: { syn_bait: [20, 30, 45, 60] },
+      note: 'Турели наносят больше урона помеченным вами врагам' },
+    { id: 'syn_hp', name: 'Цифровой прицел',    icon: '⊙', prof: 'hunter',     partner: 'programmer', stats: { syn_scope: [30, 50, 75, 100] },
+      note: 'Дроны и лазеры бьют помеченных вами врагов сильнее и в первую очередь' },
+  ],
+
+  // Супер-умения (раз в SUPER_EVERY уровней, каждое можно взять один раз)
+  SUPER_SKILLS: [
+    { id: 's_meteor',  name: 'Армагеддон',        icon: '☄', stats: { meteor: 1, dmgPct: 10 }, note: 'С неба падают метеориты на врагов рядом' },
+    { id: 's_immortal',name: 'Бессмертный',       icon: '☯', stats: { secondWind: 2, maxHp: 25 }, note: 'Дважды за ночь переживаете смертельный удар' },
+    { id: 's_blades',  name: 'Буря клинков',      icon: '✥', stats: { blades: 4, melee: 5 }, note: 'Вокруг вас вращаются 4 клинка' },
+    { id: 's_hail',    name: 'Град стрел',        icon: '⋔', stats: { proj: 2, pierce: 1 }, note: '+2 снаряда и пробивание' },
+    { id: 's_pact',    name: 'Кровавый пакт',     icon: '❦', stats: { lifesteal: 8, dmgPct: 30, maxHp: -30 } },
+    { id: 's_flame',   name: 'Вечный огонь',      icon: '♨', stats: { fireHeal: 200, regen: 2, aura: 6 } },
+    { id: 's_phase',   name: 'Сдвиг времени',     icon: '⌛', stats: { dodge: 20, speed: 15 } },
+    { id: 's_army',    name: 'Армия машин',       icon: '✈', stats: { drones: 2, eng: 6, turretMax: 1 } },
+    { id: 's_thunder', name: 'Громовержец',       icon: 'ϟ', stats: { lightning: 1, elem: 5 }, note: 'Каждые 3 с молнии бьют 3 врагов' },
+    { id: 's_giant',   name: 'Исполин',           icon: '▦', stats: { maxHp: 120, armor: 6, speed: -12 } },
+    { id: 's_crit',    name: 'Критический шторм', icon: '✦', stats: { crit: 25, critMult: 1 } },
+    { id: 's_ice',     name: 'Ледяной век',       icon: '❄', stats: { slow: 50, dmgPct: 15 } },
+    { id: 's_inferno', name: 'Инферно',           icon: '☀', stats: { aura: 25, elem: 6 } },
+    { id: 's_mines',   name: 'Минное поле',       icon: '✺', stats: { mines: 4, eng: 4 } },
+  ],
 
   /* ------------------------------ СЕТЬ ------------------------------ */
   NET_SNAPSHOT_HZ: 15,        // Сколько раз в секунду хост рассылает состояние игры
