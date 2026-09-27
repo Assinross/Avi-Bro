@@ -523,6 +523,11 @@
     S().circle(ctx, x, y, 3.5 + Math.sin(t * 6) * 0.8, 'rgba(90,168,255,0.9)'); S().circle(ctx, x, y, 7, 'rgba(90,168,255,0.2)');
     ctx.restore();
   }
+  function selRing(ctx, x, y, r, t) {
+    ctx.save(); ctx.strokeStyle = `rgba(255,220,120,${0.6 + Math.sin(t * 5) * 0.3})`; ctx.lineWidth = 2; ctx.setLineDash([6, 4]); ctx.lineDashOffset = -t * 20;
+    ctx.beginPath(); ctx.ellipse(x, y + 4, r, r * 0.5, 0, 0, TAU); ctx.stroke(); ctx.restore();
+  }
+  R.selRing = selRing;
   function drawStruct(ctx, s, t, near) {
     const x = s.x, y = s.y;
     if (s.kind === 'wall') {
@@ -688,7 +693,7 @@
     ctx.fillStyle = '#1e140c'; ctx.fillRect(x - 12, y - 10, 26, 5); ctx.fillRect(x - 10, y - 6, 3, 12); ctx.fillRect(x + 8, y - 6, 3, 12);
     ctx.fillStyle = '#8a5a30'; ctx.fillRect(x - 11, y - 9, 24, 3);
     // дисковая пила
-    const sawing = (Mo.sawT || 0) > 0;
+    const sawing = (Mo.saws || []).length > 0;
     ctx.save(); ctx.translate(x + 1, y - 18); ctx.rotate(sawing ? t * 20 : 0);
     S().circle(ctx, 0, 0, 9, '#111'); S().circle(ctx, 0, 0, 7.5, '#b9c2c9');
     ctx.fillStyle = '#111'; for (let i = 0; i < 10; i++) { ctx.rotate(Math.PI / 5); ctx.fillRect(7, -1, 3, 2); }
@@ -696,13 +701,16 @@
     ctx.restore();
     if (sawing && Math.random() < 0.3) AB.FX.add({ t: 'p', x: x + 1, y: y - 12, z: 4, vx: (Math.random() - 0.5) * 60, vy: 10, vz: 40, g: 200, life: 0.5, size: 2, c: '#e0c08a' });
     // доски (выход)
-    const pl = Math.min(8, Math.ceil((Mo.planks || 0) / 2));
+    const pl = Math.min(8, (Mo.saws || []).length * 3);
     for (let i = 0; i < pl; i++) {
       const py = y + 4 - i * 3;
       ctx.fillStyle = '#1e140c'; ctx.fillRect(x + 18, py - 2, 22, 4); ctx.fillStyle = i % 2 ? '#d8b078' : '#c8a06a'; ctx.fillRect(x + 19, py - 1.5, 20, 3);
     }
     ctx.font = 'bold 10px "Nunito", system-ui'; ctx.textAlign = 'center';
-    const label = `Лесопилка ур.${Mo.lvl || 1} · доски ${Mo.planks || 0}/${AB.Sim.millCap(Mo)}`;
+    const sw = (Mo.saws || []);
+    const prog = sw.length ? Math.max(...sw) / C().MILL.sawTime : 0;
+    const label = `Лесопилка ур.${Mo.lvl || 1} · очередь ${Mo.logs || 0}/${C().MILL.queueMax}`;
+    if (sw.length) hpBar(ctx, x, y - 34, 34, prog, '#e0c08a');
     const w = ctx.measureText(label).width + 12;
     ctx.fillStyle = 'rgba(10,16,12,0.8)'; roundRect(ctx, x - w / 2, y + 14, w, 14, 7); ctx.fill();
     ctx.fillStyle = '#e0c08a'; ctx.fillText(label, x, y + 21.5);
@@ -820,6 +828,24 @@
     }
     ctx.font = 'bold 9px "Nunito", system-ui'; ctx.textAlign = 'center'; ctx.fillStyle = '#ffe7a8';
     ctx.fillText(`${Math.floor(f.fuel)}/${cap}`, x, by + 16);
+  }
+  // Молодой побег: растёт от ростка до маленького деревца
+  function drawSapling(ctx, o, k, t) {
+    const x = o.x, y = o.y, h = 6 + k * 34, sway = Math.sin(t * 1.5 + o.x) * (1 + k);
+    S().ell(ctx, x, y + 2, 5 + k * 10, 2 + k * 3, 'rgba(0,0,0,0.25)');
+    ctx.strokeStyle = '#3a2616'; ctx.lineWidth = 1.5 + k * 2.5; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.quadraticCurveTo(x + sway * 0.5, y - h * 0.5, x + sway, y - h); ctx.stroke();
+    const pine = o.v >= 3, lr = 3 + k * 11;
+    if (pine) {
+      for (let i = 0; i < 3; i++) { const yy = y - h * (0.45 + i * 0.25), w = lr * (1 - i * 0.25);
+        ctx.fillStyle = '#0e1a0e'; ctx.beginPath(); ctx.moveTo(x + sway - w - 1, yy + 1); ctx.lineTo(x + sway, yy - w * 1.1 - 1); ctx.lineTo(x + sway + w + 1, yy + 1); ctx.fill();
+        ctx.fillStyle = i % 2 ? '#2b5a2b' : '#3b7a55'; ctx.beginPath(); ctx.moveTo(x + sway - w, yy); ctx.lineTo(x + sway, yy - w * 1.1); ctx.lineTo(x + sway + w, yy); ctx.fill(); }
+    } else {
+      for (const [dx, dy, rs] of [[-0.6, 0.1, 0.7], [0.6, 0.15, 0.7], [0, -0.35, 0.85]]) {
+        S().circle(ctx, x + sway + dx * lr, y - h + dy * lr, lr * rs + 1, '#10200f');
+        S().circle(ctx, x + sway + dx * lr, y - h + dy * lr, lr * rs, dy < 0 ? '#6fa84a' : '#4f8a3a');
+      }
+    }
   }
   function drawPlot(ctx, pl, t, near) {
     const x = pl.x, y = pl.y;
@@ -1004,6 +1030,7 @@
     for (const b of W.bushes) if (b.x > x0 && b.x < x1 && b.y > y0 && b.y < y1) vis.push({ y: b.y, k: 2, o: b });
     for (const s of W.sites) if (s.x > x0 && s.x < x1 && s.y > y0 && s.y < y1) vis.push({ y: s.y, k: 3, o: s });
     for (const d of W.decor) if (d.kind !== 'bones' && d.kind !== 'rubble' && d.x > x0 && d.x < x1 && d.y > y0 && d.y < y1) vis.push({ y: d.y, k: 4, o: d });
+    if (ui && ui.sel) { const b = AB.Sim.buildingByRef(G, ui.sel); if (b) selRing(ctx, b.o.x, b.o.y, (b.o.r || 30) + 14, t); }
     for (const pl of G.plots) if (pl.x > x0 && pl.x < x1 && pl.y > y0 && pl.y < y1) { drawPlot(ctx, pl, t, me && AB.dist2(me.x, me.y, pl.x, pl.y) < 150 * 150); if (pl.mod) drawModuleLight(ctx, pl.x + 16, pl.y - 12, t); }
     for (const mn of G.mines) drawMine(ctx, mn, t);
     for (const te of G.tele) drawTele(ctx, te, t);
@@ -1021,7 +1048,11 @@
       const o = v.o;
       switch (v.k) {
         case 0: {
-          if (o.dead) { drawSprite(ctx, sp.stump, o.x, o.y + 4, o.s * 0.9); break; }
+          if (o.dead) {
+            if (o.sap >= 0) drawSapling(ctx, o, Math.min(1, (G.clock - (o.sg || 0)) / AB.Sim.saplingTime()), t);
+            else drawSprite(ctx, sp.stump, o.x, o.y + 4, o.s * 0.9);
+            break;
+          }
           let alpha;
           for (const p of G.players) if (p.y < o.y - 4 && p.y > o.y - 115 * o.s && Math.abs(p.x - o.x) < 40 * o.s) alpha = 0.42;
           const tree = sp.trees[o.v];
@@ -1126,7 +1157,7 @@
     };
     const center = me && !me.dead ? toS(me.x, me.y) : toS(cam.x, cam.y);
     cut(center[0], center[1], vr, 1);
-    for (const st of G.structs) if (st.kind === 'tower') { const [sx, sy] = toS(st.x, st.y); cut(sx, sy, C().STRUCTURES.tower.vision * z * s, 0.8); }
+    for (const st of G.structs) if (st.kind === 'tower') { const [sx, sy] = toS(st.x, st.y); cut(sx, sy, C().STRUCTURES.tower.vision * (st.bmod === 'light' ? 1.6 : 1) * z * s, 0.8); }
     for (const l of lights) { const [sx, sy] = toS(l[0], l[1]); cut(sx, sy, l[2] * z * s * 0.9, 0.85 * l[3]); }
     // --- на экран
     ctx.save();
@@ -1283,8 +1314,17 @@
       const K = R.hudK || 1;
       const click = (x, y, w, h, c, v) => R.clicks.push({ x: x * K, y: y * K, w: w * K, h: h * K, c, v });
       const items = AB.ITEM_KEYS.filter(k => !AB.Sim.bagItem(k) && k !== 'coin' && (me.inv[k] || 0) > 0);
-      const w = items.length * 64 + 175;
+      const w = items.length * 64 + 175 + 150;
       panel(ctx, SW - w - 14, 14, w, 46);
+      // склад (общий)
+      {
+        const sx = SW - 175 - 150;
+        ctx.drawImage(S().icons.plank, sx, 20, 28, 28);
+        ctx.font = 'bold 15px "Nunito", system-ui'; ctx.textAlign = 'left'; ctx.fillStyle = '#e0c08a';
+        ctx.fillText(`${G.store ? G.store.planks : 0}`, sx + 32, 31);
+        ctx.font = '600 10px "Nunito", system-ui'; ctx.fillStyle = '#c8b890';
+        ctx.fillText(`склад${G.store && G.store.coal ? ` · уголь ${G.store.coal}` : ''}`, sx + 32, 45);
+      }
       // казна
       {
         const bx = SW - 175;
@@ -1323,7 +1363,7 @@
         const S0 = G.store;
         if (S0) {
           ctx.font = '600 11px "Nunito", system-ui'; ctx.textAlign = 'left'; ctx.fillStyle = '#e0c08a';
-          ctx.fillText(`Лесопилка ур.${S0.lvl}: доски ${S0.planks}/${AB.Sim.millCap(S0)} · бревна ${S0.logs}`, px + 12, py + ph - 9);
+          ctx.fillText(`Лесопилка: очередь ${S0.logs}/${cfg.MILL.queueMax} · пилится ${(S0.saws || []).length}`, px + 12, py + ph - 9);
         }
       }
       // цели
@@ -1366,7 +1406,7 @@
       const ax = hx + order.length * (sz + gap);
       ctx.fillStyle = 'rgba(10,18,15,0.8)'; roundRect(ctx, ax, hy, sz, sz, 8); ctx.fill(); ctx.strokeStyle = 'rgba(160,190,150,0.25)'; ctx.lineWidth = 1; ctx.stroke();
       ctx.drawImage(S().icons.axe, ax + 7, hy + 7, sz - 14, sz - 14);
-      ctx.font = '600 10px "Nunito", system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#cfd8cc'; ctx.fillText('авто', ax + sz / 2, hy + sz - 8);
+      ctx.font = '600 10px "Nunito", system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#cfd8cc'; ctx.fillText(`авто · ур.${me.axe || 1}`, ax + sz / 2, hy + sz - 8);
       // подсказки
       const st = me.st || {}, bc = (v) => Math.max(1, Math.round(v * (1 - Math.min(80, st.buildCost || 0) / 100)));
       const hints = [['E', 'Съесть'], ['R', 'Посадить'], ['G', `Грядка (${bc(cfg.GARDEN_BED_COST)})`], ['B', `Костёр (${bc(cfg.CAMPFIRE_COST)})`]];

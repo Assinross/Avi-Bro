@@ -106,7 +106,8 @@
             <li><kbd>E</kbd> съесть · <kbd>R</kbd> посадить семя</li>
             <li><kbd>G</kbd> грядка · <kbd>B</kbd> костёр (у курсора)</li>
             <li><kbd>T</kbd> / <kbd>Y</kbd> — постройка вашей профессии</li>
-            <li><kbd>U</kbd> — улучшить то, что рядом (костёр, кухня, лесопилка, вышка, турель, модуль)</li>
+            <li><kbd>ПКМ</kbd> по зданию — меню здания: улучшения и модификации (с любого расстояния)</li>
+            <li><kbd>U</kbd> — быстро улучшить здание рядом</li>
             <li><kbd>H</kbd> — экономическое здание профессии · <kbd>Tab</kbd> — сборка</li>
             <li>Клик по предмету на земле — поднять; клик по ячейке рюкзака — выбросить; клик по еде вверху — съесть</li>
             <li><kbd>Esc</kbd> пауза</li>
@@ -165,6 +166,7 @@
       <div id="mcCoins" class="note"></div>
       <div class="mchead">Товары для всех</div>
       <div id="mcGoods" class="uplist"></div>
+      <button id="btnAxeMc" class="btn small" style="margin-top:6px"></button>
       <div class="mchead">Купить умение (только охотник)</div>
       <div id="mcOffers" class="skills four"></div>
       <div class="mchead">Улучшить навык (повысить редкость)</div>
@@ -194,16 +196,19 @@
       <div class="lvtitle small">Мастерская</div>
       <div id="wsInfo" class="note"></div>
       <button id="btnWup" class="btn gold small"></button>
+      <button id="btnAxeWs" class="btn small"></button>
     </div>
   </div>
 
   <!-- Окно здания -->
   <div id="bpanel" class="overlay right hidden">
     <div class="buildpanel bpanel">
-      <div id="bpTitle" class="bptitle"></div>
+      <div class="bphead"><div id="bpTitle" class="bptitle"></div><button id="bpClose" class="btn small ghost">✕</button></div>
       <div id="bpDesc" class="note left"></div>
       <div id="bpNow" class="bpnow"></div>
       <div id="bpAsp"></div>
+      <div class="mchead">Модификация</div>
+      <div id="bpMods"></div>
     </div>
   </div>
 

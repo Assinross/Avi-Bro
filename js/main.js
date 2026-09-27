@@ -170,7 +170,7 @@
       if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(k)) e.preventDefault();
       if (App.state !== 'play') return;
       if (k === 'Tab') { e.preventDefault(); if (!e.repeat) toggleBuild(); return; }
-      if (k === 'Escape') { togglePause(); return; }
+      if (k === 'Escape') { if (App.selRef) { App.selRef = null; return; } togglePause(); return; }
       if (App.paused) return;
       App.keys.add(k);
       if (e.repeat) return;
@@ -195,6 +195,13 @@
     cv.addEventListener('mouseleave', () => { App.mouse.onCanvas = false; });
     cv.addEventListener('mousedown', (e) => {
       AB.Sound.unlock();
+      if (e.button === 2 && App.state === 'play' && App.G) {
+        const mw = mouseWorld();
+        App.selRef = AB.Sim.buildingAt(App.G, mw.x, mw.y);
+        App.bpSig = null;
+        if (App.selRef) AB.Sound.play('click', 1);
+        return;
+      }
       if (e.button !== 0 || App.state !== 'play' || App.paused) return;
       const s = slotAt(e.clientX, e.clientY);
       if (s >= 0) { selectWeapon(s); return; }
@@ -328,7 +335,8 @@
     if (!near) { box.classList.add('hidden'); App.mcSig = null; return; }
     box.classList.remove('hidden');
     const coins = G.coins || 0;
-    const sig = JSON.stringify(me.mo) + coins + JSON.stringify(me.skills) + JSON.stringify(me.mgBought || {});
+    const sig = JSON.stringify(me.mo) + coins + JSON.stringify(me.skills) + JSON.stringify(me.mgBought || {}) + (me.axe || 1) + AB.Sim.woodOf(G, me);
+    axeButton($('btnAxeMc'), me);
     if (sig === App.mcSig) return;
     App.mcSig = sig;
     $('mcCoins').innerHTML = `В казне: <b style="color:#ffd24a">${coins} $</b>. Монеты дают монстры, лавка охотника, биржа программиста и ратуша.`;
@@ -402,7 +410,7 @@
     $('workshop').classList.toggle('hidden', !ws);
     if (ws) {
       const W = cfg.WORKSHOP, lv = (me.wl && me.wl[me.w]) || 0, wn = cfg.WEAPONS[me.w].name;
-      const sig = me.w + lv + G.coins + AB.Sim.woodOf(G, me);
+      const sig = me.w + lv + G.coins + AB.Sim.woodOf(G, me) + '|' + (me.axe || 1);
       if (sig !== App.wsSig) {
         App.wsSig = sig;
         $('wsInfo').innerHTML = `Оружие в руках: <b>${wn}</b> · уровень ${lv}/${W.maxLevel} (урон +${Math.round(W.dmg * lv * 100)}%).<br>Смените оружие клавишами 1–5, чтобы улучшить другое.`;
@@ -410,39 +418,63 @@
         if (lv >= W.maxLevel) { b.textContent = 'Максимум'; b.disabled = true; }
         else { b.textContent = `Улучшить: ${W.coins[lv]} $ + ${W.planks[lv]} досок`; b.disabled = G.coins < W.coins[lv] || AB.Sim.woodOf(G, me) < W.planks[lv]; }
         b.style.opacity = b.disabled ? 0.5 : 1;
+        axeButton($('btnAxeWs'), me);
       }
     }
   }
-  // Окно ближайшего здания: описание, уровни, улучшение
+  function axeButton(b, me) {
+    const cfg = C(), A = cfg.AXE_UPGRADE, lv = me.axe || 1, G = App.G;
+    if (lv >= cfg.AXE_LEVELS.length) { b.textContent = `Топор: максимум (ур. ${lv})`; b.disabled = true; }
+    else {
+      const hits = Math.ceil(cfg.TREE_HP / cfg.AXE_LEVELS[lv]);
+      b.textContent = `Топор ур.${lv}→${lv + 1} (дерево за ${hits} ударов): ${A.coins[lv]} $ + ${A.planks[lv]} досок`;
+      b.disabled = G.coins < A.coins[lv] || AB.Sim.woodOf(G, me) < A.planks[lv];
+    }
+    b.style.opacity = b.disabled ? 0.5 : 1;
+  }
+  // Меню здания (правый клик): описание, улучшения, модификации
   function updateBuildingUI(me) {
     const cfg = C(), box = $('bpanel'), G = App.G;
-    const busy = !me || me.dead || App.state !== 'play' || me.offers || !$('merchant').classList.contains('hidden');
-    const b = busy ? null : AB.Sim.nearestBuilding(G, me);
-    if (!b) { box.classList.add('hidden'); App.bpSig = null; return; }
+    const b = App.selRef && me && App.state === 'play' && !me.offers ? AB.Sim.buildingByRef(G, App.selRef) : null;
+    if (!b) { box.classList.add('hidden'); App.bpSig = null; if (App.selRef && App.state === 'play' && !(me && me.offers)) App.selRef = null; return; }
     box.classList.remove('hidden');
     const planks = AB.Sim.woodOf(G, me);
-    const sig = JSON.stringify([b.title, b.now, b.asp, planks]);
+    const sig = JSON.stringify([b.title, b.now, b.asp, b.mods, planks, G.coins, me.prof]);
     if (sig === App.bpSig) return;
     App.bpSig = sig;
     $('bpTitle').textContent = b.title;
     $('bpDesc').textContent = b.desc;
     $('bpNow').innerHTML = b.now.join('<br>');
-    const box2 = $('bpAsp'); box2.innerHTML = '';
     const pn = { feed: 'подбрасывайте бревна и уголь, стоя у костра', any: 'любой игрок', hunter: 'охотник', engineer: 'инженер', programmer: 'программист', architect: 'архитектор' };
+    const box2 = $('bpAsp'); box2.innerHTML = '';
     b.asp.forEach(a => {
       const el = document.createElement('div'); el.className = 'asp';
       const max = a.lvl >= a.max || a.cost == null;
       const can = AB.Sim.canUpgrade(me, a);
-      el.innerHTML = `<div class="ah"><span>${a.name}</span><span>ур. ${a.lvl}/${a.max}</span></div>` +
-        (max ? '<div class="an">Максимальный уровень</div>' :
-          `<div class="an">Следующий уровень: ${a.next}</div>
-           <div class="bar"><div style="width:${Math.round(a.prog / a.cost * 100)}%"></div></div>
-           <div class="an">${a.by === 'feed' ? `Топливо ${a.prog}/${a.cost} — заполните шкалу до конца` : `Вложено ${a.prog}/${a.cost} досок · у вас доступно ${planks}`}</div>` +
-          (can ? `<button class="btn small gold">Вложить доски (U)</button>` : `<div class="who">Улучшает: ${pn[a.by]}</div>`));
+      let body;
+      if (max) body = '<div class="an">Максимальный уровень</div>';
+      else if (a.by === 'feed') body = `<div class="an">Следующий уровень: ${a.next}</div><div class="bar"><div style="width:${Math.round(a.prog / a.cost * 100)}%"></div></div><div class="an">Топливо ${a.prog}/${a.cost} — заполните шкалу</div><div class="who">${pn.feed}</div>`;
+      else body = `<div class="an">Следующий уровень: ${a.next}</div>` + `<div class="an">Цена: ${a.cost} досок · на складе ${planks}</div>` + (can ? `<button class="btn small gold">Улучшить</button>` : `<div class="who">Улучшает: ${pn[a.by]}</div>`);
+      el.innerHTML = `<div class="ah"><span>${a.name}</span><span>ур. ${a.lvl}/${a.max}</span></div>` + body;
       const btn = el.querySelector('button');
-      if (btn) { if (planks <= 0) { btn.disabled = true; btn.style.opacity = 0.5; } btn.addEventListener('click', () => { AB.Sound.play('click', 1); sendCmd('upnear', a.key); App.bpSig = null; }); }
+      if (btn) { if (planks < a.cost) { btn.disabled = true; btn.style.opacity = 0.5; } btn.addEventListener('click', () => { AB.Sound.play('click', 1); sendCmd2('bup', b.ref, a.key); }); }
       box2.appendChild(el);
     });
+    const mb = $('bpMods'); mb.innerHTML = '';
+    if (!b.mods.length) mb.innerHTML = '<div class="note left">У этого здания нет модификаций.</div>';
+    const MC = cfg.MOD_COST, afford = planks >= MC.planks && G.coins >= MC.coins;
+    b.mods.forEach(md => {
+      const el = document.createElement('div');
+      el.className = 'mod' + (md.on ? ' on' : '') + (!md.on && !afford ? ' poor' : '');
+      el.innerHTML = `<b>${md.on ? '✔ ' : ''}${md.name}</b><div class="an">${md.desc}</div>${md.on ? '' : `<div class="an">Установить: ${MC.planks} досок + ${MC.coins} $</div>`}`;
+      if (!md.on) el.addEventListener('click', () => { AB.Sound.play('click', 1); sendCmd2('bmod', b.ref, md.id); });
+      mb.appendChild(el);
+    });
+  }
+  function sendCmd2(c, x, y) {
+    if (App.mode === 'guest') AB.Net.send({ t: 'cmd', c, x, y });
+    else AB.Sim.command(App.G, App.myId, c, x, y);
+    App.bpSig = null;
   }
   function toggleBuild() { App.showBuild = !App.showBuild; App.buildSig = null; }
   function updateBuildUI(me) {
@@ -562,7 +594,7 @@
     }
     if (App.clickMark) { App.clickMark.t -= dt * 2; if (App.clickMark.t <= 0) App.clickMark = null; }
     AB.FX.update(dt);
-    R.draw(G, me, App.cam, dt, { clickMark: App.clickMark });
+    R.draw(G, me, App.cam, dt, { clickMark: App.clickMark, sel: App.selRef });
     R.hud(G, me, { mouse: App.mouse.onCanvas ? App.mouse : null, hoverSlot: App.hoverSlot });
     AB.Render.hoverDrop = (dropUnderMouse() || {}).id;
     updateLevelUI(me);
@@ -621,7 +653,10 @@
     try { App.prof = localStorage.getItem('avibro-prof') || 'hunter'; } catch (e) { App.prof = 'hunter'; }
     bind('btnSolo', () => chooseProf(startSolo, 'menu'));
     bind('btnReroll', reroll);
+    bind('bpClose', () => { App.selRef = null; });
     bind('btnWup', () => { sendCmd('wup', 0); App.wsSig = null; });
+    bind('btnAxeWs', () => { sendCmd('axeup', 0); App.wsSig = null; });
+    bind('btnAxeMc', () => { sendCmd('axeup', 0); App.mcSig = null; });
     document.querySelectorAll('[data-ex]').forEach(b => b.addEventListener('click', () => { AB.Sound.play('click', 1); const [c, v] = b.dataset.ex.split(':'); sendCmd(c, v === 'all' ? 'all' : +v); App.exSig = null; }));
     bind('btnCoop', () => { show('coop'); $('coopErr').textContent = ''; $('peerWarn').classList.toggle('hidden', AB.Net.available()); });
     bind('btnHelp', () => show('help'));
