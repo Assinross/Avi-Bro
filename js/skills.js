@@ -98,8 +98,8 @@
     if (!p.offers) return;
     const cfg = C();
     const cost = cfg.REROLL_COST + p.rr * cfg.REROLL_COST_STEP;
-    if (p.inv.wood < cost) { AB.Sim.msg(G, `Для переброса нужно ${cost} дерева`, p.id, '#ff9d7a'); return; }
-    p.inv.wood -= cost; p.rr++;
+    if (AB.Sim.woodOf(G, p) < cost) { AB.Sim.msg(G, `Для переброса нужно ${cost} дерева (рюкзак + склад)`, p.id, '#ff9d7a'); return; }
+    AB.Sim.spendWood(G, p, cost); p.rr++;
     p.offers = Sk.makeOffers(G, p, p.queue[0]);
   };
 

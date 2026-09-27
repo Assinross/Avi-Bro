@@ -17,6 +17,16 @@ window.CONFIG = {
   WATER_LEVEL: 0.74,          // Порог шума для озёр (больше → меньше воды, 1 = воды нет)
   BORDER_TILES: 4,            // Ширина непроходимого леса по краю карты
   CAMP_RADIUS_TILES: 8,       // Радиус поляны лагеря в центре карты
+  // Территория лагеря по уровню главного костра (1..4): внутри монстры не появляются
+  TERRITORY_RADIUS: [320, 450, 600, 780],
+  // Глубина леса: чем дальше от лагеря, тем опаснее. depth = 0 у границы территории, 1 у края карты
+  DEPTH_HP: 1.5,              // +150% здоровья монстров на краю карты
+  DEPTH_DMG: 0.8,             // +80% урона монстров на краю карты
+  DEPTH_NIGHTS: 12,           // Глубоко в лесу виды монстров «из будущих ночей» появляются раньше на столько ночей
+  STORAGE_OFFSET: [-85, 60],  // Склад лагеря относительно главного костра
+  STORAGE_RADIUS: 55,         // Подойдите к складу — всё дерево из рюкзака выгружается
+  STORAGE_FEED_FIRE: true,    // Склад сам подкидывает дрова в главный костёр
+  STORAGE_FEED_BELOW: 0.5,    // ...когда топлива меньше этой доли
   LOOT_SITES: 12,             // Количество охраняемых локаций (руины с сундуками)
   LOOT_SITE_MIN_DIST: 22,     // Минимальное расстояние локаций от лагеря (в тайлах)
   LOOT_SITE_MAX_DIST: 72,     // Максимальное расстояние локаций от лагеря (в тайлах)
@@ -41,6 +51,7 @@ window.CONFIG = {
 
   /* ------------------------------ ИГРОК ----------------------------- */
   MOVE_SPEED_MULT: 0.8,       // Общий множитель скорости движения игроков, монстров и боссов (0.8 = на 20% медленнее)
+  MONSTER_SPEED_MULT: 0.85,   // Дополнительный множитель скорости только для монстров и боссов (0.85 = ещё на 15% медленнее)
   PLAYER_SPEED: 155,          // Базовая скорость ходьбы (до множителя MOVE_SPEED_MULT)
   PLAYER_RADIUS: 11,          // Радиус столкновения игрока
   PLAYER_MAX_HP: 100,         // Максимальное здоровье
@@ -55,6 +66,8 @@ window.CONFIG = {
   MAGNET_RADIUS: 70,          // Радиус, с которого предметы притягиваются к игроку
   BUILD_RANGE: 170,           // Максимальное расстояние от игрока до места постройки
   CLICK_STOP_DIST: 6,         // На каком расстоянии от точки клика игрок останавливается
+  BACKPACK_START: 7,          // Вместимость рюкзака в начале (дерево + вся еда, семена не считаются)
+  BACKPACK_FULL_MSG: 6,       // Как часто (с) напоминать, что рюкзак полон
   START_WEAPON: 'knife',      // Стартовое оружие (ключ из WEAPONS)
   START_ITEMS: { wood: 0, meat: 1, berry: 3, seed_carrot: 1 }, // Стартовый инвентарь
 
@@ -83,19 +96,40 @@ window.CONFIG = {
    * hp — здоровье; speed — скорость; damage — урон за удар; attackCd — пауза
    * sight — радиус обнаружения игрока; radius — размер тела
    * meat — [мин, макс] выпадающего мяса; seedChance — шанс семени (0..1)
-   * fearFire — боится света костра
+   * fearFire — боится света костра; undead — нежить (костёр жжёт её сильнее)
+   * суперудары монстров — см. MONSTER_SPECIALS
    * ranged — стреляет издалека: { range — дистанция, cd — пауза, speed — скорость плевка } */
   MONSTERS: {
     wolf:    { name: 'Волк',          hp: 32,  speed: 128, damage: 7,  attackCd: 0.8, sight: 230, radius: 12, meat: [1, 2], seedChance: 0.03 },
-    ghoul:   { name: 'Упырь',         hp: 55,  speed: 78,  damage: 11, attackCd: 1.0, sight: 190, radius: 12, meat: [0, 1], seedChance: 0.05 },
-    shade:   { name: 'Тень',          hp: 40,  speed: 108, damage: 9,  attackCd: 0.9, sight: 600, radius: 12, meat: [0, 0], seedChance: 0.02, fearFire: true },
+    ghoul:   { name: 'Упырь',         hp: 55,  speed: 78,  damage: 11, attackCd: 1.0, sight: 190, radius: 12, meat: [0, 1], seedChance: 0.05, undead: true },
+    shade:   { name: 'Тень',          hp: 40,  speed: 108, damage: 9,  attackCd: 0.9, sight: 600, radius: 12, meat: [0, 0], seedChance: 0.02, fearFire: true, undead: true },
     spider:  { name: 'Паук',          hp: 16,  speed: 150, damage: 4,  attackCd: 0.6, sight: 280, radius: 9,  meat: [0, 1], seedChance: 0.02 },
     alpha:   { name: 'Вожак',         hp: 120, speed: 150, damage: 14, attackCd: 0.7, sight: 300, radius: 15, meat: [2, 3], seedChance: 0.25 },
-    spitter: { name: 'Плевун',        hp: 45,  speed: 70,  damage: 10, attackCd: 1.0, sight: 320, radius: 12, meat: [0, 1], seedChance: 0.08, ranged: { range: 230, cd: 2.2, speed: 230 } },
+    spitter: { name: 'Плевун',        hp: 45,  speed: 70,  damage: 10, attackCd: 1.0, sight: 320, radius: 12, meat: [0, 1], seedChance: 0.08, undead: true, ranged: { range: 230, cd: 2.2, speed: 230 } },
     brute:   { name: 'Громила',       hp: 240, speed: 92,  damage: 22, attackCd: 1.3, sight: 270, radius: 21, meat: [3, 5], seedChance: 0.35 },
   },
   // Рост монстров с каждой ночью n: множитель = 1 + LIN·(n−1) + SQ·(n−1)².
   // К 99-й ночи здоровье ≈ ×35, урон ≈ ×14 — без удачной сборки не выжить.
+  // СУПЕРУДАРЫ МОНСТРОВ. Перед ударом монстр замирает (windup), а на земле появляется
+  // КРАСНАЯ ПОДСКАЗКА зоны удара — успейте выйти. Убили монстра во время замаха — удар отменён.
+  // kind: lunge — прыжок по прямой; cone — конус перед собой; nova — круг вокруг себя;
+  //       smash — круг перед собой; target — круг под игроком; volley — несколько кругов вокруг игрока
+  // minDist/maxDist — с какого расстояния до игрока применяет; cooldown — пауза между суперударами;
+  // dmgMult — множитель урона; chaseTime — сколько секунд должен безуспешно гнаться (для прыжка)
+  MONSTER_SPECIALS: {
+    wolf:    { name: 'Прыжок',          kind: 'lunge',  minDist: 55, maxDist: 190, chaseTime: 0.8, windup: 0.5,  distance: 175, time: 0.28, width: 30, recover: 0.4, cooldown: 2.8, dmgMult: 1.3 },
+    alpha:   { name: 'Бросок вожака',   kind: 'lunge',  minDist: 60, maxDist: 250, chaseTime: 0.5, windup: 0.55, distance: 250, time: 0.3,  width: 42, recover: 0.4, cooldown: 3.2, dmgMult: 1.6 },
+    ghoul:   { name: 'Размах когтями',  kind: 'cone',   minDist: 0,  maxDist: 55,  windup: 0.6,  length: 62, angle: 120, cooldown: 4,   dmgMult: 1.8 },
+    shade:   { name: 'Теневой взрыв',   kind: 'nova',   minDist: 0,  maxDist: 60,  windup: 0.8,  radius: 75, cooldown: 5,  dmgMult: 1.6 },
+    spider:  { name: 'Паутина',         kind: 'target', minDist: 60, maxDist: 220, windup: 0.9,  radius: 45, cooldown: 6,  dmgMult: 0.5, slow: 50, slowTime: 2 },
+    spitter: { name: 'Ядовитый залп',   kind: 'volley', minDist: 80, maxDist: 260, windup: 1.1,  radius: 42, count: 3, spread: 75, cooldown: 6, dmgMult: 1.3 },
+    brute:   { name: 'Удар дубиной',    kind: 'smash',  minDist: 0,  maxDist: 75,  windup: 0.9,  radius: 62, cooldown: 4.5, dmgMult: 2.2 },
+  },
+  // Естественное движение: скорость поворота (рад/с), разгон, «вилянье» при беге
+  MONSTER_TURN_RATE: 5,       // Как быстро монстр меняет направление
+  MONSTER_ACCEL: 4,           // Как быстро набирает и сбрасывает скорость (доля в секунду)
+  MONSTER_WEAVE: 0.25,        // Сила вилянья из стороны в сторону при беге
+  MONSTER_IDLE_PAUSE: [1, 3], // Пауза при бесцельном бродяжничестве, с
   MONSTER_HP_GROWTH: 0.10,       // Линейный рост здоровья за ночь
   MONSTER_HP_GROWTH_SQ: 0.0025,  // Квадратичный рост здоровья
   MONSTER_DMG_GROWTH: 0.05,      // Линейный рост урона за ночь
@@ -113,12 +147,12 @@ window.CONFIG = {
   ],
   GUARD_LEASH: 420,           // Как далеко стражи локаций уходят от своего сундука
   DAY_MAX_MONSTERS: 16,       // Максимум бродячих монстров днём
-  NIGHT_MAX_MONSTERS: 22,     // Максимум монстров ночью (в первую ночь)
-  NIGHT_MONSTERS_PER_NIGHT: 0.9, // Прибавка к максимуму ночных монстров за каждую ночь
-  NIGHT_MONSTERS_CAP: 110,    // Абсолютный потолок монстров
+  NIGHT_MAX_MONSTERS: 8,      // Максимум монстров ночью (в первую ночь)
+  NIGHT_MONSTERS_PER_NIGHT: 0.3, // Прибавка к максимуму ночных монстров за каждую ночь
+  NIGHT_MONSTERS_CAP: 37,     // Абсолютный потолок монстров ночью
   COOP_MONSTER_MULT: 1.3,     // Во сколько раз больше монстров при игре вдвоём
   SPAWN_INTERVAL_DAY: 3.0,    // Пауза между появлениями монстров днём
-  SPAWN_INTERVAL_NIGHT: 0.9,  // Пауза между появлениями монстров ночью
+  SPAWN_INTERVAL_NIGHT: 2.7,  // Пауза между появлениями монстров ночью
   SPAWN_MIN_DIST: 520,        // Ближайшее расстояние появления монстра от игрока
   SPAWN_MAX_DIST: 950,        // Дальнее расстояние появления монстра от игрока
   DESPAWN_DIST: 1700,         // Бродячие монстры дальше этого расстояния исчезают
@@ -164,13 +198,33 @@ window.CONFIG = {
   BOSS_REWARD: { meat: 8, wood: 12, seeds: 3, bonusLevel: 1 }, // Награда за босса (bonusLevel — сколько доп. умений каждому игроку)
 
   /* ------------------------------- ЕДА ------------------------------ *
-   * food — сколько сытости восстанавливает; hp — сколько лечит          */
+   * food — сколько сытости восстанавливает; hp — изменение здоровья
+   * (отрицательное = сырая еда вредит). Всё можно есть сырым,
+   * но лучше готовить на полевой кухне у костра.                       */
   FOOD: {
-    berry:   { name: 'Ягоды',   food: 8,  hp: 1 },
-    carrot:  { name: 'Морковь', food: 16, hp: 3 },
-    meat:    { name: 'Мясо',    food: 26, hp: 6 },
-    pumpkin: { name: 'Тыква',   food: 45, hp: 12 },
+    berry:          { name: 'Ягоды',              food: 8,  hp: 1 },
+    carrot:         { name: 'Сырая морковь',      food: 12, hp: -1 },
+    meat:           { name: 'Сырое мясо',         food: 22, hp: -1 },
+    pumpkin:        { name: 'Сырая тыква',        food: 30, hp: -2 },
+    cooked_carrot:  { name: 'Печёная морковь',    food: 18, hp: 3 },
+    cooked_meat:    { name: 'Жареное мясо',       food: 30, hp: 5 },
+    cooked_pumpkin: { name: 'Тыквенная каша',     food: 50, hp: 10 },
   },
+  RAW_EAT_MIN_HP: 1,          // Сырая еда не может убить: здоровье не опускается ниже этого
+
+  /* -------------------------- ПОЛЕВАЯ КУХНЯ ------------------------- *
+   * Стоит рядом с главным костром. Подойдите к ней — вся сырая еда
+   * забирается и готовится. Готовая еда выпадает рядом с кухней.
+   * time — время готовки в секундах, out — что получается               */
+  COOKING: {
+    carrot:  { out: 'cooked_carrot',  time: 5 },
+    meat:    { out: 'cooked_meat',    time: 10 },
+    pumpkin: { out: 'cooked_pumpkin', time: 20 },
+  },
+  KITCHEN_OFFSET: [0, -85],   // Где стоит кухня относительно главного костра (x, y)
+  KITCHEN_RADIUS: 50,         // Подойдите так близко — еда отдаётся на кухню
+  KITCHEN_SLOTS: 3,           // Сколько блюд готовится одновременно
+  KITCHEN_NEEDS_FIRE: true,   // Готовка идёт, только пока горит главный костёр
   BERRY_REGROW_TIME: 120,     // Через сколько секунд на кусте вырастают ягоды
   BERRIES_PER_BUSH: 2,        // Сколько ягод даёт куст
 
@@ -195,10 +249,17 @@ window.CONFIG = {
   FIRE_LIGHT_RADIUS: 230,     // Радиус света костра при полном топливе
   FIRE_HEAL: 1.2,             // Лечение в секунду рядом с горящим костром
   FIRE_HEAL_RADIUS: 110,      // Радиус лечения костра
+  FIRE_DPS: 8,                // Урон в секунду монстрам рядом с горящим костром
+  FIRE_DMG_RADIUS: 120,       // Радиус урона костра (растёт с уровнем костра)
+  FIRE_DMG_PER_NIGHT: 0.08,   // Рост урона костра за каждую ночь (+8%), чтобы не отставал от монстров
+  FIRE_DMG_LEVEL: 0.5,        // +50% урона костра за каждый уровень главного костра
+  FIRE_UNDEAD_MULT: 2.5,      // Во сколько раз сильнее костёр жжёт нежить (упыри, тени, плевуны)
 
   /* --------------------------- СУНДУКИ ------------------------------ */
   CHEST_OPEN_RADIUS: 34,      // Подойди так близко — сундук откроется сам
   CHEST_SEEDS: [1, 3],        // Сколько семян лежит в сундуке [мин, макс]
+  CHEST_BAG_BASE: 2,          // Сундуки без оружия увеличивают рюкзак на (это + уровень локации 0..3)
+  CHEST_BAG_WEAPON_CHANCE: 0.5, // Шанс, что в сундуке с оружием тоже есть расширение рюкзака (+2)
 
   /* ============================ ПРОФЕССИИ ============================ *
    * Выбираются в начале игры. stats — стартовые бонусы (названия характеристик — см. STAT_LABELS).
@@ -281,14 +342,14 @@ window.CONFIG = {
     dmgPct: ['Урон', true], melee: ['Урон ближнего боя', false], ranged: ['Урон дальнего боя', false],
     elem: ['Огонь (поджог/с)', false], atkSpd: ['Скорость атаки', true], crit: ['Шанс крита', true], critMult: ['Сила крита', false],
     eng: ['Инженерия', false], range: ['Дальность', false], armor: ['Броня', false], dodge: ['Уклонение', true],
-    speed: ['Скорость', true], luck: ['Удача', false], harvest: ['Сбор (дерево/рассвет)', false],
+    speed: ['Скорость', true], luck: ['Удача', false], harvest: ['Сбор (дерево на склад/рассвет)', false],
     proj: ['Доп. снаряды', false], pierce: ['Пробивание', false], explode: ['Шанс взрыва', true], thorns: ['Шипы', false],
     berserk: ['Берсерк: урон за −10% HP', true], adren: ['Адреналин: скор. атаки после удара', true], pickup: ['Радиус подбора', true],
     hunger: ['Меньше голода', true], meatBonus: ['Шанс доп. мяса', true], secondWind: ['Второе дыхание (за ночь)', false],
     killHeal: ['Лечение за убийство', false], chain: ['Шанс цепной молнии', true], slow: ['Замедление при ударе', true],
     knock: ['Отбрасывание', false], drones: ['Дроны', false], mines: ['Мины', false], aura: ['Огненная аура/с', false],
     meteor: ['Метеориты', false], lightning: ['Удары молний', false], blades: ['Клинки', false],
-    cropBonus: ['Урожай', true], fireHeal: ['Лечение у костра', true], buildCost: ['Скидка на постройки', true],
+    cropBonus: ['Урожай', true], bag: ['Вместимость рюкзака', false], fireHeal: ['Лечение у костра', true], buildCost: ['Скидка на постройки', true],
     fireCost: ['Скидка на костёр', true], markBonus: ['Урон по меткам', true], structHp: ['Прочность построек', true],
     turretDmg: ['Урон турелей', true], turretMax: ['Доп. турели', false], droneSpd: ['Скорость дронов', true],
     syn_loophole: ['Бойницы (охотникам у построек)', true], syn_modular: ['Сила модулей на постройках', true], syn_mount: ['Урон пушек на вышках', true],
@@ -320,6 +381,7 @@ window.CONFIG = {
     { id: 'speed',    name: 'Быстрые ноги',     icon: '➤', stats: { speed: [3, 6, 9, 12] } },
     { id: 'luck',     name: 'Удача',            icon: '♣', stats: { luck: [5, 10, 15, 20] } },
     { id: 'harvest',  name: 'Собиратель',       icon: '❀', stats: { harvest: [3, 5, 8, 12] } },
+    { id: 'bag',      name: 'Большой рюкзак',   icon: '▣', stats: { bag: [2, 3, 4, 6] } },
     // --- предметы с особыми эффектами и компромиссами
     { id: 'glass',    name: 'Стеклянная пушка', icon: '◆', min: 2, stats: { dmgPct: [0, 25, 35, 45], armor: [0, -3, -3, -3], maxHp: [0, -10, -10, -10] } },
     { id: 'multi',    name: 'Мультивыстрел',    icon: '⋔', min: 3, stats: { proj: [0, 0, 1, 1], dmgPct: [0, 0, -10, -5] } },

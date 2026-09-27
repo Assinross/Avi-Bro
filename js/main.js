@@ -214,7 +214,8 @@
     const R = AB.Render;
     if (!R.w) return -1;
     const k = AB.clamp(Math.min(R.w / 1400, R.h / 800), 0.7, 1.25);
-    const SW = R.w / k, SH = R.h / k, sz = 58, gap = 8, n = C().WEAPON_ORDER.length;
+    const me = App.me();
+    const SW = R.w / k, SH = R.h / k, sz = 58, gap = 8, n = me ? C().WEAPON_ORDER.filter(w => me.ws.includes(w)).length : 0;
     const tw = (n + 1) * (sz + gap) - gap, hx = SW / 2 - tw / 2, hy = SH - sz - 18;
     const x = mx / k, y = my / k;
     if (y < hy || y > hy + sz) return -1;
@@ -225,9 +226,8 @@
   }
   function selectWeapon(i) {
     const me = App.me(); if (!me) return;
-    const w = C().WEAPON_ORDER[i];
-    if (w && me.ws.includes(w)) { me.w = w; AB.Sound.play('click', 1); }
-    else if (w) AB.FX.toast(`${C().WEAPONS[w].name}: ещё не найдено`, '#aab4aa');
+    const w = C().WEAPON_ORDER.filter(x => me.ws.includes(x))[i];
+    if (w) { me.w = w; AB.Sound.play('click', 1); }
   }
   function mouseWorld() {
     const z = AB.Render.zoom || 1;
@@ -254,7 +254,8 @@
     const box = $('levelup');
     const offers = me && !me.dead && me.offers && App.state === 'play' ? me.offers : null;
     if (!offers) { box.classList.add('hidden'); App.lvSig = null; return; }
-    const sig = JSON.stringify(offers) + '|' + me.rr + '|' + me.queue.length + '|' + me.inv.wood;
+    const woodHave = AB.Sim.woodOf(App.G, me);
+    const sig = JSON.stringify(offers) + '|' + me.rr + '|' + me.queue.length + '|' + woodHave;
     box.classList.remove('hidden');
     if (sig === App.lvSig) return;
     App.lvSig = sig;
@@ -285,8 +286,8 @@
     });
     const cost = AB.Skills.rerollCost(me);
     $('btnReroll').textContent = `Перебросить (${cost} дерева)`;
-    $('btnReroll').disabled = me.inv.wood < cost;
-    $('btnReroll').style.opacity = me.inv.wood < cost ? 0.5 : 1;
+    $('btnReroll').disabled = woodHave < cost;
+    $('btnReroll').style.opacity = woodHave < cost ? 0.5 : 1;
   }
   function toggleBuild() { App.showBuild = !App.showBuild; App.buildSig = null; }
   function updateBuildUI(me) {

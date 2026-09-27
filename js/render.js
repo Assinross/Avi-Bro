@@ -268,6 +268,11 @@
     ctx.restore();
     if (p.hurt > 0) { ctx.save(); ctx.globalAlpha = p.hurt * 1.5; S().circle(ctx, x, by - 4, 15, 'rgba(255,60,60,0.35)'); ctx.restore(); }
     // табличка с именем
+    if (p.slowT > 0 && !p.dead) {
+      ctx.strokeStyle = 'rgba(235,240,245,0.75)'; ctx.lineWidth = 1;
+      for (let i = 0; i < 6; i++) { const an = i * Math.PI / 3; ctx.beginPath(); ctx.moveTo(x, y - 6); ctx.lineTo(x + Math.cos(an) * 17, y - 6 + Math.sin(an) * 13); ctx.stroke(); }
+      for (const rr of [7, 13]) { ctx.beginPath(); ctx.ellipse(x, y - 6, rr * 1.2, rr, 0, 0, TAU); ctx.stroke(); }
+    }
     if (!p.dead) nameTag(ctx, x, y - 38, `${p.name} · ${p.level || 1}`, o.tag);
   }
   function drawAxe(ctx) {
@@ -293,7 +298,9 @@
   /* ============================ МОНСТРЫ ============================ */
   function drawMonster(ctx, m, t) {
     if (m.boss && !m._inner) { drawBoss(ctx, m, t); return; }
-    const x = m.x, y = m.y, a = m.a || 0, ph = m._walk || 0;
+    const shk = m.act && !m.boss && !m._inner ? Math.sin(t * 60) * 1.5 : 0;
+    const x = m.x + shk, y = m.y, a = m.a || 0, ph = m._walk || 0;
+    if (shk) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; S().circle(ctx, x, y - m.r, m.r * 1.3, 'rgba(255,50,30,0.18)'); ctx.restore(); }
     const hurt = m.hurt > 0;
     ctx.save();
     if (m.dying > 0) ctx.globalAlpha = Math.min(1, m.dying);
@@ -562,6 +569,64 @@
     }
     if (s.hp < s.mhp || near) hpBar(ctx, x, y + 10, 30, s.hp / s.mhp, '#8fd45a');
   }
+  // Полевая кухня: навес, котёл на треноге, стол
+  function drawKitchen(ctx, K, t, G) {
+    const x = K.x, y = K.y, cfg = C();
+    S().ell(ctx, x, y + 8, 40, 10, 'rgba(0,0,0,0.3)');
+    // стол
+    ctx.fillStyle = '#1e140c'; ctx.fillRect(x + 12, y - 12, 30, 20);
+    ctx.fillStyle = '#8a5a30'; ctx.fillRect(x + 13, y - 11, 28, 12); ctx.fillStyle = '#a8743f'; ctx.fillRect(x + 13, y - 11, 28, 3);
+    ctx.fillStyle = '#5e3c20'; ctx.fillRect(x + 14, y + 1, 3, 7); ctx.fillRect(x + 37, y + 1, 3, 7);
+    ctx.drawImage(S().icons.carrot, x + 16, y - 20, 12, 12); ctx.drawImage(S().icons.meat, x + 27, y - 19, 12, 12);
+    // тренога и котёл
+    ctx.strokeStyle = '#1e140c'; ctx.lineWidth = 4; ctx.lineCap = 'round';
+    [[-30, 6], [-8, 6], [-19, 10]].forEach(l => { ctx.beginPath(); ctx.moveTo(x + l[0], y + l[1]); ctx.lineTo(x - 19, y - 34); ctx.stroke(); });
+    ctx.strokeStyle = '#6b4a2e'; ctx.lineWidth = 2.2;
+    [[-30, 6], [-8, 6], [-19, 10]].forEach(l => { ctx.beginPath(); ctx.moveTo(x + l[0], y + l[1]); ctx.lineTo(x - 19, y - 34); ctx.stroke(); });
+    ctx.strokeStyle = '#222'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(x - 19, y - 34); ctx.lineTo(x - 19, y - 20); ctx.stroke();
+    const cooking = K.slots && K.slots.length;
+    const fire = G.fires.find(f => f.main), lit = fire && fire.fuel > 0;
+    if (cooking && lit) { S().ell(ctx, x - 19, y - 1, 9, 4, '#ff7a1a'); S().ell(ctx, x - 19, y - 2, 5, 2.5, '#ffd24a'); }
+    S().ell(ctx, x - 19, y - 10, 13, 10, '#111'); S().ell(ctx, x - 19, y - 11, 11.5, 8.5, '#3a3f45');
+    S().ell(ctx, x - 19, y - 17, 11, 3.5, '#111'); S().ell(ctx, x - 19, y - 17, 9.5, 2.6, cooking ? '#b8702a' : '#2a2a2a');
+    if (cooking && Math.random() < 0.12) AB.FX.add({ t: 'smoke', x: x - 19 + (Math.random() - 0.5) * 8, y: y - 18, z: 8, vx: (Math.random() - 0.5) * 6, vy: -3, vz: 22, g: -4, life: 1.6, size: 4, c: 'rgba(230,230,230,' });
+    // очередь и прогресс
+    if (K.slots) K.slots.forEach((sl, i) => {
+      const prog = sl.prog !== undefined ? sl.prog : sl.t / cfg.COOKING[sl.k].time;
+      const bx = x - 34 + i * 26, by = y - 58;
+      ctx.fillStyle = 'rgba(10,16,12,0.85)'; roundRect(ctx, bx, by, 22, 26, 5); ctx.fill();
+      ctx.drawImage(S().icons[sl.k], bx + 3, by + 2, 16, 16);
+      ctx.fillStyle = '#333'; ctx.fillRect(bx + 2, by + 20, 18, 3);
+      ctx.fillStyle = '#ffae3a'; ctx.fillRect(bx + 2, by + 20, 18 * AB.clamp(prog, 0, 1), 3);
+    });
+    const qn = K.queue ? K.queue.length : 0;
+    if (qn) { ctx.font = 'bold 10px "Nunito", system-ui'; ctx.textAlign = 'left'; ctx.fillStyle = '#ffe7a8'; ctx.fillText('+' + qn, x - 34 + cfg.KITCHEN_SLOTS * 26, y - 44); }
+    ctx.font = 'bold 9px "Nunito", system-ui'; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(255,231,168,0.8)'; ctx.fillText('Кухня', x, y + 20);
+  }
+  // Склад лагеря: ящики и поленница, растёт с запасом дерева
+  function drawStore(ctx, S, t) {
+    const x = S.x, y = S.y;
+    S_ell(ctx, x, y + 8, 38, 9, 'rgba(0,0,0,0.3)');
+    const crate = (cx, cy, s) => {
+      ctx.fillStyle = '#1e140c'; ctx.fillRect(cx - s / 2 - 1, cy - s - 1, s + 2, s + 2);
+      ctx.fillStyle = '#9a6a38'; ctx.fillRect(cx - s / 2, cy - s, s, s);
+      ctx.fillStyle = '#b8844a'; ctx.fillRect(cx - s / 2, cy - s, s, 3);
+      ctx.strokeStyle = '#5e3c20'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(cx - s / 2, cy - s); ctx.lineTo(cx + s / 2, cy); ctx.moveTo(cx + s / 2, cy - s); ctx.lineTo(cx - s / 2, cy); ctx.stroke();
+    };
+    crate(x - 18, y + 4, 18); crate(x - 2, y + 6, 20); crate(x - 10, y - 14, 16);
+    const logs = Math.min(8, Math.ceil((S.wood || 0) / 5));
+    for (let i = 0; i < logs; i++) {
+      const row = Math.floor(i / 3), col = i % 3;
+      const lx = x + 16 + col * 7 - row * 3, ly = y + 4 - row * 7;
+      S_ell(ctx, lx, ly, 4.5, 4.5, '#1e140c'); S_ell(ctx, lx, ly, 3.6, 3.6, '#c8a06a'); S_ell(ctx, lx, ly, 1.3, 1.3, '#9a7646');
+    }
+    ctx.font = 'bold 10px "Nunito", system-ui'; ctx.textAlign = 'center';
+    const label = `Склад: ${S.wood || 0}`;
+    const w = ctx.measureText(label).width + 12;
+    ctx.fillStyle = 'rgba(10,16,12,0.8)'; roundRect(ctx, x - w / 2, y + 14, w, 14, 7); ctx.fill();
+    ctx.fillStyle = '#e0c08a'; ctx.fillText(label, x, y + 21.5);
+  }
+  const S_ell = (c, x, y, rx, ry, col) => S().ell(c, x, y, rx, ry, col);
   function drawMine(ctx, mn, t) {
     S().ell(ctx, mn.x, mn.y, 7, 4, '#1a1a1a'); S().ell(ctx, mn.x, mn.y - 1, 5.5, 3, '#5a5f66');
     if (Math.sin(t * 6 + mn.x) > 0) S().circle(ctx, mn.x, mn.y - 2, 1.5, '#ff3a2a');
@@ -781,6 +846,22 @@
       if (ph < 1.4) { const a = Math.sin(ph / 1.4 * Math.PI); ctx.globalAlpha = a * 0.8; ctx.fillRect(tx * T + h * 20, ty * T + ((h * 97) % 1) * 24 + ph * 3, 8 + h * 6, 2); }
     }
     ctx.globalAlpha = 1;
+    // граница территории лагеря
+    {
+      const tr = AB.Sim.territory(G), cx = W.camp.x, cy = W.camp.y;
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255,200,110,0.35)'; ctx.lineWidth = 3; ctx.setLineDash([18, 14]); ctx.lineDashOffset = -t * 8;
+      ctx.beginPath(); ctx.arc(cx, cy, tr, 0, TAU); ctx.stroke(); ctx.setLineDash([]);
+      const n = Math.round(tr / 40);
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * TAU, x = cx + Math.cos(a) * tr, y = cy + Math.sin(a) * tr;
+        if (x < x0 || x > x1 || y < y0 || y > y1) continue;
+        ctx.fillStyle = '#1e140c'; ctx.fillRect(x - 2, y - 12, 4, 13);
+        ctx.fillStyle = '#8a5a30'; ctx.fillRect(x - 1, y - 11, 2, 11);
+        ctx.fillStyle = i % 2 ? '#e0503a' : '#ffd24a'; ctx.fillRect(x - 1, y - 12, 5, 3);
+      }
+      ctx.restore();
+    }
     // плоские объекты
     for (const d of W.decor) if (d.x > x0 && d.x < x1 && d.y > y0 && d.y < y1) drawFlatDecor(ctx, d);
     // тени деревьев
@@ -803,6 +884,8 @@
     for (const mn of G.mines) drawMine(ctx, mn, t);
     for (const te of G.tele) drawTele(ctx, te, t);
     for (const s of G.structs) if (s.x > x0 && s.x < x1 && s.y > y0 && s.y < y1) vis.push({ y: s.y, k: 9, o: s });
+    if (G.kitchen) vis.push({ y: G.kitchen.y, k: 10, o: G.kitchen });
+    if (G.store) vis.push({ y: G.store.y, k: 11, o: G.store });
     for (const f of G.fires) if (f.x > x0 && f.x < x1 && f.y > y0 && f.y < y1) vis.push({ y: f.y, k: 5, o: f });
     for (const d of G.drops) if (d.x > x0 && d.x < x1 && d.y > y0 && d.y < y1) vis.push({ y: d.y - 1, k: 6, o: d });
     for (const m of G.monsters) if (m.x > x0 && m.x < x1 && m.y > y0 && m.y < y1) vis.push({ y: m.y, k: 7, o: m });
@@ -834,6 +917,8 @@
         case 7: drawMonster(ctx, o, t); break;
         case 8: drawPlayer(ctx, o, t); break;
         case 9: drawStruct(ctx, o, t, me && AB.dist2(me.x, me.y, o.x, o.y) < 120 * 120); break;
+        case 10: drawKitchen(ctx, o, t, G); break;
+        case 11: drawStore(ctx, o, t); break;
       }
     }
     for (const p of G.projs) drawProjectile(ctx, p);
@@ -1067,9 +1152,17 @@
     }
     // --- ресурсы справа сверху
     if (me) {
-      const items = ['wood', 'meat', 'berry', 'carrot', 'pumpkin', 'seed_carrot', 'seed_pumpkin'];
-      const w = items.length * 74 + 12;
+      const items = AB.ITEM_KEYS.filter(k => k === 'wood' || (me.inv[k] || 0) > 0);
+      const w = items.length * 74 + 12 + 150;
       panel(ctx, SW - w - 14, 14, w, 46);
+      {
+        const used = AB.Sim.bagUsed(me), cap = AB.Sim.bagCap(me), bx = SW - 160;
+        ctx.fillStyle = '#6a4a2a'; roundRect(ctx, bx, 22, 22, 26, 5); ctx.fill(); ctx.fillStyle = '#8a6a3a'; roundRect(ctx, bx + 3, 18, 16, 8, 4); ctx.fill();
+        ctx.fillStyle = '#5a3a1a'; ctx.fillRect(bx + 4, 32, 14, 3);
+        ctx.font = 'bold 14px "Nunito", system-ui'; ctx.textAlign = 'left';
+        ctx.fillStyle = used >= cap ? '#ff8a6a' : '#fff'; ctx.fillText(`${used}/${cap}`, bx + 28, 31);
+        ctx.font = '600 10px "Nunito", system-ui'; ctx.fillStyle = '#c8a06a'; ctx.fillText(`склад: ${G.store ? G.store.wood : 0}`, bx + 28, 45);
+      }
       items.forEach((it, i) => {
         const x = SW - w - 14 + 10 + i * 74;
         ctx.drawImage(S().icons[it], x, 21, 30, 30);
@@ -1099,7 +1192,7 @@
         ctx.fillStyle = l[1] ? '#b8e8b0' : '#cfd8cc'; ctx.fillText(l[0], SW - 210, y);
       });
       // --- панель оружия
-      const order = cfg.WEAPON_ORDER, sz = 58, gap = 8;
+      const order = cfg.WEAPON_ORDER.filter(w => me.ws.includes(w)), sz = 58, gap = 8;
       const tw = (order.length + 1) * (sz + gap) - gap;
       const hx = SW / 2 - tw / 2, hy = SH - sz - 18;
       order.forEach((wk, i) => {
@@ -1111,7 +1204,6 @@
         ctx.drawImage(S().icons[wk], x + 7, hy + 7, sz - 14, sz - 14);
         ctx.globalAlpha = 1;
         ctx.font = 'bold 12px "Nunito", system-ui, sans-serif'; ctx.textAlign = 'left'; ctx.fillStyle = '#fff'; ctx.fillText(String(i + 1), x + 5, hy + 10);
-        if (!has) { ctx.fillStyle = '#8a9a8a'; ctx.textAlign = 'center'; ctx.font = 'bold 20px system-ui'; ctx.fillText('?', x + sz / 2, hy + sz / 2); }
         if (sel || (ui && ui.hoverSlot === i)) { ctx.font = '600 11px "Nunito", system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#ffe7a8'; ctx.fillText(has ? cfg.WEAPONS[wk].name : '???', x + sz / 2, hy - 9); }
       });
       const ax = hx + order.length * (sz + gap);
@@ -1205,6 +1297,7 @@
       ctx.fillStyle = '#140c08'; ctx.fillRect(px - 4, py - 3, 8, 6);
       ctx.fillStyle = s.opened ? '#6d6a60' : '#ffd24a'; ctx.fillRect(px - 3, py - 2, 6, 4);
     }
+    { const [tx, ty] = P(W.camp.x, W.camp.y); ctx.strokeStyle = 'rgba(255,210,120,0.8)'; ctx.lineWidth = 1.2; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.arc(tx, ty, AB.Sim.territory(G) * sc, 0, TAU); ctx.stroke(); ctx.setLineDash([]); }
     for (const f of G.fires) { const [px, py] = P(f.x, f.y); S().circle(ctx, px, py, 3, f.fuel > 0 ? '#ff9a2a' : '#555'); }
     for (const st of G.structs) { const [px, py] = P(st.x, st.y); ctx.fillStyle = st.kind === 'turret' ? '#ffb23a' : '#d08aff'; ctx.fillRect(px - 1.5, py - 1.5, 3, 3); }
     for (const m of G.monsters) if (m.boss) { const [px, py] = P(m.x, m.y); S().circle(ctx, px, py, 5, '#000'); S().circle(ctx, px, py, 4, '#ff3a2a'); }

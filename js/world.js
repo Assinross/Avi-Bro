@@ -70,7 +70,8 @@
         const key = (tier >= 2 && r() < 0.6) || (tier === 1 && r() < 0.25) ? 'seed_pumpkin' : 'seed_carrot';
         seeds[key] = (seeds[key] || 0) + 1;
       }
-      if (!weapon) seeds.meat = r.int(1, 2 + tier);
+      if (!weapon) { seeds.meat = r.int(1, 2 + tier); seeds.bag = window.CONFIG.CHEST_BAG_BASE + tier; }
+      else if (r() < window.CONFIG.CHEST_BAG_WEAPON_CHANCE) seeds.bag = 2;
       W.sites.push({
         id: i, tx: s.tx, ty: s.ty, x: s.tx * T + T / 2, y: s.ty * T + T / 2, tier, weapon, guards,
         loot: seeds, opened: false,
@@ -168,7 +169,6 @@
     }
     // декор лагеря
     W.decor.push({ x: W.camp.x - 80, y: W.camp.y - 50, kind: 'tent', v: 0 });
-    W.decor.push({ x: W.camp.x - 70, y: W.camp.y + 60, kind: 'logs', v: 0 });
     W.decor.push({ x: W.camp.x + 30, y: W.camp.y + 70, kind: 'stump_seat', v: 0 });
     W.decor.push({ x: W.camp.x - 30, y: W.camp.y + 50, kind: 'stump_seat', v: 1 });
     W.decor.push({ x: W.camp.x + 10, y: W.camp.y - 150, kind: 'torch', v: 0 });

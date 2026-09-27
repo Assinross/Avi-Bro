@@ -4,7 +4,7 @@
   const TAU = Math.PI * 2;
   const MON_TYPES = ['wolf', 'ghoul', 'shade', 'brute', 'alpha', 'spider', 'spitter', 'giant', 'packlord', 'witch', 'golem'];
   AB.MON_TYPES = MON_TYPES;
-  const ITEM_KEYS = ['wood', 'meat', 'berry', 'carrot', 'pumpkin', 'seed_carrot', 'seed_pumpkin'];
+  const ITEM_KEYS = ['wood', 'meat', 'berry', 'carrot', 'pumpkin', 'cooked_meat', 'cooked_carrot', 'cooked_pumpkin', 'seed_carrot', 'seed_pumpkin'];
   AB.ITEM_KEYS = ITEM_KEYS;
   AB.monDef = (t) => C().MONSTERS[t] || C().BOSSES[t];
   AB.isBoss = (t) => !!C().BOSSES[t];
@@ -22,12 +22,14 @@
       fires: W.fires.map((f, i) => ({ id: i, x: f.x, y: f.y, fuel: cfg.FIRE_FUEL_START, main: f.main, lvl: 1, mod: false, lm: 1 })),
       nextId: 1, spawnT: 2, fxOut: [], treeDirty: new Set(), bushDirty: new Set(),
       over: null, stats: { kills: 0 }, fireLevel: 1, nextBoss: cfg.BOSS_FIRST_NIGHT, bossCount: 0, team: {},
+      store: { x: W.fires[0].x + cfg.STORAGE_OFFSET[0], y: W.fires[0].y + cfg.STORAGE_OFFSET[1], wood: 0, feedT: 0 },
+      kitchen: { x: W.fires[0].x + cfg.KITCHEN_OFFSET[0], y: W.fires[0].y + cfg.KITCHEN_OFFSET[1], slots: [], queue: [] }, fireT: 0,
     };
     if (mode !== 'guest') {
       W.sites.forEach((s) => {
         s.guards.forEach((type, k) => {
           const a = (k / s.guards.length) * TAU;
-          const m = Sim.spawnMonster(G, type, s.x + Math.cos(a) * 55, s.y + Math.sin(a) * 55, true);
+          const m = Sim.spawnMonster(G, type, s.x + Math.cos(a) * 55, s.y + Math.sin(a) * 55, true, Sim.depth(G, s.x, s.y));
           m.home = { x: s.x, y: s.y }; m.site = s.id;
         });
       });
@@ -61,12 +63,20 @@
   Sim.hpMult = (d) => { const c = C(), n = d - 1; return 1 + c.MONSTER_HP_GROWTH * n + c.MONSTER_HP_GROWTH_SQ * n * n; };
   Sim.dmgMult = (d) => { const c = C(), n = d - 1; return 1 + c.MONSTER_DMG_GROWTH * n + c.MONSTER_DMG_GROWTH_SQ * n * n; };
 
-  Sim.spawnMonster = function (G, type, x, y, guard) {
+  // Глубина леса 0..1 (0 — у границы территории, 1 — у края карты)
+  Sim.territory = (G) => C().TERRITORY_RADIUS[Math.min(3, (G.fireLevel || 1) - 1)];
+  Sim.depth = function (G, x, y) {
+    const W = G.W, d = AB.dist(x, y, W.camp.x, W.camp.y), t = Sim.territory(G);
+    return AB.clamp((d - t) / (W.size / 2 - t), 0, 1);
+  };
+  Sim.spawnMonster = function (G, type, x, y, guard, depth) {
     const cfg = C(), def = AB.monDef(type);
-    const hm = guard ? 1 : Sim.hpMult(G.day), dm = guard ? 1 : Sim.dmgMult(G.day);
+    depth = depth || 0;
+    const hm = (guard ? 1 : Sim.hpMult(G.day)) * (1 + cfg.DEPTH_HP * depth), dm = (guard ? 1 : Sim.dmgMult(G.day)) * (1 + cfg.DEPTH_DMG * depth);
     const m = {
       id: G.nextId++, type, x, y, a: rnd() * TAU, hp: def.hp * hm, maxHp: def.hp * hm,
-      dmg: def.damage * dm, speed: def.speed * cfg.MOVE_SPEED_MULT * (0.92 + rnd() * 0.16), r: def.radius,
+      dmg: def.damage * dm, speed: def.speed * cfg.MOVE_SPEED_MULT * cfg.MONSTER_SPEED_MULT * (0.92 + rnd() * 0.16), r: def.radius,
+      hd: rnd() * TAU, cs: 0, phase: rnd() * TAU, sp: null, spCd: 1 + rnd() * 2, chaseT: 0, pause: 0,
       st: 'idle', guard: !!guard, hunter: false, home: { x, y }, atkCd: 0, hurt: 0,
       wT: rnd() * 3, wx: x, wy: y, stuck: 0, side: rnd() < 0.5 ? 1 : -1, vx: 0, vy: 0,
       dying: 0, mark: 0, burn: null, slowT: 0, slowPct: 0, bladeT: 0, shotCd: 1 + rnd(), act: null,
@@ -104,7 +114,8 @@
   AB.playerSpeed = function (p) {
     const cfg = C();
     const s = (p.st && p.st.speed) || 0;
-    return cfg.PLAYER_SPEED * cfg.MOVE_SPEED_MULT * Math.max(0.4, 1 + s / 100);
+    const slow = p.slowT > 0 ? 1 - (p.slowPct || 0) / 100 : 1;
+    return cfg.PLAYER_SPEED * cfg.MOVE_SPEED_MULT * Math.max(0.4, 1 + s / 100) * slow;
   };
   AB.movePlayer = function (W, p, dx, dy, dt) {
     if (p.dead) return;
@@ -170,7 +181,7 @@
     for (const p of G.players) {
       p.level++;
       p.queue.push(p.level % cfg.SUPER_EVERY === 0 ? 's' : 'n');
-      if (p.st.harvest > 0) { p.inv.wood += Math.round(p.st.harvest); Sim.msg(G, `Собиратель: +${Math.round(p.st.harvest)} дерева`, p.id, '#c8f0a0'); }
+      if (p.st.harvest > 0) { G.store.wood += Math.round(p.st.harvest); Sim.msg(G, `Собиратель: +${Math.round(p.st.harvest)} дерева на склад`, p.id, '#c8f0a0'); }
       AB.Skills.ensureOffers(G, p);
       Sim.fx(G, { k: 'lvl', x: p.x, y: p.y, pid: p.id, n: p.level, sup: p.level % cfg.SUPER_EVERY === 0 ? 1 : 0 });
     }
@@ -214,9 +225,20 @@
       }
       return false;
     }
+    if (Sim.bagItem(k) && Sim.bagUsed(p) + n > Sim.bagCap(p)) return false;
     p.inv[k] = (p.inv[k] || 0) + n;
     return true;
   }
+  // Рюкзак: дерево и еда занимают место, семена — нет
+  Sim.bagItem = (k) => k === 'wood' || !!C().FOOD[k];
+  Sim.bagUsed = (p) => { let n = 0; for (const k in p.inv) if (Sim.bagItem(k)) n += p.inv[k] || 0; return n; };
+  Sim.bagCap = (p) => C().BACKPACK_START + ((p.st && p.st.bag) || 0) + (p.bagUp || 0);
+  // Дерево: из рюкзака + со склада лагеря
+  Sim.woodOf = (G, p) => (p.inv.wood || 0) + ((G.store && G.store.wood) || 0);
+  Sim.spendWood = function (G, p, n) {
+    const a = Math.min(p.inv.wood || 0, n);
+    p.inv.wood -= a; G.store.wood -= n - a;
+  };
 
   Sim.dropItem = function (G, k, n, x, y, spread) {
     for (let i = 0; i < n; i++) {
@@ -290,6 +312,7 @@
     const i = G.monsters.indexOf(m);
     if (i >= 0) G.monsters.splice(i, 1);
     Sim.fx(G, { k: 'die', x: m.x, y: m.y, t: m.type });
+    if (!m.boss) G.tele = G.tele.filter(t => t.owner !== m.id);
     G.stats.kills++;
     if (m.boss) { bossReward(G, m); return; }
     const luck = p ? p.st.luck : 0;
@@ -343,6 +366,7 @@
       p.sw = Math.max(0, p.sw - dt);
       p.hurt = Math.max(0, p.hurt - dt);
       p.adrenT = Math.max(0, p.adrenT - dt);
+      p.slowT = Math.max(0, (p.slowT || 0) - dt);
       if (p.dead) {
         if (G.players.some(o => !o.dead)) {
           p.rs -= dt;
@@ -506,7 +530,10 @@
         if (!got) { const o = G.players.find(q => q !== p && !q.ws.includes(s.weapon)); if (o) { giveItem(G, o, s.weapon); Sim.msg(G, `${p.name} передал вам: ${cfg.WEAPONS[s.weapon].name}`, o.id, '#ffd24a'); } }
         found.push(cfg.WEAPONS[s.weapon].name);
       }
-      for (const k in s.loot) { Sim.dropItem(G, k, s.loot[k], s.x, s.y + 14, 26); found.push(`${AB.itemName(k)} ×${s.loot[k]}`); }
+      for (const k in s.loot) {
+        if (k === 'bag') { p.bagUp = (p.bagUp || 0) + s.loot[k]; found.push(`рюкзак +${s.loot[k]}`); Sim.fx(G, { k: 'skill', x: p.x, y: p.y, pid: p.id, s: `Рюкзак: ${Sim.bagCap(p)} мест`, t: 2 }); continue; }
+        Sim.dropItem(G, k, s.loot[k], s.x, s.y + 14, 26); found.push(`${AB.itemName(k)} ×${s.loot[k]}`);
+      }
       Sim.msg(G, `Сундук открыт: ${found.join(', ')}`, -1, '#ffd24a');
     }
   }
@@ -679,6 +706,8 @@
       }
       if (m.boss) { bossAI(G, m, dt); continue; }
       const np = nearestPlayer(G, m.x, m.y);
+      m.spCd -= dt;
+      if (m.sp) { specialStep(G, m, dt); continue; }
       let tx = null, ty = null, sp = m.speed * (m.slowT > 0 ? 1 - m.slowPct / 100 : 1);
       let sight = def.sight * (G.isNight ? 1.3 : 1);
       if (m.hunter) sight = 1200;
@@ -707,14 +736,23 @@
         }
       } else if (m.st === 'return') { tx = m.home.x; ty = m.home.y; sp *= 1.1; }
       else {
+        // бродит: идёт к точке, останавливается, осматривается
         m.wT -= dt;
-        if (m.wT <= 0) {
-          m.wT = 2 + rnd() * 4;
-          const a = rnd() * TAU, d = rnd() * (m.guard ? 120 : 200);
+        if (m.pause > 0) { m.pause -= dt; if (rnd() < dt * 0.8) m.hd += (rnd() - 0.5) * 1.2; }
+        else if (m.wT <= 0 || AB.dist2(m.x, m.y, m.wx, m.wy) < 200) {
+          if (m.wT > -50 && AB.dist2(m.x, m.y, m.wx, m.wy) < 200) { const P = cfg.MONSTER_IDLE_PAUSE; m.pause = P[0] + rnd() * (P[1] - P[0]); }
+          m.wT = 4 + rnd() * 4;
+          const a = m.hd + (rnd() - 0.5) * 2.4, d = 60 + rnd() * (m.guard ? 100 : 180);
           m.wx = (m.guard ? m.home.x : m.x) + Math.cos(a) * d; m.wy = (m.guard ? m.home.y : m.y) + Math.sin(a) * d;
         }
-        if (AB.dist2(m.x, m.y, m.wx, m.wy) > 100) { tx = m.wx; ty = m.wy; sp *= 0.4; }
+        if (m.pause <= 0) { tx = m.wx; ty = m.wy; sp *= 0.38; }
       }
+      // суперудар монстра (с подсказкой на земле)
+      const SP = cfg.MONSTER_SPECIALS[m.type];
+      if (SP && m.st === 'chase' && np) {
+        if (np.d > m.r + cfg.PLAYER_RADIUS + 10) m.chaseT += dt; else m.chaseT = 0;
+        if (m.spCd <= 0 && m.chaseT >= (SP.chaseTime || 0) && np.d >= SP.minDist && np.d <= SP.maxDist) { startSpecial(G, m, np.p, SP); continue; }
+      } else m.chaseT = 0;
       if (def.fearFire) {
         for (const f of G.fires) {
           if (f.fuel <= 0) continue;
@@ -727,17 +765,26 @@
         }
         if (m.dead) continue;
       }
-      let mvx = 0, mvy = 0;
+      // плавное движение: поворот с ограниченной скоростью, разгон, вилянье, обход препятствий
+      let want = 0, da = m.hd;
       if (tx !== null) {
         const dx = tx - m.x, dy = ty - m.y, d = Math.hypot(dx, dy);
         const stopD = m.st === 'chase' ? m.r + cfg.PLAYER_RADIUS + 2 : 4;
+        da = Math.atan2(dy, dx);
         if (d > stopD) {
-          let a = Math.atan2(dy, dx);
-          if (m.stuck > 0) { a += m.side * 1.1; m.stuck -= dt; }
-          mvx = Math.cos(a) * sp * dt; mvy = Math.sin(a) * sp * dt;
-          m.a = a;
-        } else if (m.st === 'chase') m.a = Math.atan2(dy, dx);
+          const weave = cfg.MONSTER_WEAVE * (m.st === 'chase' ? Math.min(1, d / 150) : 1.5);
+          da += Math.sin(G.clock * 2.3 + m.phase) * weave;
+          if (m.stuck > 0) { da += m.side * 1.1; m.stuck -= dt; }
+          da = avoid(G, m, da);
+          want = sp;
+        }
       }
+      const diff = AB.angDiff(m.hd, da), maxT = cfg.MONSTER_TURN_RATE * dt * (def.speed > 120 ? 1.3 : 1);
+      m.hd += AB.clamp(diff, -maxT, maxT);
+      const turnK = 1 - Math.min(0.6, Math.abs(diff) / Math.PI * 0.8);
+      m.cs += (want * turnK - m.cs) * Math.min(1, cfg.MONSTER_ACCEL * dt);
+      let mvx = Math.cos(m.hd) * m.cs * dt, mvy = Math.sin(m.hd) * m.cs * dt;
+      m.a = m.hd;
       separate(m, list, (dx, dy) => { mvx += dx; mvy += dy; });
       const ox = m.x, oy = m.y;
       const r = AB.resolveCollision(W, m.x + mvx, m.y + mvy, m.r);
@@ -757,11 +804,11 @@
         }
       }
       if (m.dead) continue;
-      const moved = Math.hypot(m.x - ox, m.y - oy), want = Math.hypot(mvx, mvy);
-      if (want > 0.5 && moved < want * 0.35 && m.stuck <= 0) { m.stuck = 0.6; m.side = rnd() < 0.5 ? 1 : -1; }
+      const moved = Math.hypot(m.x - ox, m.y - oy), wantMv = Math.hypot(mvx, mvy);
+      if (wantMv > 0.5 && moved < wantMv * 0.35 && m.stuck <= 0) { m.stuck = 0.6; m.side = rnd() < 0.5 ? 1 : -1; }
       m.vx = (m.x - ox) / Math.max(dt, 0.001); m.vy = (m.y - oy) / Math.max(dt, 0.001);
       if (np && m.st === 'chase' && !def.ranged && np.d < m.r + cfg.PLAYER_RADIUS + 8 && m.atkCd <= 0) {
-        m.atkCd = def.attackCd; m.atk = 0.25;
+        m.atkCd = def.attackCd; m.atk = 0.25; m.chaseT = 0;
         damagePlayer(G, np.p, m.dmg, m);
         if (m.dead) continue;
       }
@@ -772,6 +819,71 @@
         if (far) list.splice(i, 1);
       }
     }
+  }
+
+  // Поиск свободного направления (обход деревьев, камней, воды, построек)
+  function blockedAt(G, x, y, r) {
+    if (!AB.freeSpot(G.W, x, y, r)) return true;
+    for (const s of G.structs) if (AB.dist2(x, y, s.x, s.y) < (s.r + r) ** 2) return true;
+    return false;
+  }
+  function avoid(G, m, a) {
+    const look = m.r + 18;
+    const ok = (ang) => !blockedAt(G, m.x + Math.cos(ang) * look, m.y + Math.sin(ang) * look, m.r * 0.7);
+    if (ok(a)) return a;
+    for (const off of [0.5, 1.0, 1.5, 2.1]) {
+      if (ok(a + off * m.side)) return a + off * m.side;
+      if (ok(a - off * m.side)) { m.side = -m.side; return a + off * m.side; }
+    }
+    return a;
+  }
+
+  // ---------- Суперудары монстров ----------
+  function startSpecial(G, m, target, S) {
+    const a = Math.atan2(target.y - m.y, target.x - m.x);
+    m.sp = { ph: 'wind', t: 0, a, S, hit: false };
+    m.act = { k: S.kind }; m.hd = a; m.a = a; m.cs = 0; m.vx = 0; m.vy = 0;
+    const dmg = m.dmg * S.dmgMult;
+    const T = (o) => G.tele.push(Object.assign({ id: G.nextId++, t: 0, dur: S.windup, owner: m.id, dmg, fr: 0 }, o));
+    if (S.kind === 'lunge') T({ sh: 'l', x: m.x, y: m.y, a, len: S.distance + m.r, w: S.width, warn: 1, dmg: 0 });
+    else if (S.kind === 'cone') T({ sh: 'k', x: m.x, y: m.y, a, len: S.length + m.r, w: (S.angle / 2) * Math.PI / 180 });
+    else if (S.kind === 'nova') T({ sh: 'c', x: m.x, y: m.y, r: S.radius });
+    else if (S.kind === 'smash') T({ sh: 'c', x: m.x + Math.cos(a) * (m.r + S.radius * 0.55), y: m.y + Math.sin(a) * (m.r + S.radius * 0.55), r: S.radius });
+    else if (S.kind === 'target') T({ sh: 'c', x: target.x, y: target.y, r: S.radius, slow: S.slow, slowTime: S.slowTime });
+    else if (S.kind === 'volley') {
+      for (let i = 0; i < S.count; i++) {
+        const ang = rnd() * TAU, off = i === 0 ? 0 : S.spread * (0.5 + rnd() * 0.5);
+        T({ sh: 'c', x: target.x + Math.cos(ang) * off, y: target.y + Math.sin(ang) * off, r: S.radius, dur: S.windup + i * 0.15 });
+      }
+    }
+    Sim.fx(G, { k: 'windup', x: m.x, y: m.y });
+  }
+  function specialStep(G, m, dt) {
+    const cfg = C(), g = m.sp, S = g.S;
+    g.t += dt;
+    const ox = m.x, oy = m.y;
+    const finish = () => { m.sp = null; m.act = null; m.spCd = S.cooldown * (0.8 + rnd() * 0.4); m.chaseT = 0; m.cs = m.speed * 0.3; };
+    if (S.kind === 'lunge') {
+      if (g.ph === 'wind') {
+        if (g.t >= S.windup) { g.ph = 'leap'; g.t = 0; m.act = null; Sim.fx(G, { k: 'leap', x: m.x, y: m.y }); }
+      } else if (g.ph === 'leap') {
+        const sp = S.distance / S.time;
+        const r = AB.resolveCollision(G.W, m.x + Math.cos(g.a) * sp * dt, m.y + Math.sin(g.a) * sp * dt, m.r);
+        m.x = r[0]; m.y = r[1];
+        const moved = Math.hypot(m.x - ox, m.y - oy);
+        if (!g.hit) for (const p of G.players) {
+          if (p.dead) continue;
+          if (AB.dist2(m.x, m.y, p.x, p.y) < (m.r + cfg.PLAYER_RADIUS + 4) ** 2) { g.hit = true; m.atk = 0.3; damagePlayer(G, p, m.dmg * S.dmgMult, m); break; }
+        }
+        if (m.dead) return;
+        if (g.t >= S.time || moved < sp * dt * 0.3) { g.ph = 'rec'; g.t = 0; }
+      } else if (g.t >= S.recover) finish();
+    } else {
+      if (g.t >= S.windup - 0.1) m.atk = 0.3;
+      if (g.t >= S.windup + (S.kind === 'volley' ? S.count * 0.15 : 0) + 0.3) finish();
+    }
+    m.vx = (m.x - ox) / Math.max(dt, 0.001); m.vy = (m.y - oy) / Math.max(dt, 0.001);
+    m.atk = Math.max(0, (m.atk || 0) - dt);
   }
 
   function separate(m, list, add) {
@@ -885,13 +997,17 @@
       t.t += dt;
       if (t.t < t.dur) continue;
       G.tele.splice(i, 1);
+      if (t.warn) continue;
       Sim.fx(G, { k: 'strike', sh: t.sh, x: t.x, y: t.y, r: t.r, a: t.a, len: t.len, w: t.w, fr: t.fr });
       if (t.fr) {
         const p = G.players.find(q => q.id === t.pid);
         for (const m of G.monsters.slice()) if (!m.dying && inShape(t, m.x, m.y, m.r)) damageMonster(G, m, t.dmg, { p, src: 'meteor', noProc: true, ang: Math.atan2(m.y - t.y, m.x - t.x) });
       } else {
         const src = G.monsters.find(m => m.id === t.owner);
-        for (const p of G.players) if (!p.dead && inShape(t, p.x, p.y, C().PLAYER_RADIUS * 0.6)) damagePlayer(G, p, t.dmg, src);
+        for (const p of G.players) if (!p.dead && inShape(t, p.x, p.y, C().PLAYER_RADIUS * 0.6)) {
+          damagePlayer(G, p, t.dmg, src);
+          if (t.slow) { p.slowT = t.slowTime; p.slowPct = t.slow; Sim.msg(G, 'Вы в паутине! Скорость снижена', p.id, '#dfe8ee'); }
+        }
         for (const s of G.structs) if (inShape(t, s.x, s.y, s.r)) s.hp -= t.dmg * 0.7;
       }
     }
@@ -962,6 +1078,11 @@
         if (dd < mr && dd < bd) { bd = dd; best = p; br = mr; }
       }
       if (!best) continue;
+      if (Sim.bagItem(d.k) && Sim.bagUsed(best) >= Sim.bagCap(best)) {
+        best._fullT = (best._fullT || 0) - dt;
+        if (best._fullT <= 0 && bd < cfg.PICKUP_RADIUS * 2) { best._fullT = cfg.BACKPACK_FULL_MSG; Sim.msg(G, `Рюкзак полон (${Sim.bagCap(best)})! Отнесите дерево на склад, а еду — на кухню или съешьте`, best.id, '#ffb36b'); }
+        continue;
+      }
       if (bd < cfg.PICKUP_RADIUS) {
         giveItem(G, best, d.k, 1);
         G.drops.splice(i, 1);
@@ -992,10 +1113,78 @@
         if (pl.t >= cfg.CROPS[pl.crop].grow) pl.ready = true;
       }
     }
+    updateKitchen(G, dt);
+    updateStore(G, dt);
+    // костёр жжёт монстров (нежить — сильнее)
+    G.fireT -= dt;
+    if (G.fireT <= 0) {
+      G.fireT = 0.5;
+      for (const f of G.fires) {
+        if (f.fuel <= 0) continue;
+        const lv = f.lvl || 1;
+        const rad = cfg.FIRE_DMG_RADIUS * (1 + cfg.FIRE_LEVEL_LIGHT * (lv - 1));
+        const dps = cfg.FIRE_DPS * (1 + cfg.FIRE_DMG_PER_NIGHT * (G.day - 1)) * (1 + cfg.FIRE_DMG_LEVEL * (lv - 1));
+        for (const m of G.monsters.slice()) {
+          if (m.dying || m.dead || AB.dist2(m.x, m.y, f.x, f.y) > (rad + m.r) ** 2) continue;
+          const und = AB.monDef(m.type).undead ? cfg.FIRE_UNDEAD_MULT : 1;
+          damageMonster(G, m, dps * 0.5 * und, { src: 'fire', noProc: true, ang: Math.atan2(m.y - f.y, m.x - f.x) });
+        }
+      }
+    }
     for (const f of G.fires) {
       f.fuel = Math.max(0, f.fuel - cfg.FIRE_BURN_RATE * dt);
       f.lvl = f.main ? G.fireLevel : 1;
       f.lm = f.mod ? 1 + cfg.MODULES.fire.light / 100 : 1;
+    }
+  }
+
+  // Склад: забирает дерево у подошедших, подкидывает дрова в главный костёр
+  function updateStore(G, dt) {
+    const cfg = C(), S = G.store;
+    for (const p of G.players) {
+      if (p.dead || !(p.inv.wood > 0) || AB.dist2(p.x, p.y, S.x, S.y) > cfg.STORAGE_RADIUS ** 2) continue;
+      S.wood += p.inv.wood;
+      Sim.msg(G, `На склад: дерево ×${p.inv.wood} (всего ${S.wood})`, p.id, '#c8a06a');
+      Sim.fx(G, { k: 'build', x: S.x, y: S.y });
+      p.inv.wood = 0;
+    }
+    S.feedT -= dt;
+    const f = G.fires.find(q => q.main);
+    if (cfg.STORAGE_FEED_FIRE && f && S.wood > 0 && S.feedT <= 0 && f.fuel < cfg.FIRE_FUEL_MAX * cfg.STORAGE_FEED_BELOW) {
+      S.feedT = 1; S.wood--; f.fuel = Math.min(cfg.FIRE_FUEL_MAX, f.fuel + cfg.FUEL_PER_WOOD);
+      Sim.fx(G, { k: 'feed', x: f.x, y: f.y });
+    }
+  }
+
+  // Полевая кухня: забирает сырую еду у подошедших игроков и готовит её
+  function updateKitchen(G, dt) {
+    const cfg = C(), K = G.kitchen;
+    const fire = G.fires.find(f => f.main);
+    const lit = !cfg.KITCHEN_NEEDS_FIRE || (fire && fire.fuel > 0);
+    for (const p of G.players) {
+      if (p.dead || AB.dist2(p.x, p.y, K.x, K.y) > cfg.KITCHEN_RADIUS ** 2) continue;
+      const got = [];
+      for (const k in cfg.COOKING) {
+        const n = p.inv[k] || 0;
+        if (n <= 0) continue;
+        for (let i = 0; i < n; i++) K.queue.push(k);
+        p.inv[k] = 0;
+        got.push(`${cfg.FOOD[k].name.toLowerCase()} ×${n}`);
+      }
+      if (got.length) { Sim.msg(G, `На кухню: ${got.join(', ')}`, p.id, '#ffc46b'); Sim.fx(G, { k: 'rustle', x: K.x, y: K.y }); }
+      if (!lit && K.queue.length && !(K.warnT > 0)) { K.warnT = 8; Sim.msg(G, 'Кухня не готовит: главный костёр погас!', p.id, '#ff9d7a'); }
+    }
+    K.warnT = (K.warnT || 0) - dt;
+    while (K.slots.length < cfg.KITCHEN_SLOTS && K.queue.length) K.slots.push({ k: K.queue.shift(), t: 0 });
+    if (!lit) return;
+    for (let i = K.slots.length - 1; i >= 0; i--) {
+      const sl = K.slots[i], ck = cfg.COOKING[sl.k];
+      sl.t += dt;
+      if (sl.t >= ck.time) {
+        K.slots.splice(i, 1);
+        Sim.dropItem(G, ck.out, 1, K.x, K.y + 26, 14);
+        Sim.fx(G, { k: 'cooked', x: K.x, y: K.y, it: ck.out });
+      }
     }
   }
 
@@ -1010,22 +1199,25 @@
     if (roamers >= max) return;
     const alive = G.players.filter(p => !p.dead);
     if (!alive.length) return;
-    const table = cfg.SPAWN_TABLE.filter(e => e.from <= G.day && (G.isNight || e.day));
-    if (!table.length) return;
     const p = alive[Math.floor(rnd() * alive.length)];
+    const terr = Sim.territory(G);
     for (let tries = 0; tries < 12; tries++) {
       const a = rnd() * TAU, d = AB.lerp(cfg.SPAWN_MIN_DIST, cfg.SPAWN_MAX_DIST, rnd());
       const x = p.x + Math.cos(a) * d, y = p.y + Math.sin(a) * d;
       if (x < 150 || y < 150 || x > W.size - 150 || y > W.size - 150) continue;
       if (!AB.freeSpot(W, x, y, 14)) continue;
       if (G.players.some(q => AB.dist(q.x, q.y, x, y) < cfg.SPAWN_MIN_DIST * 0.9)) continue;
+      if (AB.dist(x, y, W.camp.x, W.camp.y) < terr + 80) continue;
       if (!G.isNight && AB.dist(x, y, W.camp.x, W.camp.y) < cfg.SAFE_CAMP_RADIUS * 2) continue;
+      const depth = Sim.depth(G, x, y), effDay = G.day + cfg.DEPTH_NIGHTS * depth;
+      const table = cfg.SPAWN_TABLE.filter(e => e.from <= effDay && (G.isNight || e.day));
+      if (!table.length) return;
       let r = rnd() * table.reduce((s, e) => s + e.weight, 0), k = 0;
       while (r > table[k].weight) { r -= table[k].weight; k++; }
       const type = table[Math.min(k, table.length - 1)].type;
       const n = type === 'spider' ? 3 : 1;
       for (let j = 0; j < n; j++) {
-        const m = Sim.spawnMonster(G, type, x + j * 14, y + (j % 2) * 12, false);
+        const m = Sim.spawnMonster(G, type, x + j * 14, y + (j % 2) * 12, false, depth);
         if (G.isNight) m.hunter = true;
       }
       return;
@@ -1048,8 +1240,9 @@
     return true;
   }
   function pay(G, p, cost) {
-    if (p.inv.wood < cost) { Sim.msg(G, `Нужно дерева: ${cost} (есть ${p.inv.wood})`, p.id, '#ff9d7a'); return false; }
-    p.inv.wood -= cost; return true;
+    const have = Sim.woodOf(G, p);
+    if (have < cost) { Sim.msg(G, `Нужно дерева: ${cost} (в рюкзаке ${p.inv.wood} + на складе ${G.store.wood})`, p.id, '#ff9d7a'); return false; }
+    Sim.spendWood(G, p, cost); return true;
   }
 
   Sim.command = function (G, pid, c, x, y) {
@@ -1065,18 +1258,22 @@
       if (d > cfg.BUILD_RANGE) { bx = p.x + (bx - p.x) / d * cfg.BUILD_RANGE; by = p.y + (by - p.y) / d * cfg.BUILD_RANGE; }
     }
     if (c === 'eat') {
-      const miss = p.mhp - p.hp > 10 ? 999 : cfg.PLAYER_MAX_FOOD - p.food;
-      const need = cfg.PLAYER_MAX_FOOD - p.food;
       const avail = Object.keys(cfg.FOOD).filter(k => p.inv[k] > 0);
-      if (!avail.length) { Sim.msg(G, 'Нет еды! Охотьтесь или сажайте огород', p.id, '#ff9d7a'); return; }
-      if (need < 3 && miss < 3) { Sim.msg(G, 'Вы сыты', p.id); return; }
-      avail.sort((a, b) => cfg.FOOD[a].food - cfg.FOOD[b].food);
-      let pick = avail[0];
-      for (const k of avail) if (cfg.FOOD[k].food <= need + 4) pick = k;
+      if (!avail.length) { Sim.msg(G, 'Нет еды! Охотьтесь, собирайте ягоды, сажайте огород', p.id, '#ff9d7a'); return; }
+      const need = cfg.PLAYER_MAX_FOOD - p.food, hurt = p.mhp - p.hp;
+      let cands = avail.filter(k => cfg.FOOD[k].hp >= 0);
+      if (need < 3 && !(hurt > 3 && cands.length)) { Sim.msg(G, 'Вы сыты', p.id); return; }
+      if (!cands.length) cands = avail;
+      cands.sort((a, b) => cfg.FOOD[a].food - cfg.FOOD[b].food);
+      let pick = cands[0];
+      for (const k of cands) if (cfg.FOOD[k].food <= need + 4) pick = k;
+      const F = cfg.FOOD[pick];
       p.inv[pick]--;
-      p.food = Math.min(cfg.PLAYER_MAX_FOOD, p.food + cfg.FOOD[pick].food);
-      p.hp = Math.min(p.mhp, p.hp + cfg.FOOD[pick].hp);
-      Sim.fx(G, { k: 'eat', x: p.x, y: p.y, it: pick, pid: p.id });
+      p.food = Math.min(cfg.PLAYER_MAX_FOOD, p.food + F.food);
+      if (F.hp >= 0) p.hp = Math.min(p.mhp, p.hp + F.hp);
+      else if (p.hp > cfg.RAW_EAT_MIN_HP) p.hp = Math.max(cfg.RAW_EAT_MIN_HP, p.hp + F.hp);
+      Sim.fx(G, { k: 'eat', x: p.x, y: p.y, it: pick, pid: p.id, hp: F.hp });
+      if (F.hp < 0 && !p._rawWarn) { p._rawWarn = true; Sim.msg(G, 'Сырая еда вредит здоровью. Готовьте её на полевой кухне у костра!', p.id, '#ffb36b'); }
     } else if (c === 'plant') {
       const seedKey = p.inv.seed_carrot > 0 ? 'seed_carrot' : (p.inv.seed_pumpkin > 0 ? 'seed_pumpkin' : null);
       if (!seedKey) { Sim.msg(G, 'Нет семян. Ищите их в сундуках и у сильных монстров', p.id, '#ff9d7a'); return; }
@@ -1088,7 +1285,7 @@
       Sim.fx(G, { k: 'plant', x: best.x, y: best.y });
     } else if (c === 'bed' || c === 'fire') {
       const cost = Sim.buildCost(p, c === 'bed' ? cfg.GARDEN_BED_COST : cfg.CAMPFIRE_COST);
-      if (p.inv.wood < cost) { pay(G, p, cost); return; }
+      if (Sim.woodOf(G, p) < cost) { pay(G, p, cost); return; }
       if (!placeOk(G, p, bx, by, 16)) return;
       pay(G, p, cost);
       if (c === 'bed') G.plots.push({ id: G.plots.length, x: bx, y: by, crop: null, t: 0, ready: false, mod: false });
@@ -1102,7 +1299,7 @@
       if (!pay(G, p, cost)) return;
       G.fireLevel++;
       f.fuel = cfg.FIRE_FUEL_MAX;
-      Sim.msg(G, `Костёр ур. ${G.fireLevel}! Новые умения: «${cfg.TIER_NAMES[G.fireLevel - 1]}»`, -1, cfg.TIER_COLORS[G.fireLevel - 1]);
+      Sim.msg(G, `Костёр ур. ${G.fireLevel}! Территория расширена, новые умения: «${cfg.TIER_NAMES[G.fireLevel - 1]}»`, -1, cfg.TIER_COLORS[G.fireLevel - 1]);
       Sim.fx(G, { k: 'fireup', x: f.x, y: f.y });
     } else if (c === 'build1' || c === 'build2') {
       // T / Y: действие зависит от профессии
@@ -1118,7 +1315,7 @@
   function buildStruct(G, p, kind, x, y) {
     const cfg = C(), S = cfg.STRUCTURES[kind];
     const cost = Sim.buildCost(p, S.cost);
-    if (p.inv.wood < cost) { pay(G, p, cost); return; }
+    if (Sim.woodOf(G, p) < cost) { pay(G, p, cost); return; }
     if (!placeOk(G, p, x, y, S.radius)) return;
     pay(G, p, cost);
     const mhp = S.hp * (1 + (p.st.structHp || 0) / 100);
@@ -1167,7 +1364,7 @@
       p: G.players.map(p => ({
         id: p.id, n: p.name, pr: p.prof, x: r1(p.x), y: r1(p.y), a: r1(p.a), hp: r1(p.hp), mh: r1(p.mhp), f: r1(p.food), d: p.dead ? 1 : 0, rs: r1(p.rs),
         w: p.w, ws: p.ws, inv: p.inv, sw: r1(p.sw), sk: p.sk, sa: r1(p.sa), tp: p.tp, h: r1(p.hurt), mv: p.moving ? 1 : 0,
-        lv: p.level, q: p.queue, of: p.offers, sks: p.skills.map(q => q.id + ':' + q.tier + ':' + (q.sup || 0)), st: stCompact(p.st), rr: p.rr, swl: p.swl,
+        sl: p.slowT > 0 ? p.slowPct : 0, lv: p.level, q: p.queue, of: p.offers, sks: p.skills.map(q => q.id + ':' + q.tier + ':' + (q.sup || 0)), st: stCompact(p.st), rr: p.rr, swl: p.swl,
       })),
       m: G.monsters.map(m => [m.id, MON_TYPES.indexOf(m.type), r1(m.x), r1(m.y), r1(m.a), Math.round(m.hp), Math.round(m.maxHp), m.hurt > 0 ? 1 : 0,
         (m.guard ? 1 : 0) | (m.hunter ? 2 : 0) | (m.st === 'chase' ? 4 : 0) | ((m.atk || 0) > 0 ? 8 : 0) | (m.burn ? 16 : 0) | (m.slowT > 0 ? 32 : 0) | (m.act ? 64 : 0) | (m.mark > 0 ? 128 : 0),
@@ -1181,6 +1378,9 @@
       pl: G.plots.map(p => [r1(p.x), r1(p.y), p.crop, Math.round(p.t), p.ready ? 1 : 0, p.mod ? 1 : 0]),
       f: G.fires.map(f => [r1(f.x), r1(f.y), r1(f.fuel), f.main ? 1 : 0, f.lvl, f.mod ? 1 : 0, f.lm]),
       ch: W.sites.filter(s2 => s2.opened).map(s2 => s2.id),
+      so: [G.store.x, G.store.y, G.store.wood],
+      bag: G.players.map(p => p.bagUp || 0),
+      kc: [G.kitchen.x, G.kitchen.y, G.kitchen.slots.map(q => [q.k, Math.round(q.t / C().COOKING[q.k].time * 100) / 100]), G.kitchen.queue.length],
       fx: G.fxOut,
     };
     const trees = [], bushes = [];
@@ -1210,7 +1410,7 @@
       if (!mine) { p.a = sp.a; p.moving = !!sp.mv; }
       p.name = sp.n; p.prof = sp.pr; p.hp = sp.hp; p.mhp = sp.mh; p.food = sp.f; p.dead = !!sp.d; p.rs = sp.rs;
       p.ws = sp.ws; p.inv = sp.inv; p.sw = sp.sw; p.sk = sp.sk; p.sa = sp.sa; p.tp = sp.tp; p.hurt = sp.h;
-      p.level = sp.lv; p.queue = sp.q; p.offers = sp.of; p.rr = sp.rr; p.swl = sp.swl;
+      p.slowT = sp.sl ? 1 : 0; p.slowPct = sp.sl || 0; p.level = sp.lv; p.queue = sp.q; p.offers = sp.of; p.rr = sp.rr; p.swl = sp.swl;
       p.skills = sp.sks.map(x => { const a = x.split(':'); return { id: a[0], tier: +a[1], sup: +a[2] }; });
       const st = {}; AB.Skills.statKeys().forEach(k => st[k] = sp.st[k] || 0); p.st = st;
       if (!mine || !p.ws.includes(p.w)) p.w = sp.w;
@@ -1239,6 +1439,9 @@
     G.plots = s.pl.map((a, i) => ({ id: i, x: a[0], y: a[1], crop: a[2], t: a[3], ready: !!a[4], mod: !!a[5] }));
     G.fires = s.f.map((a, i) => ({ id: i, x: a[0], y: a[1], fuel: a[2], main: !!a[3], lvl: a[4], mod: !!a[5], lm: a[6] }));
     s.ch.forEach(id => { if (W.sites[id]) W.sites[id].opened = true; });
+    if (s.so) G.store = { x: s.so[0], y: s.so[1], wood: s.so[2] };
+    if (s.bag) G.players.forEach((p, i) => { p.bagUp = s.bag[i] || 0; });
+    if (s.kc) G.kitchen = { x: s.kc[0], y: s.kc[1], slots: s.kc[2].map(a => ({ k: a[0], prog: a[1] })), queue: new Array(s.kc[3]) };
     s.tr.forEach(a => { const t = W.trees[a[0]]; if (t) { if (a[1] < t.hp && !a[2]) t.shake = 0.35; t.hp = a[1]; t.dead = !!a[2]; } });
     s.bu.forEach(a => { const b = W.bushes[a[0]]; if (b) b.berries = a[1]; });
     if (AB.FX) s.fx.forEach(ev => AB.FX.play(ev));

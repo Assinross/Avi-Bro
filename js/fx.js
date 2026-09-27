@@ -49,8 +49,8 @@
         if (ev.w === 'rifle') FX.add({ t: 'flash', x: ev.x + Math.cos(ev.a) * 30, y: ev.y + Math.sin(ev.a) * 30, z: 10, vx: 0, vy: 0, vz: 0, g: 0, life: 0.08, size: 18 });
         break;
       case 'hit': {
-        const minor = ev.s === 'burn' || ev.s === 'aura' || ev.s === 'fence';
-        burst(ev.x, ev.y, minor ? 2 : 8, ev.s === 'burn' || ev.s === 'aura' ? ['#ff9a2a', '#ffd24a'] : (BLOOD[ev.t] || BLOOD.wolf), 160, { size: 1.1 });
+        const minor = ev.s === 'burn' || ev.s === 'aura' || ev.s === 'fence' || ev.s === 'fire';
+        burst(ev.x, ev.y, minor ? 2 : 8, ev.s === 'burn' || ev.s === 'aura' || ev.s === 'fire' ? ['#ff9a2a', '#ffd24a'] : (BLOOD[ev.t] || BLOOD.wolf), 160, { size: 1.1 });
         if (window.CONFIG.SHOW_DAMAGE_NUMBERS && ev.n > 0) FX.text(ev.x + (Math.random() - 0.5) * 12, ev.y - 20, String(ev.n), ev.c ? '#ffd24a' : minor ? '#ffb070' : '#ffffff', ev.c);
         if (!minor) Sound.play('hit', near);
         break;
@@ -91,7 +91,15 @@
       case 'pick':
         if (ev.pid === FX.myId) { Sound.play('pick', 0.8); FX.add({ t: 'icon', x: ev.x, y: ev.y, z: 10, vx: 0, vy: 0, vz: 50, g: 20, life: 0.7, it: ev.it }); }
         break;
-      case 'eat': FX.text(ev.x, ev.y - 30, '+' + window.CONFIG.FOOD[ev.it].food + ' сытость', '#ffc46b'); Sound.play('eat', near); break;
+      case 'eat': {
+        const F = window.CONFIG.FOOD[ev.it];
+        FX.text(ev.x, ev.y - 30, '+' + F.food + ' сытость', '#ffc46b');
+        if (ev.hp) FX.text(ev.x + 14, ev.y - 44, (ev.hp > 0 ? '+' : '') + ev.hp + ' ♥', ev.hp > 0 ? '#8fe08a' : '#ff6a6a');
+        Sound.play('eat', near); break;
+      }
+      case 'cooked': burst(ev.x - 19, ev.y - 20, 10, ['#ffd24a', '#fff2a8'], 80, { type: 'spark', g: -40, life: 0.8 }); Sound.play('pick', near); break;
+      case 'leap': burst(ev.x, ev.y, 6, ['#8a7a60', '#5e5040'], 90); Sound.play('swing', near); break;
+      case 'windup': Sound.play('growl', near); break;
       case 'feed': burst(ev.x, ev.y - 6, 10, ['#ffd24a', '#ff8a2a', '#fff2a8'], 90, { type: 'spark', g: -60, life: 1.3 }); break;
       case 'plant': burst(ev.x, ev.y, 10, ['#6a4a2a', '#8a6a3a'], 70); Sound.play('plant', near); break;
       case 'build': burst(ev.x, ev.y, 18, ['#8a6a3a', '#c8a06a', '#6a4a2a'], 120); FX.add({ t: 'smoke', x: ev.x, y: ev.y, z: 0, vx: 0, vy: 0, vz: 0, g: 0, life: 0.6, size: 24, c: 'rgba(160,140,110,' }); Sound.play('build', near); break;
@@ -164,6 +172,7 @@
         case 'night': tone(220, 1.6, 'sine', V * 0.4, 0.5); tone(330, 1.6, 'sine', V * 0.2, 0.5, 0.3); break;
         case 'click': tone(660, 0.05, 'sine', V * 0.3, 1.2); break;
         case 'boom': noise(0.35, V * 1.1, 250, 0.8); tone(70, 0.3, 'sine', V * 0.5, 0.5); break;
+        case 'growl': tone(95, 0.35, 'sawtooth', V * 0.18, 0.7); break;
         case 'zap': noise(0.08, V * 0.5, 4000, 3); tone(1200, 0.06, 'square', V * 0.15, 0.4); break;
         case 'boss': tone(110, 2.2, 'sawtooth', V * 0.3, 0.6); tone(82, 2.2, 'sine', V * 0.5, 0.7, 0.2); noise(1.2, V * 0.4, 150, 0.5); break;
       }

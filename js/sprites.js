@@ -272,6 +272,30 @@
         ctx.fillStyle = '#4b6a24'; ctx.fillRect(14, 6, 4, 6);
         break;
       }
+      case 'cooked_meat': {
+        ctx.fillStyle = '#efe6d2'; ctx.strokeStyle = O; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(21, 21); ctx.lineTo(28, 28); ctx.stroke();
+        circle(ctx, 28, 27, 3, O); circle(ctx, 28, 27, 2, '#efe6d2');
+        ell(ctx, 14, 14, 11, 9, O, -0.7); ell(ctx, 14, 14, 9.5, 7.5, '#7a3e1c', -0.7);
+        ell(ctx, 12, 12, 6, 4, '#a8582a', -0.7);
+        ctx.strokeStyle = '#3a1a08'; ctx.lineWidth = 1.5; for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.moveTo(7 + i * 4, 17 - i * 2); ctx.lineTo(12 + i * 4, 9 - i * 2); ctx.stroke(); }
+        ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(8, 4); ctx.quadraticCurveTo(10, 1, 8, -2); ctx.moveTo(14, 4); ctx.quadraticCurveTo(16, 1, 14, -2); ctx.stroke();
+        break;
+      }
+      case 'cooked_carrot': {
+        ctx.fillStyle = O; ctx.beginPath(); ctx.moveTo(5, 28); ctx.lineTo(24, 12); ctx.lineTo(19, 7); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#b8521a'; ctx.beginPath(); ctx.moveTo(7, 26); ctx.lineTo(22, 12); ctx.lineTo(19, 9); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#5a2a0a'; ctx.fillRect(11, 19, 3, 2); ctx.fillRect(16, 14, 3, 2);
+        ctx.strokeStyle = '#6a5a2a'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(22, 9); ctx.lineTo(26, 5); ctx.stroke();
+        ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(10, 10); ctx.quadraticCurveTo(12, 7, 10, 4); ctx.stroke();
+        break;
+      }
+      case 'cooked_pumpkin': {
+        ell(ctx, 16, 22, 14, 8, O); ell(ctx, 16, 22, 12.5, 6.5, '#8a6a4a');
+        ell(ctx, 16, 19, 11, 4, O); ell(ctx, 16, 19, 10, 3.2, '#f0a040'); ell(ctx, 13, 18.5, 3, 1.2, '#ffd08a');
+        ctx.strokeStyle = 'rgba(255,255,255,0.75)'; ctx.lineWidth = 1.3; ctx.beginPath(); ctx.moveTo(12, 13); ctx.quadraticCurveTo(14, 9, 12, 5); ctx.moveTo(19, 13); ctx.quadraticCurveTo(21, 9, 19, 5); ctx.stroke();
+        break;
+      }
       case 'seed_carrot': case 'seed_pumpkin': {
         ctx.fillStyle = O; ctx.beginPath(); ctx.moveTo(7, 9); ctx.lineTo(25, 9); ctx.lineTo(27, 29); ctx.lineTo(5, 29); ctx.closePath(); ctx.fill();
         ctx.fillStyle = '#c8a56a'; ctx.beginPath(); ctx.moveTo(8, 11); ctx.lineTo(24, 11); ctx.lineTo(25, 27); ctx.lineTo(7, 27); ctx.closePath(); ctx.fill();
@@ -364,6 +388,6 @@
     S.chest = makeChest(false); S.chestOpen = makeChest(true);
     S.tent = makeTent(); S.logs = makeLogs();
     S.icons = {};
-    ['wood', 'meat', 'berry', 'carrot', 'pumpkin', 'seed_carrot', 'seed_pumpkin', 'axe', 'knife', 'spear', 'bow', 'crossbow', 'rifle'].forEach(k => S.icons[k] = makeIcon(k));
+    ['wood', 'meat', 'berry', 'carrot', 'pumpkin', 'cooked_meat', 'cooked_carrot', 'cooked_pumpkin', 'seed_carrot', 'seed_pumpkin', 'axe', 'knife', 'spear', 'bow', 'crossbow', 'rifle'].forEach(k => S.icons[k] = makeIcon(k));
   };
 })(window.AB);
