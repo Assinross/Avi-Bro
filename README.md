@@ -4,6 +4,11 @@
 
 ## Как опубликовать на GitHub Pages (один раз)
 
+   cd ~/avi-game/avi-bro
+   git add .
+   git commit -m "что изменилось, например: усилил монстров"
+   git push
+
 1. Загрузите содержимое этой папки в репозиторий `https://github.com/Assinross/Avi-Bro` (в корень, рядом с `index.html`):
    ```bash
    cd ~/avi-game/avi-bro
