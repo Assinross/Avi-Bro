@@ -70,6 +70,7 @@
         const key = (tier >= 2 && r() < 0.6) || (tier === 1 && r() < 0.25) ? 'seed_pumpkin' : 'seed_carrot';
         seeds[key] = (seeds[key] || 0) + 1;
       }
+      { const cc = window.CONFIG.CHEST_COAL; seeds.coal = r.int(cc[0], cc[1]) + (tier >= 2 ? 1 : 0); }
       if (!weapon) { seeds.meat = r.int(1, 2 + tier); seeds.bag = window.CONFIG.CHEST_BAG_BASE + tier; }
       else if (r() < window.CONFIG.CHEST_BAG_WEAPON_CHANCE) seeds.bag = 2;
       W.sites.push({

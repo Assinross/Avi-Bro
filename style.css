@@ -124,3 +124,17 @@ input:focus { border-color: var(--gold); }
 .ecopanel { margin-left: 16px; display: flex; flex-direction: column; gap: 8px; }
 .ecopanel canvas { width: 100%; background: #081018; border-radius: 8px; border: 1px solid var(--line); }
 .row.wrap { flex-wrap: wrap; }
+
+/* ---------- окно здания ---------- */
+.overlay.right { justify-content: flex-end; align-items: center; }
+.bpanel { width: 320px; margin-right: 8px; margin-top: 0; display: flex; flex-direction: column; gap: 8px; }
+.bptitle { font-weight: 800; font-size: 17px; color: var(--gold); }
+.note.left { text-align: left; }
+.bpnow { font-size: 12.5px; color: #d8e4d4; line-height: 1.5; }
+.asp { border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; background: rgba(0,0,0,0.25); display: flex; flex-direction: column; gap: 5px; margin-top: 6px; }
+.asp .ah { display: flex; justify-content: space-between; font-weight: 800; font-size: 13.5px; }
+.asp .an { font-size: 12px; color: var(--muted); }
+.asp .bar { height: 7px; background: rgba(0,0,0,0.5); border-radius: 4px; overflow: hidden; }
+.asp .bar > div { height: 100%; background: linear-gradient(#e0c08a, #b8864a); }
+.asp .btn { padding: 7px 10px; font-size: 13px; }
+.asp .who { font-size: 11.5px; color: #ffb08a; }

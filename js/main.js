@@ -413,6 +413,37 @@
       }
     }
   }
+  // Окно ближайшего здания: описание, уровни, улучшение
+  function updateBuildingUI(me) {
+    const cfg = C(), box = $('bpanel'), G = App.G;
+    const busy = !me || me.dead || App.state !== 'play' || me.offers || !$('merchant').classList.contains('hidden');
+    const b = busy ? null : AB.Sim.nearestBuilding(G, me);
+    if (!b) { box.classList.add('hidden'); App.bpSig = null; return; }
+    box.classList.remove('hidden');
+    const planks = AB.Sim.woodOf(G, me);
+    const sig = JSON.stringify([b.title, b.now, b.asp, planks]);
+    if (sig === App.bpSig) return;
+    App.bpSig = sig;
+    $('bpTitle').textContent = b.title;
+    $('bpDesc').textContent = b.desc;
+    $('bpNow').innerHTML = b.now.join('<br>');
+    const box2 = $('bpAsp'); box2.innerHTML = '';
+    const pn = { feed: 'подбрасывайте бревна и уголь, стоя у костра', any: 'любой игрок', hunter: 'охотник', engineer: 'инженер', programmer: 'программист', architect: 'архитектор' };
+    b.asp.forEach(a => {
+      const el = document.createElement('div'); el.className = 'asp';
+      const max = a.lvl >= a.max || a.cost == null;
+      const can = AB.Sim.canUpgrade(me, a);
+      el.innerHTML = `<div class="ah"><span>${a.name}</span><span>ур. ${a.lvl}/${a.max}</span></div>` +
+        (max ? '<div class="an">Максимальный уровень</div>' :
+          `<div class="an">Следующий уровень: ${a.next}</div>
+           <div class="bar"><div style="width:${Math.round(a.prog / a.cost * 100)}%"></div></div>
+           <div class="an">${a.by === 'feed' ? `Топливо ${a.prog}/${a.cost} — заполните шкалу до конца` : `Вложено ${a.prog}/${a.cost} досок · у вас доступно ${planks}`}</div>` +
+          (can ? `<button class="btn small gold">Вложить доски (U)</button>` : `<div class="who">Улучшает: ${pn[a.by]}</div>`));
+      const btn = el.querySelector('button');
+      if (btn) { if (planks <= 0) { btn.disabled = true; btn.style.opacity = 0.5; } btn.addEventListener('click', () => { AB.Sound.play('click', 1); sendCmd('upnear', a.key); App.bpSig = null; }); }
+      box2.appendChild(el);
+    });
+  }
   function toggleBuild() { App.showBuild = !App.showBuild; App.buildSig = null; }
   function updateBuildUI(me) {
     const cfg = C();
@@ -537,6 +568,7 @@
     updateLevelUI(me);
     updateMerchantUI(me);
     updateEcoUI(me);
+    updateBuildingUI(me);
     updateBuildUI(me);
   }
 
@@ -606,8 +638,15 @@
 
     startAttract();
     show('menu');
+    // Приглашение по ссылке: показываем кнопку в главном меню и убираем код из адреса
     const room = new URLSearchParams(location.search).get('room');
-    if (room) { show('coop'); $('code').value = room; $('coopErr').textContent = 'Вас пригласили в игру! Введите имя и нажмите «Войти».'; }
+    if (room) {
+      const b = $('btnInvite');
+      b.textContent = `Присоединиться к комнате ${room}`;
+      b.classList.remove('hidden');
+      b.addEventListener('click', () => { AB.Sound.unlock(); $('code').value = room; chooseProf(() => startJoin(room), 'menu'); b.classList.add('hidden'); });
+      try { const u = new URL(location.href); u.searchParams.delete('room'); history.replaceState(null, '', u.pathname + (u.search || '')); } catch (e) { /* */ }
+    }
     requestAnimationFrame(frame);
   }
   window.addEventListener('load', init);

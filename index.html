@@ -22,6 +22,7 @@
       <label class="field">Ваше имя
         <input id="name" maxlength="12" placeholder="Игрок" autocomplete="off">
       </label>
+      <button id="btnInvite" class="btn gold hidden"></button>
       <button id="btnSolo" class="btn gold">Один игрок</button>
       <button id="btnCoop" class="btn">Игра вдвоём</button>
       <button id="btnHelp" class="btn ghost">Как играть</button>
@@ -125,7 +126,7 @@
             <li>Охотник строит <b>лавку</b> (T): сдавайте туда шкуры и готовую еду, рядом появятся монеты. Каждый 3-й день приходит <b>торговец</b> — у него охотник покупает и улучшает умения.</li>
             <li>Семена редкие: в сундуках и у сильных монстров.</li>
             <li>Сажайте на грядках в лагере (<kbd>R</kbd>), урожай собирается сам.</li>
-            <li>Костёр лечит игроков и жжёт монстров (нежить — сильнее). Дрова подкидываются сами.</li>
+            <li>Костёр лечит игроков и жжёт монстров (нежить — сильнее). Подойдите с бревнами или <b>углём</b> — они сгорят и заполнят шкалу. Полная шкала — новый уровень костра, и шкала расширяется. Уголь ищите в логовах монстров.</li>
             <li>Чем выше уровень костра, тем больше <b>территория</b> лагеря — внутри монстры не появляются.</li>
             <li>Чем глубже в лес, тем опаснее монстры.</li>
             <li>Оружие лежит в руинах под охраной — чем дальше от лагеря, тем сильнее охрана и лучше награда.</li>
@@ -193,6 +194,16 @@
       <div class="lvtitle small">Мастерская</div>
       <div id="wsInfo" class="note"></div>
       <button id="btnWup" class="btn gold small"></button>
+    </div>
+  </div>
+
+  <!-- Окно здания -->
+  <div id="bpanel" class="overlay right hidden">
+    <div class="buildpanel bpanel">
+      <div id="bpTitle" class="bptitle"></div>
+      <div id="bpDesc" class="note left"></div>
+      <div id="bpNow" class="bpnow"></div>
+      <div id="bpAsp"></div>
     </div>
   </div>
 

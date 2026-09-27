@@ -634,6 +634,7 @@
     if (s.kind === 'tower' && (s.tl || 1) > 1) pips.push(['#d08aff', s.tl]);
     if ((s.armed || s.kind === 'turret') && (s.cl || 1) > 1) pips.push(['#ffb23a', s.cl]);
     if (s.mod && (s.ml || 1) > 1) pips.push(['#5aa8ff', s.ml]);
+    if ((s.bl || 1) > 1) pips.push(['#e0c08a', s.bl]);
     pips.forEach((pp, i) => { ctx.font = 'bold 9px "Nunito", system-ui'; ctx.textAlign = 'center'; const px = x - (pips.length - 1) * 9 + i * 18; S().circle(ctx, px, y + 22, 6.5, '#111'); S().circle(ctx, px, y + 22, 5.5, pp[0]); ctx.fillStyle = '#111'; ctx.fillText(pp[1], px, y + 25); });
     if (G_ref && G_ref.debt > 0 && s.kind !== 'wall') { ctx.font = 'bold 12px system-ui'; ctx.textAlign = 'center'; ctx.fillStyle = '#ff5a4a'; ctx.fillText('$✕', x, y - 30 - (s.kind === 'tower' ? 44 : 0)); }
   }
@@ -776,7 +777,7 @@
       ctx.strokeStyle = c; ctx.lineWidth = 5; ctx.stroke();
     }
     if (f.fuel > 0) {
-      const k = (0.45 + 0.55 * Math.min(1, f.fuel / 60)) * (1 + 0.18 * ((f.lvl || 1) - 1));
+      const k = (0.45 + 0.55 * Math.min(1, f.fuel / ((f.cap || 20) * 0.5))) * (1 + 0.18 * ((f.lvl || 1) - 1));
       S().ell(ctx, x, y, 10, 5, '#ff7a1a');
       for (let i = 0; i < 3; i++) {
         const fl = Math.sin(t * (9 + i * 3) + i * 2) * 0.12 + 1;
@@ -801,10 +802,24 @@
       ctx.fillStyle = tc; ctx.fillText('ур. ' + f.lvl, x, y + 29);
     }
     if (near) {
-      const w = 40, frac = f.fuel / C().FIRE_FUEL_MAX;
-      ctx.fillStyle = 'rgba(0,0,0,0.65)'; ctx.fillRect(x - w / 2 - 1, y + 14, w + 2, 5);
-      ctx.fillStyle = frac < 0.25 ? '#e0503a' : '#ffae3a'; ctx.fillRect(x - w / 2, y + 15, w * frac, 3);
+      drawFireBar(ctx, f, x, y);
     }
+  }
+  // Шкала костра: ширина растёт с уровнем (1 деление = 2 px), видны границы ступеней
+  function drawFireBar(ctx, f, x, y) {
+    const cap = f.cap || C().FIRE_FUEL_MAX, ppu = f.main ? 2 : 2, w = Math.min(320, cap * ppu), frac = AB.clamp(f.fuel / cap, 0, 1);
+    const bx = x - w / 2, by = y + (f.main && (f.lvl || 1) > 1 ? 38 : 16);
+    ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(bx - 1, by - 1, w + 2, 8);
+    const g = ctx.createLinearGradient(bx, 0, bx + w, 0); g.addColorStop(0, '#e0503a'); g.addColorStop(1, '#ffd24a');
+    ctx.fillStyle = frac < 0.2 ? '#e0503a' : g; ctx.fillRect(bx, by, w * frac, 6);
+    if (f.main) {
+      let acc = 0; ctx.fillStyle = 'rgba(0,0,0,0.8)';
+      const steps = C().FIRE_LEVEL_STEPS;
+      for (let i = 0; i < (f.lvl || 1) - 1; i++) { acc += steps[i]; ctx.fillRect(bx + acc * ppu * (w / (cap * ppu)) - 1, by - 2, 2, 10); }
+      ctx.fillStyle = 'rgba(255,255,255,0.12)'; for (let u = 5; u < cap; u += 5) ctx.fillRect(bx + u / cap * w, by, 1, 6);
+    }
+    ctx.font = 'bold 9px "Nunito", system-ui'; ctx.textAlign = 'center'; ctx.fillStyle = '#ffe7a8';
+    ctx.fillText(`${Math.floor(f.fuel)}/${cap}`, x, by + 16);
   }
   function drawPlot(ctx, pl, t, near) {
     const x = pl.x, y = pl.y;
@@ -1022,7 +1037,7 @@
           if (!o.opened && Math.sin(t * 2 + o.id) > 0.9) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; S().circle(ctx, o.x + 6, o.y - 12, 3, '#fff6c0'); ctx.restore(); }
           break;
         case 4: drawDecor(ctx, o, t); break;
-        case 5: drawFire(ctx, o, t, me && AB.dist2(me.x, me.y, o.x, o.y) < 140 * 140); break;
+        case 5: drawFire(ctx, o, t, o.main || (me && AB.dist2(me.x, me.y, o.x, o.y) < 140 * 140)); break;
         case 6: drawDrop(ctx, o, t); break;
         case 7: drawMonster(ctx, o, t); break;
         case 8: drawPlayer(ctx, o, t); break;
@@ -1361,22 +1376,26 @@
       const eb = cfg.ECON_BUILDINGS[me.prof];
       if (eb && !G.structs.some(q => q.kind === eb && q.owner === me.id)) hints.push(['H', `${cfg.STRUCTURES[eb].name} (${bc(cfg.STRUCTURES[eb].cost)})`]);
       const ui2 = AB.Sim.upgradeInfo(G, me);
-      if (ui2) hints.push(['U', ui2.lvl >= ui2.max || ui2.cost == null ? `${ui2.name}: макс.` : `${ui2.name} ур.${ui2.lvl}→${ui2.lvl + 1}: ${ui2.prog}/${ui2.cost} досок`]);
+      if (ui2 && ui2.lvl < ui2.max && ui2.cost != null && AB.Sim.canUpgrade(me, ui2)) hints.push(['U', `Улучшить: ${ui2.name}`]);
       hints.push(['Tab', 'Сборка']);
       ctx.font = '600 12px "Nunito", system-ui, sans-serif';
-      let hxx = 0;
-      hints.forEach(h => { hxx += ctx.measureText(h[1]).width + 40 + (h[0].length > 1 ? 12 : 0); });
-      hxx = Math.max(SW / 2 - hxx / 2, 330);
-      const hyy = hy - 30;
-      hints.forEach(h => {
-        const tw2 = ctx.measureText(h[1]).width;
-        ctx.fillStyle = 'rgba(10,18,15,0.7)'; roundRect(ctx, hxx, hyy - 10, tw2 + 32, 20, 6); ctx.fill();
-        const kw = h[0].length > 1 ? 28 : 16;
-        ctx.fillStyle = 'rgba(10,18,15,0.7)'; roundRect(ctx, hxx, hyy - 10, tw2 + 16 + kw, 20, 6); ctx.fill();
-        ctx.fillStyle = '#ffd24a'; roundRect(ctx, hxx + 3, hyy - 7, kw, 14, 3); ctx.fill();
-        ctx.fillStyle = '#1a1206'; ctx.textAlign = 'center'; ctx.font = 'bold 11px system-ui'; ctx.fillText(h[0], hxx + 3 + kw / 2, hyy);
-        ctx.fillStyle = '#e8eee6'; ctx.textAlign = 'left'; ctx.font = '600 12px "Nunito", system-ui, sans-serif'; ctx.fillText(h[1], hxx + 8 + kw, hyy);
-        hxx += tw2 + 24 + kw;
+      // раскладка подсказок в 1–2 строки между рюкзаком и миникартой
+      const hw = (h) => ctx.measureText(h[1]).width + 24 + (h[0].length > 1 ? 28 : 16);
+      const left = 330, right = SW - cfg.MINIMAP_SIZE - 40, maxW = right - left;
+      const rows = [[]]; let rw = 0;
+      hints.forEach(h => { const w2 = hw(h); if (rw + w2 > maxW && rows[rows.length - 1].length) { rows.push([]); rw = 0; } rows[rows.length - 1].push(h); rw += w2; });
+      rows.forEach((row, ri) => {
+        const tot = row.reduce((a2, h) => a2 + hw(h), 0);
+        let hxx = Math.max(left, Math.min(SW / 2 - tot / 2, right - tot));
+        const hyy = hy - 30 - (rows.length - 1 - ri) * 24;
+        row.forEach(h => {
+          const tw2 = ctx.measureText(h[1]).width, kw = h[0].length > 1 ? 28 : 16;
+          ctx.fillStyle = 'rgba(10,18,15,0.7)'; roundRect(ctx, hxx, hyy - 10, tw2 + 16 + kw, 20, 6); ctx.fill();
+          ctx.fillStyle = '#ffd24a'; roundRect(ctx, hxx + 3, hyy - 7, kw, 14, 3); ctx.fill();
+          ctx.fillStyle = '#1a1206'; ctx.textAlign = 'center'; ctx.font = 'bold 11px system-ui'; ctx.fillText(h[0], hxx + 3 + kw / 2, hyy);
+          ctx.fillStyle = '#e8eee6'; ctx.textAlign = 'left'; ctx.font = '600 12px "Nunito", system-ui, sans-serif'; ctx.fillText(h[1], hxx + 8 + kw, hyy);
+          hxx += tw2 + 24 + kw;
+        });
       });
     }
     // --- миникарта

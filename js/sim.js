@@ -4,7 +4,7 @@
   const TAU = Math.PI * 2;
   const MON_TYPES = ['wolf', 'ghoul', 'shade', 'brute', 'alpha', 'spider', 'spitter', 'giant', 'packlord', 'witch', 'golem'];
   AB.MON_TYPES = MON_TYPES;
-  const ITEM_KEYS = ['wood', 'meat', 'berry', 'carrot', 'pumpkin', 'cooked_meat', 'cooked_carrot', 'cooked_pumpkin', 'plank', 'hide', 'seed_carrot', 'seed_pumpkin', 'coin'];
+  const ITEM_KEYS = ['wood', 'meat', 'berry', 'carrot', 'pumpkin', 'cooked_meat', 'cooked_carrot', 'cooked_pumpkin', 'plank', 'hide', 'coal', 'seed_carrot', 'seed_pumpkin', 'coin'];
   AB.ITEM_KEYS = ITEM_KEYS;
   AB.monDef = (t) => C().MONSTERS[t] || C().BOSSES[t];
   AB.isBoss = (t) => !!C().BOSSES[t];
@@ -255,7 +255,7 @@
     return true;
   }
   // Рюкзак: дерево и еда занимают место, семена — нет
-  Sim.bagItem = (k) => k === 'wood' || k === 'plank' || k === 'hide';
+  Sim.bagItem = (k) => k === 'wood' || k === 'plank' || k === 'hide' || k === 'coal';
   Sim.bagUsed = (p) => { let n = 0; for (const k in p.inv) if (Sim.bagItem(k)) n += p.inv[k] || 0; return n; };
   Sim.bagCap = (p) => C().BACKPACK_START + ((p.st && p.st.bag) || 0) + (p.bagUp || 0);
   // Доски: из рюкзака + с лесопилки
@@ -263,6 +263,30 @@
   Sim.spendWood = function (G, p, n) {
     const a = Math.min(p.inv.plank || 0, n);
     p.inv.plank -= a; G.store.planks -= n - a;
+  };
+  // Шкала костра: сумма ступеней до текущего уровня
+  Sim.fireCap = (G, f) => {
+    const cfg = C();
+    if (!f.main) return cfg.FIRE_FUEL_MAX;
+    let s2 = 0; for (let i = 0; i < G.fireLevel; i++) s2 += cfg.FIRE_LEVEL_STEPS[i] || 0;
+    return s2;
+  };
+  Sim.fireMaxLevel = () => C().FIRE_LEVEL_STEPS.length;
+  // Подбросить единицу топлива; возвращает false, если костёр полон
+  Sim.feedFire = function (G, f, val) {
+    const cfg = C();
+    let cap = Sim.fireCap(G, f);
+    if (f.fuel >= cap && !(f.main && G.fireLevel < Sim.fireMaxLevel())) return false;
+    f.fuel += val;
+    while (f.main && f.fuel >= cap && G.fireLevel < Sim.fireMaxLevel()) {
+      G.fireLevel++;
+      cap = Sim.fireCap(G, f);
+      Sim.msg(G, `Костёр ур. ${G.fireLevel}! Шкала выросла до ${cap}. Территория шире, умения «${cfg.TIER_NAMES[Math.min(3, G.fireLevel - 1)]}»`, -1, cfg.TIER_COLORS[Math.min(3, G.fireLevel - 1)]);
+      Sim.fx(G, { k: 'fireup', x: f.x, y: f.y });
+    }
+    f.fuel = Math.min(cap, f.fuel);
+    f.cap = cap;
+    return true;
   };
   Sim.millCap = (S) => C().MILL.capacity + C().MILL.capPerLevel * ((S.lvl || 1) - 1);
 
@@ -367,6 +391,7 @@
     dropCoins(G, m);
     Sim.dropItem(G, 'wood', R.wood, m.x, m.y, 40);
     if (R.hides) Sim.dropItem(G, 'hide', R.hides, m.x, m.y, 30);
+    if (R.coal) Sim.dropItem(G, 'coal', R.coal, m.x, m.y, 30);
     for (let i = 0; i < R.seeds; i++) Sim.dropItem(G, rnd() < 0.5 ? 'seed_carrot' : 'seed_pumpkin', 1, m.x, m.y, 30);
     Sim.msg(G, `Босс «${cfg.BOSSES[m.type].name}» повержен! Бонусное умение каждому`, -1, '#ffd24a');
     G.tele = G.tele.filter(t => t.owner !== m.id);
@@ -432,9 +457,13 @@
           const lv = f.main ? G.fireLevel : 1;
           p.hp = Math.min(p.mhp, p.hp + cfg.FIRE_HEAL * (1 + cfg.FIRE_LEVEL_HEAL * (lv - 1)) * (1 + st.fireHeal / 100) * dt);
         }
-        if (d < cfg.FIRE_FEED_RADIUS && f.fuel < cfg.FIRE_FUEL_MAX * cfg.FIRE_FEED_BELOW && p.inv.wood > 0 && p.feedCd <= 0) {
-          p.inv.wood--; f.fuel = Math.min(cfg.FIRE_FUEL_MAX, f.fuel + cfg.FUEL_PER_WOOD); p.feedCd = 0.4;
-          Sim.fx(G, { k: 'feed', x: f.x, y: f.y });
+        if (d < cfg.FIRE_FEED_RADIUS && p.feedCd <= 0) {
+          // сначала уголь, потом бревна
+          const k = ['coal', 'wood'].find(q => (p.inv[q] || 0) > 0);
+          if (k && Sim.feedFire(G, f, cfg.FUEL_VALUES[k])) {
+            p.inv[k]--; p.feedCd = cfg.FIRE_FEED_INTERVAL;
+            Sim.fx(G, { k: 'feed', x: f.x, y: f.y });
+          }
         }
       }
       autoActions(G, p, dt);
@@ -689,9 +718,9 @@
       if (s.kind === 'exchange') {
         if (G.debt > 0) continue;
         s.mineT = (s.mineT || 0) + dt;
-        if (s.mineT >= cfg.EXCHANGE.mineEvery) {
+        if (s.mineT >= Sim.exRate(s)) {
           s.mineT = 0;
-          const n = cfg.EXCHANGE.mineCoins + Math.floor((owner.st.eng || 0) / 4);
+          const n = Sim.exMine(G, s);
           Sim.dropItem(G, 'coin', n, s.x, s.y + 24, 14);
           Sim.fx(G, { k: 'sold', x: s.x, y: s.y, n });
         }
@@ -767,9 +796,9 @@
     }
     if (!s.stock.length) { s.sellT = 0; return; }
     s.sellT += dt;
-    if (s.sellT >= SH.sellTime) {
+    if (s.sellT >= Sim.shopSellTime(s)) {
       s.sellT = 0;
-      const it = s.stock.shift(), n = SH.prices[it] || 1;
+      const it = s.stock.shift(), n = Sim.shopPrice(s, it);
       for (let i = 0; i < n; i++) { const a = rnd() * TAU, r = 18 + rnd() * 16; G.drops.push({ id: G.nextId++, k: 'coin', x: s.x + Math.cos(a) * r, y: s.y + 20 + Math.sin(a) * r * 0.6, t: 0, age: 0 }); }
       Sim.fx(G, { k: 'sold', x: s.x, y: s.y, n });
     }
@@ -1222,6 +1251,7 @@
     }
     for (const f of G.fires) {
       f.fuel = Math.max(0, f.fuel - cfg.FIRE_BURN_RATE * dt);
+      f.cap = Sim.fireCap(G, f);
       f.lvl = f.main ? G.fireLevel : 1;
       f.lm = f.mod ? 1 + cfg.MODULES.fire.light / 100 : 1;
     }
@@ -1245,8 +1275,8 @@
     } else S.sawT = 0;
     S.feedT -= dt;
     const f = G.fires.find(q => q.main);
-    if (M.feedFire && f && S.logs > 0 && S.feedT <= 0 && f.fuel < cfg.FIRE_FUEL_MAX * M.feedBelow) {
-      S.feedT = 1; S.logs--; f.fuel = Math.min(cfg.FIRE_FUEL_MAX, f.fuel + cfg.FUEL_PER_WOOD);
+    if (M.feedFire && f && S.logs > 0 && S.feedT <= 0 && f.fuel < Sim.fireCap(G, f) * M.feedBelow) {
+      S.feedT = 1; S.logs--; Sim.feedFire(G, f, cfg.FUEL_VALUES.wood);
       Sim.fx(G, { k: 'feed', x: f.x, y: f.y });
     }
   }
@@ -1258,7 +1288,7 @@
     const add = (name, arr, lvl) => { const v = arr[0] + arr[1] * Math.max(0, (lvl || 1) - 1); if (v > 0) out.push([name, v]); };
     for (const s of G.structs) {
       if (s.kind === 'tower') { add('Вышка', U.tower, s.tl); if (s.armed) add('Пушка', U.cannon, s.cl); }
-      else if (U[s.kind]) add(cfg.STRUCTURES[s.kind].name, U[s.kind], s.kind === 'turret' ? s.cl : 1);
+      else if (U[s.kind]) add(cfg.STRUCTURES[s.kind].name, U[s.kind], s.kind === 'turret' ? s.cl : Sim.bl(s));
       if (s.mod) add('Модуль', U.module, s.ml);
     }
     add('Кухня', U.kitchen, G.kitchen.lvl); add('Лесопилка', U.mill, G.store.lvl); add('Костёр', U.fire, G.fireLevel);
@@ -1267,14 +1297,15 @@
   Sim.upkeepTotal = function (G) {
     const cfg = C();
     let t = Sim.upkeepList(G).reduce((a, x) => a + x[1], 0);
-    if (G.structs.some(s => s.kind === 'townhall')) t = Math.ceil(t * (1 - cfg.TOWNHALL.upkeepDiscount / 100));
+    const th = G.structs.find(s => s.kind === 'townhall');
+    if (th) t = Math.ceil(t * (1 - Math.min(90, Sim.thDiscount(th)) / 100));
     return t;
   };
   function dailyEconomy(G) {
     const cfg = C();
     const th = G.structs.find(s => s.kind === 'townhall');
     if (th) {
-      const tax = cfg.TOWNHALL.taxBase + Math.floor(G.structs.length / cfg.TOWNHALL.taxPerStructs);
+      const tax = Sim.thTax(G, th);
       G.coins += tax;
       Sim.msg(G, `Ратуша собрала налог: +${tax} $`, -1, '#ffd24a');
     }
@@ -1383,7 +1414,7 @@
   /* ======================= КОМАНДЫ ======================= */
   Sim.buildCost = function (p, base) { return Math.max(1, Math.round(base * (1 - Math.min(80, p.st.buildCost || 0) / 100))); };
   Sim.fireUpCost = function (G, p) {
-    const c = C().FIRE_UPGRADE_COST[G.fireLevel - 1];
+    const c = null;
     return c === undefined ? null : Math.max(1, Math.round(c * (1 - Math.min(80, p.st.fireCost || 0) / 100)));
   };
 
@@ -1426,7 +1457,7 @@
       return;
     }
     if (c === 'eatk') { eatFood(G, p, x); return; }
-    if (c === 'upnear') { upgradeNear(G, p); return; }
+    if (c === 'upnear') { upgradeNear(G, p, typeof x === 'string' ? x : null); return; }
     if (c === 'build3') { buildEcon(G, p, x, y); return; }
     if (c === 'cbuy' || c === 'csell') { cryptoTrade(G, p, c, x); return; }
     if (c === 'wup') { weaponUpgrade(G, p); return; }
@@ -1477,7 +1508,7 @@
       if (!placeOk(G, p, bx, by, 16)) return;
       pay(G, p, cost);
       if (c === 'bed') G.plots.push({ id: G.plots.length, x: bx, y: by, crop: null, t: 0, ready: false, mod: false });
-      else G.fires.push({ id: G.fires.length, x: bx, y: by, fuel: cfg.FIRE_FUEL_MAX * 0.5, main: false, lvl: 1, mod: false, lm: 1 });
+      else G.fires.push({ id: G.fires.length, x: bx, y: by, fuel: cfg.FIRE_FUEL_MAX * 0.5, main: false, lvl: 1, mod: false, lm: 1, cap: cfg.FIRE_FUEL_MAX });
       Sim.fx(G, { k: 'build', x: bx, y: by });
     } else if (c === 'upfire_old') {
       const f = G.fires.find(q => q.main);
@@ -1539,35 +1570,97 @@
     if (full) Sim.msg(G, `Рюкзак полон (${Sim.bagCap(p)})! Бревна — на лесопилку, шкуры — в лавку, или выбросьте лишнее (клик по ячейке рюкзака)`, p.id, '#ffb36b');
   }
 
-  // Что можно улучшить рядом (клавиша U)
-  Sim.upgradeInfo = function (G, p) {
-    const cfg = C(), R = cfg.UPGRADE_RANGE, st = p.st || {};
-    const cands = [];
-    const d2 = (o) => AB.dist2(p.x, p.y, o.x, o.y);
-    const lvlCost = (l) => cfg.UPGRADE_COST.base + cfg.UPGRADE_COST.step * (l - 1);
-    const f = G.fires.find(q => q.main);
-    if (f) { const c = Sim.fireUpCost(G, p); cands.push({ o: f, d: d2(f), name: 'Костёр', key: 'fire', lvl: G.fireLevel, max: 4, cost: c, prog: G.fireUp || 0 }); }
-    const K = G.kitchen; if (K) cands.push({ o: K, d: d2(K), name: 'Кухня', key: 'kitchen', lvl: K.lvl, max: cfg.KITCHEN_MAX_LEVEL, cost: lvlCost(K.lvl), prog: K.up || 0 });
-    const S = G.store; if (S) cands.push({ o: S, d: d2(S), name: 'Лесопилка', key: 'mill', lvl: S.lvl, max: cfg.MILL.maxLevel, cost: lvlCost(S.lvl), prog: S.up || 0 });
-    for (const s of G.structs) {
-      const up = s.up || {};
-      if (s.kind === 'tower' && st.structBuild > 0) cands.push({ o: s, d: d2(s), name: 'Вышка', key: 'tl', lvl: s.tl || 1, max: cfg.TOWER_LEVELS.max, cost: cfg.TOWER_LEVELS.cost[(s.tl || 1) - 1], prog: up.tl || 0 });
-      if (((s.kind === 'tower' && s.armed) || s.kind === 'turret') && st.turretBuild > 0) cands.push({ o: s, d: d2(s), name: s.kind === 'turret' ? 'Турель' : 'Пушка', key: 'cl', lvl: s.cl || 1, max: cfg.CANNON_LEVELS.max, cost: cfg.CANNON_LEVELS.cost[(s.cl || 1) - 1], prog: up.cl || 0 });
-      if (s.mod && st.moduleBuild > 0) cands.push({ o: s, d: d2(s), name: 'Модуль', key: 'ml', lvl: s.ml || 1, max: cfg.MODULE_LEVELS.max, cost: cfg.MODULE_LEVELS.cost[(s.ml || 1) - 1], prog: up.ml || 0 });
+  // ---------- Здания: описание, уровни, улучшения ----------
+  const PROF_NAME = (k) => k === 'any' ? 'любой игрок' : ({ hunter: 'охотник', engineer: 'инженер', programmer: 'программист', architect: 'архитектор' })[k];
+  const lvlCost = (l) => C().UPGRADE_COST.base + C().UPGRADE_COST.step * (l - 1);
+  Sim.bl = (s) => s.bl || 1;
+
+  // Описание здания и список «граней» улучшения
+  Sim.buildingInfo = function (G, o, kind) {
+    const cfg = C(), BU = cfg.BUILD_UPGRADES, asp = [];
+    let title = '', desc = '', now = [];
+    const push = (key, name, lvl, max, cost, prog, by, next) => asp.push({ key, name, lvl, max, cost, prog: prog || 0, by, next });
+    if (kind === 'fire') {
+      title = 'Главный костёр'; desc = 'Лечит игроков, жжёт монстров, отпугивает теней. Уровень определяет территорию лагеря и редкость умений.';
+      now = [`Территория: ${Sim.territory(G)}`, `Редкость умений: ${cfg.TIER_NAMES[G.fireLevel - 1]}`];
+      const tr = cfg.TERRITORY_RADIUS[Math.min(3, G.fireLevel)];
+      const cap = Sim.fireCap(G, o);
+      desc += ' Подойдите с бревнами или углём — они сами уходят в огонь. Заполните шкалу до конца — костёр получит уровень, и шкала расширится.';
+      now = [`Топливо: ${Math.floor(o.fuel)}/${cap} (прогорает ${cfg.FIRE_BURN_RATE}/с)`].concat(now);
+      push('fire', 'Шкала костра', G.fireLevel, Sim.fireMaxLevel(), cap, Math.floor(o.fuel), 'feed', G.fireLevel < Sim.fireMaxLevel() ? `шкала +${cfg.FIRE_LEVEL_STEPS[G.fireLevel]}, территория ${tr}, умения «${cfg.TIER_NAMES[Math.min(3, G.fireLevel)]}»` : 'максимальный уровень — поддерживайте огонь');
+    } else if (kind === 'kitchen') {
+      title = 'Полевая кухня'; desc = 'Подойдите — сырая еда из рюкзака начнёт готовиться. Готовка идёт, пока горит главный костёр.';
+      now = [`Готовит одновременно: ${o.lvl}`, `В очереди: ${o.queue ? o.queue.length : 0}`];
+      push('kitchen', 'Кухня', o.lvl, cfg.KITCHEN_MAX_LEVEL, lvlCost(o.lvl), o.up, 'any', `${o.lvl + 1} блюд одновременно`);
+    } else if (kind === 'mill') {
+      title = 'Лесопилка'; desc = 'Подойдите — бревна из рюкзака выгрузятся. Пилит бревна в доски, подкидывает бревна в главный костёр.';
+      now = [`Доски: ${o.planks}/${Sim.millCap(o)}`, `Бревна в очереди: ${o.logs}`];
+      push('mill', 'Лесопилка', o.lvl, cfg.MILL.maxLevel, lvlCost(o.lvl), o.up, 'any', `вместимость ${Sim.millCap({ lvl: o.lvl + 1 })}, пилит быстрее`);
+    } else {
+      const S = cfg.STRUCTURES[o.kind], up = o.up || {}, bl = Sim.bl(o);
+      title = S.name;
+      if (o.kind === 'wall') { desc = 'Монстры не могут пройти и пытаются сломать. С модулем программиста бьёт током.'; now = [`Прочность: ${Math.round(o.hp)}/${Math.round(o.mhp)}`]; }
+      if (o.kind === 'tower') { desc = 'Разгоняет туман вокруг. Инженер ставит на неё пушку (T рядом), программист — модуль (T рядом): без пушки модуль превращает вышку в лазер.'; now = [`Прочность: ${Math.round(o.hp)}/${Math.round(o.mhp)}`, o.armed ? 'Пушка установлена' : 'Без пушки', o.mod ? 'Модуль установлен' : 'Без модуля']; }
+      if (o.kind === 'turret') { desc = 'Автоматически стреляет по монстрам. Урон растёт с инженерией владельца и с каждой ночью.'; now = [`Прочность: ${Math.round(o.hp)}/${Math.round(o.mhp)}`, o.mod ? 'Модуль «Наведение»' : 'Без модуля']; }
+      if (o.kind === 'shop') { desc = 'Подойдите со шкурами, готовой едой или досками — товары сдаются и медленно продаются, рядом появляются монеты.'; now = [`Товаров: ${o.stockN !== undefined ? o.stockN : (o.stock || []).length}`, `Продажа: ${Math.round(Sim.shopSellTime(o) * 10) / 10} с/товар`]; }
+      if (o.kind === 'exchange') { desc = 'Майнит монеты. Подойдите, чтобы покупать и продавать AviCoin.'; now = [`Майнинг: ${Sim.exMine(G, o)} $ раз в ${Math.round(Sim.exRate(o))} с`, `Курс: ${G.crypto.price} $`]; }
+      if (o.kind === 'workshop') { desc = 'Подойдите с оружием в руках, чтобы улучшить его за монеты и доски (+15% урона за уровень).'; now = [`Оружие улучшается до ур. ${Sim.wsMax(G)}`]; }
+      if (o.kind === 'townhall') { desc = 'Снижает содержание всех построек и каждый рассвет собирает налог.'; now = [`Скидка на содержание: ${Sim.thDiscount(o)}%`, `Налог: ~${Sim.thTax(G, o)} $/день`]; }
+      if (o.kind === 'tower') push('tl', 'Вышка', o.tl || 1, cfg.TOWER_LEVELS.max, cfg.TOWER_LEVELS.cost[(o.tl || 1) - 1], up.tl, 'architect', `+${cfg.TOWER_LEVELS.hp * 100}% прочности, +${cfg.TOWER_LEVELS.range * 100}% дальности`);
+      if ((o.kind === 'tower' && o.armed) || o.kind === 'turret') push('cl', o.kind === 'turret' ? 'Турель' : 'Пушка', o.cl || 1, cfg.CANNON_LEVELS.max, cfg.CANNON_LEVELS.cost[(o.cl || 1) - 1], up.cl, 'engineer', `+${cfg.CANNON_LEVELS.dmg * 100}% урона`);
+      if (o.mod) push('ml', 'Модуль', o.ml || 1, cfg.MODULE_LEVELS.max, cfg.MODULE_LEVELS.cost[(o.ml || 1) - 1], up.ml, 'programmer', `+${cfg.MODULE_LEVELS.mult * 100}% силы модуля`);
+      const B = BU[o.kind];
+      if (B) {
+        const nx = ({ wall: () => `+${B.hp * 100}% прочности`, shop: () => `продажа на ${B.speed * 100}% быстрее, цены +${B.price * 100}%`, exchange: () => `+${B.mine} $ за майнинг, на ${B.rate * 100}% чаще`, workshop: () => `оружие до ур. ${B.weaponMax[bl] || ''}`, townhall: () => `скидка +${B.discount}%, налог +${B.tax * 100}%` })[o.kind]();
+        push('bl', title, bl, B.max, B.cost[bl - 1], up.bl, B.by, nx);
+      }
+      const u = cfg.UPKEEP[o.kind]; if (u) now.push(`Содержание: ${u[0] + u[1] * Math.max(0, bl - 1)} $/день`);
     }
-    const near = cands.filter(c => c.d < R * R).sort((a, b) => a.d - b.d);
-    return near[0] || null;
+    return { o, kind, title, desc, now, asp };
+  };
+  Sim.canUpgrade = (p, a) => a.by === 'any' || p.prof === a.by;  // 'feed' — только подбрасыванием топлива
+
+  Sim.nearestBuilding = function (G, p) {
+    const R2 = C().UPGRADE_RANGE ** 2;
+    const c = [];
+    const f = G.fires.find(q => q.main); if (f) c.push([f, 'fire']);
+    if (G.kitchen) c.push([G.kitchen, 'kitchen']);
+    if (G.store) c.push([G.store, 'mill']);
+    for (const s of G.structs) c.push([s, 'struct']);
+    let best = null, bd = R2;
+    for (const [o, k] of c) { const d = AB.dist2(p.x, p.y, o.x, o.y); if (d < bd) { bd = d; best = [o, k]; } }
+    return best ? Sim.buildingInfo(G, best[0], best[1]) : null;
+  };
+  // для подсказки U: первая грань, которую этот игрок может улучшить
+  Sim.upgradeInfo = function (G, p) {
+    const b = Sim.nearestBuilding(G, p);
+    if (!b) return null;
+    const a = b.asp.find(x => Sim.canUpgrade(p, x) && x.lvl < x.max && x.cost != null) || b.asp.find(x => Sim.canUpgrade(p, x));
+    return a ? Object.assign({ o: b.o }, a) : null;
   };
 
-  function upgradeNear(G, p) {
-    const cfg = C(), info = Sim.upgradeInfo(G, p);
-    if (!info) { Sim.msg(G, 'Рядом нечего улучшать (костёр, кухня, лесопилка, вышки и турели)', p.id, '#aab4aa'); return; }
+  // эффекты уровней
+  Sim.shopSellTime = (s) => C().SHOP.sellTime / (1 + C().BUILD_UPGRADES.shop.speed * (Sim.bl(s) - 1));
+  Sim.shopPrice = (s, k) => Math.max(1, Math.round((C().SHOP.prices[k] || 1) * (1 + C().BUILD_UPGRADES.shop.price * (Sim.bl(s) - 1))));
+  Sim.exRate = (s) => C().EXCHANGE.mineEvery / (1 + C().BUILD_UPGRADES.exchange.rate * (Sim.bl(s) - 1));
+  Sim.exMine = (G, s) => { const o = G.players.find(p => p.id === s.owner) || { st: {} }; return C().EXCHANGE.mineCoins + Math.floor((o.st.eng || 0) / 4) + C().BUILD_UPGRADES.exchange.mine * (Sim.bl(s) - 1); };
+  Sim.wsMax = (G) => { const w = G.structs.filter(s => s.kind === 'workshop'); if (!w.length) return 0; return Math.max(...w.map(s => C().BUILD_UPGRADES.workshop.weaponMax[Sim.bl(s) - 1])); };
+  Sim.thDiscount = (s) => C().TOWNHALL.upkeepDiscount + C().BUILD_UPGRADES.townhall.discount * (Sim.bl(s) - 1);
+  Sim.thTax = (G, s) => Math.round((C().TOWNHALL.taxBase + Math.floor(G.structs.length / C().TOWNHALL.taxPerStructs)) * (1 + C().BUILD_UPGRADES.townhall.tax * (Sim.bl(s) - 1)));
+
+  function upgradeNear(G, p, key) {
+    const cfg = C(), b = Sim.nearestBuilding(G, p);
+    if (!b) { Sim.msg(G, 'Подойдите к зданию, чтобы улучшить его', p.id, '#aab4aa'); return; }
+    const info = key ? b.asp.find(a => a.key === key) : (b.asp.find(x => Sim.canUpgrade(p, x) && x.lvl < x.max && x.cost != null) || b.asp[0]);
+    if (!info) { Sim.msg(G, `${b.title}: улучшений нет`, p.id); return; }
+    if (info.by === 'feed') { Sim.msg(G, 'Костёр растёт от топлива: подойдите с бревнами или углём', p.id, '#ffc46b'); return; }
+    if (!Sim.canUpgrade(p, info)) { Sim.msg(G, `${info.name} улучшает ${PROF_NAME(info.by)}`, p.id, '#ff9d7a'); return; }
     if (info.lvl >= info.max || info.cost == null) { Sim.msg(G, `${info.name}: максимальный уровень`, p.id); return; }
     const have = Sim.woodOf(G, p);
     const put = Math.min(have, info.cost - info.prog);
     if (put <= 0) { Sim.msg(G, `Нужны доски (${info.prog}/${info.cost}). Несите бревна на лесопилку`, p.id, '#ff9d7a'); return; }
     Sim.spendWood(G, p, put);
-    const o = info.o, prog = info.prog + put;
+    const o = b.o, prog = info.prog + put;
     const set = (v) => {
       if (info.key === 'fire') G.fireUp = v;
       else if (info.key === 'kitchen' || info.key === 'mill') o.up = v;
@@ -1581,12 +1674,15 @@
       Sim.fx(G, { k: 'fireup', x: o.x, y: o.y });
       return;
     }
-    if (info.key === 'kitchen') o.lvl++;
-    else if (info.key === 'mill') o.lvl++;
-    else if (info.key === 'tl') { o.tl = (o.tl || 1) + 1; const k = 1 + cfg.TOWER_LEVELS.hp; o.mhp *= k; o.hp = Math.min(o.mhp, o.hp * k); }
-    else if (info.key === 'cl') o.cl = (o.cl || 1) + 1;
-    else if (info.key === 'ml') o.ml = (o.ml || 1) + 1;
-    const lv = info.key === 'kitchen' || info.key === 'mill' ? o.lvl : o[info.key];
+    let lv;
+    if (info.key === 'kitchen' || info.key === 'mill') lv = ++o.lvl;
+    else if (info.key === 'tl') { lv = o.tl = (o.tl || 1) + 1; const k = 1 + cfg.TOWER_LEVELS.hp; o.mhp *= k; o.hp = Math.min(o.mhp, o.hp * k); }
+    else if (info.key === 'cl') lv = o.cl = (o.cl || 1) + 1;
+    else if (info.key === 'ml') lv = o.ml = (o.ml || 1) + 1;
+    else if (info.key === 'bl') {
+      lv = o.bl = Sim.bl(o) + 1;
+      if (o.kind === 'wall') { const k = 1 + cfg.BUILD_UPGRADES.wall.hp; o.mhp *= k; o.hp = Math.min(o.mhp, o.hp * k); }
+    }
     Sim.msg(G, `${info.name} улучшен до ур. ${lv}!`, -1, '#8fe08a');
     Sim.fx(G, { k: 'fireup', x: o.x, y: o.y });
   }
@@ -1623,7 +1719,8 @@
     if (!G.structs.some(s => s.kind === 'workshop' && AB.dist2(p.x, p.y, s.x, s.y) < 90 * 90)) { Sim.msg(G, 'Подойдите к мастерской инженера', p.id, '#ff9d7a'); return; }
     p.wl = p.wl || {};
     const lv = p.wl[p.w] || 0;
-    if (lv >= W.maxLevel) { Sim.msg(G, 'Оружие улучшено до максимума', p.id); return; }
+    const wmax = Math.min(W.maxLevel, Sim.wsMax(G));
+    if (lv >= wmax) { Sim.msg(G, lv >= W.maxLevel ? 'Оружие улучшено до максимума' : `Улучшите мастерскую, чтобы поднять оружие выше ур. ${wmax}`, p.id); return; }
     if (G.coins < W.coins[lv] || Sim.woodOf(G, p) < W.planks[lv]) { Sim.msg(G, `Нужно ${W.coins[lv]} $ и ${W.planks[lv]} досок`, p.id, '#ff9d7a'); return; }
     G.coins -= W.coins[lv]; Sim.spendWood(G, p, W.planks[lv]);
     p.wl[p.w] = lv + 1;
@@ -1690,12 +1787,12 @@
       pr: G.projs.map(p => [p.id, p.k, r1(p.x), r1(p.y), Math.round(p.vx), Math.round(p.vy)]),
       ep: G.eprojs.map(e => [r1(e.x), r1(e.y), Math.round(e.vx), Math.round(e.vy)]),
       te: G.tele.map(t => [t.sh, r1(t.x), r1(t.y), t.r || 0, r1(t.a || 0), t.len || 0, t.w || 0, Math.round(t.t / t.dur * 100) / 100, t.fr]),
-      stc: G.structs.map(q => [q.id, q.kind, r1(q.x), r1(q.y), Math.round(q.hp), Math.round(q.mhp), q.owner, q.armed ? 1 : 0, q.mod ? 1 : 0, r1(q.a), q.stock ? q.stock.length : 0, q.stock && q.stock.length ? Math.round(q.sellT / C().SHOP.sellTime * 100) / 100 : 0, q.tl || 1, q.cl || 1, q.ml || 1, q.up || {}]),
+      stc: G.structs.map(q => [q.id, q.kind, r1(q.x), r1(q.y), Math.round(q.hp), Math.round(q.mhp), q.owner, q.armed ? 1 : 0, q.mod ? 1 : 0, r1(q.a), q.stock ? q.stock.length : 0, q.stock && q.stock.length ? Math.round(q.sellT / C().SHOP.sellTime * 100) / 100 : 0, q.tl || 1, q.cl || 1, q.ml || 1, q.up || {}, q.bl || 1]),
       mc: G.merchant ? [G.merchant.x, G.merchant.y] : 0,
       mn: G.mines.map(q => [r1(q.x), r1(q.y)]),
       d: G.drops.map(d => [d.id, d.k, r1(d.x), r1(d.y)]),
       pl: G.plots.map(p => [r1(p.x), r1(p.y), p.crop, Math.round(p.t), p.ready ? 1 : 0, p.mod ? 1 : 0]),
-      f: G.fires.map(f => [r1(f.x), r1(f.y), r1(f.fuel), f.main ? 1 : 0, f.lvl, f.mod ? 1 : 0, f.lm]),
+      f: G.fires.map(f => [r1(f.x), r1(f.y), r1(f.fuel), f.main ? 1 : 0, f.lvl, f.mod ? 1 : 0, f.lm, f.cap || Sim.fireCap(G, f)]),
       ch: W.sites.filter(s2 => s2.opened).map(s2 => s2.id),
       so: [G.store.x, G.store.y, G.store.logs, G.store.planks, G.store.lvl, G.store.up, Math.round(G.store.sawT * 10) / 10],
       eco: [G.coins, G.fireUp, G.debt, G.upkeepLast, Math.round(G.crypto.price * 10) / 10, G.crypto.held, G.crypto.hist],
@@ -1753,13 +1850,13 @@
     G.projs = s.pr.map(a => ({ id: a[0], k: a[1], x: a[2], y: a[3], vx: a[4], vy: a[5] }));
     G.eprojs = s.ep.map(a => ({ x: a[0], y: a[1], vx: a[2], vy: a[3] }));
     G.tele = s.te.map(a => ({ sh: a[0], x: a[1], y: a[2], r: a[3], a: a[4], len: a[5], w: a[6], prog: a[7], fr: a[8] }));
-    G.structs = s.stc.map(a => ({ id: a[0], kind: a[1], x: a[2], y: a[3], hp: a[4], mhp: a[5], owner: a[6], armed: !!a[7], mod: !!a[8], a: a[9], r: cfg.STRUCTURES[a[1]].radius, stockN: a[10], sellP: a[11], tl: a[12], cl: a[13], ml: a[14], up: a[15] }));
+    G.structs = s.stc.map(a => ({ id: a[0], kind: a[1], x: a[2], y: a[3], hp: a[4], mhp: a[5], owner: a[6], armed: !!a[7], mod: !!a[8], a: a[9], r: cfg.STRUCTURES[a[1]].radius, stockN: a[10], sellP: a[11], tl: a[12], cl: a[13], ml: a[14], up: a[15], bl: a[16] }));
     G.merchant = s.mc ? { x: s.mc[0], y: s.mc[1] } : null;
     G.mines = s.mn.map(a => ({ x: a[0], y: a[1] }));
     const dmap = new Map(G.drops.map(d => [d.id, d]));
     G.drops = s.d.map(a => { const o = dmap.get(a[0]); return { id: a[0], k: a[1], x: a[2], y: a[3], age: o ? o.age : 0 }; });
     G.plots = s.pl.map((a, i) => ({ id: i, x: a[0], y: a[1], crop: a[2], t: a[3], ready: !!a[4], mod: !!a[5] }));
-    G.fires = s.f.map((a, i) => ({ id: i, x: a[0], y: a[1], fuel: a[2], main: !!a[3], lvl: a[4], mod: !!a[5], lm: a[6] }));
+    G.fires = s.f.map((a, i) => ({ id: i, x: a[0], y: a[1], fuel: a[2], main: !!a[3], lvl: a[4], mod: !!a[5], lm: a[6], cap: a[7] }));
     s.ch.forEach(id => { if (W.sites[id]) W.sites[id].opened = true; });
     if (s.so) G.store = { x: s.so[0], y: s.so[1], logs: s.so[2], planks: s.so[3], lvl: s.so[4], up: s.so[5], sawT: s.so[6] };
     if (s.eco) { G.coins = s.eco[0]; G.fireUp = s.eco[1]; G.debt = s.eco[2]; G.upkeepLast = s.eco[3]; G.crypto = { price: s.eco[4], held: s.eco[5], hist: s.eco[6] }; }
@@ -1772,7 +1869,7 @@
 
   function fireLight(f) {
     const cfg = C();
-    return cfg.FIRE_LIGHT_RADIUS * (0.35 + 0.65 * Math.min(1, f.fuel / (cfg.FIRE_FUEL_MAX * 0.6))) * (1 + cfg.FIRE_LEVEL_LIGHT * ((f.lvl || 1) - 1)) * (f.lm || 1);
+    return cfg.FIRE_LIGHT_RADIUS * (0.35 + 0.65 * Math.min(1, f.fuel / ((f.cap || cfg.FIRE_FUEL_MAX) * 0.5))) * (1 + cfg.FIRE_LEVEL_LIGHT * ((f.lvl || 1) - 1)) * (f.lm || 1);
   }
   AB.fireLight = fireLight;
 })(window.AB);

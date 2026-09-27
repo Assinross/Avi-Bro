@@ -305,6 +305,14 @@
         }
         break;
       }
+      case 'coal': {
+        const pts = [[7, 22], [10, 12], [17, 8], [25, 12], [27, 21], [20, 27], [11, 27]];
+        ctx.fillStyle = O; ctx.beginPath(); pts.forEach((q, i) => i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1])); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#2a2a30'; ctx.beginPath(); pts.forEach((q, i) => { const x = 16 + (q[0] - 16) * 0.85, y = 18 + (q[1] - 18) * 0.85; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#4a4a55'; ctx.beginPath(); ctx.moveTo(12, 14); ctx.lineTo(17, 11); ctx.lineTo(20, 16); ctx.lineTo(14, 18); ctx.fill();
+        ctx.fillStyle = '#ff7a2a'; ctx.fillRect(18, 21, 3, 2); ctx.fillStyle = '#ffd24a'; ctx.fillRect(12, 23, 2, 1);
+        break;
+      }
       case 'hide': {
         ctx.fillStyle = O; ctx.beginPath(); ctx.moveTo(6, 8); ctx.lineTo(12, 4); ctx.lineTo(20, 4); ctx.lineTo(26, 8); ctx.lineTo(28, 18); ctx.lineTo(24, 28); ctx.lineTo(16, 25); ctx.lineTo(8, 28); ctx.lineTo(4, 18); ctx.closePath(); ctx.fill();
         ctx.fillStyle = '#8a7058'; ctx.beginPath(); ctx.moveTo(7, 9); ctx.lineTo(12, 6); ctx.lineTo(20, 6); ctx.lineTo(25, 9); ctx.lineTo(26, 18); ctx.lineTo(23, 26); ctx.lineTo(16, 23); ctx.lineTo(9, 26); ctx.lineTo(6, 18); ctx.closePath(); ctx.fill();
@@ -410,6 +418,6 @@
     S.chest = makeChest(false); S.chestOpen = makeChest(true);
     S.tent = makeTent(); S.logs = makeLogs();
     S.icons = {};
-    ['wood', 'meat', 'berry', 'carrot', 'pumpkin', 'cooked_meat', 'cooked_carrot', 'cooked_pumpkin', 'plank', 'hide', 'coin', 'seed_carrot', 'seed_pumpkin', 'axe', 'knife', 'spear', 'bow', 'crossbow', 'rifle'].forEach(k => S.icons[k] = makeIcon(k));
+    ['wood', 'meat', 'berry', 'carrot', 'pumpkin', 'cooked_meat', 'cooked_carrot', 'cooked_pumpkin', 'plank', 'hide', 'coal', 'coin', 'seed_carrot', 'seed_pumpkin', 'axe', 'knife', 'spear', 'bow', 'crossbow', 'rifle'].forEach(k => S.icons[k] = makeIcon(k));
   };
 })(window.AB);
