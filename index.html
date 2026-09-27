@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Avi-Bro: 99 ночей в лесу</title>
+  <meta name="description" content="Браузерная игра на выживание в лесу для одного или двух игроков.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800&family=Press+Start+2P&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 2 L28 26 H4 Z' fill='%232e6a3a'/%3E%3Crect x='14' y='24' width='4' height='6' fill='%236b4a2e'/%3E%3C/svg%3E">
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <!-- Главное меню -->
+  <div id="menu" class="screen">
+    <div class="card">
+      <div class="logo">AVI-BRO</div>
+      <div class="subtitle">99 ночей в лесу</div>
+      <label class="field">Ваше имя
+        <input id="name" maxlength="12" placeholder="Игрок" autocomplete="off">
+      </label>
+      <button id="btnSolo" class="btn gold">Один игрок</button>
+      <button id="btnCoop" class="btn">Игра вдвоём</button>
+      <button id="btnHelp" class="btn ghost">Как играть</button>
+      <div id="menuMsg" class="msg"></div>
+    </div>
+  </div>
+
+  <!-- Выбор: создать / подключиться -->
+  <div id="coop" class="screen hidden">
+    <div class="card">
+      <h2>Игра вдвоём</h2>
+      <p class="note">Оба компьютера должны быть в одной сети Wi-Fi и открыть эту же страницу.</p>
+      <label class="field">Ваше имя
+        <input id="name2" maxlength="12" placeholder="Игрок" autocomplete="off">
+      </label>
+      <button id="btnHost" class="btn gold">Создать комнату</button>
+      <div class="sep"><span>или</span></div>
+      <label class="field">Код комнаты друга
+        <div class="row">
+          <input id="code" maxlength="6" inputmode="numeric" placeholder="1234" autocomplete="off">
+          <button id="btnJoin" class="btn small">Войти</button>
+        </div>
+      </label>
+      <div id="coopErr" class="msg"></div>
+      <div id="peerWarn" class="msg warn hidden">Сетевая библиотека не загрузилась — игра вдвоём недоступна. Проверьте интернет.</div>
+      <button class="btn ghost" data-back="menu">Назад</button>
+    </div>
+  </div>
+
+  <!-- Лобби хоста -->
+  <div id="lobby" class="screen hidden">
+    <div class="card">
+      <h2>Комната создана</h2>
+      <p class="note">Код комнаты:</p>
+      <div id="roomCode" class="code">····</div>
+      <label class="field">Или отправьте ссылку
+        <div class="row">
+          <input id="roomLink" readonly>
+          <button id="btnCopy" class="btn small">Копировать</button>
+        </div>
+      </label>
+      <div class="status"><span class="spinner"></span><span id="lobbyStatus">Создаём комнату…</span></div>
+      <button id="btnSoloFromLobby" class="btn ghost">Играть одному</button>
+      <button class="btn ghost" data-back="coop">Отмена</button>
+    </div>
+  </div>
+
+  <!-- Подключение гостя -->
+  <div id="joining" class="screen hidden">
+    <div class="card">
+      <h2>Подключение</h2>
+      <div class="status"><span class="spinner"></span><span id="joinStatus">Подключение…</span></div>
+      <button class="btn ghost" data-back="coop">Отмена</button>
+    </div>
+  </div>
+
+  <!-- Помощь -->
+  <div id="help" class="screen hidden">
+    <div class="card wide">
+      <h2>Как играть</h2>
+      <div class="cols">
+        <div>
+          <h3>Цель</h3>
+          <p>Продержитесь <b>99 ночей</b>. Днём исследуйте лес, рубите деревья и ищите сундуки в руинах. Ночью лес наполняется тенями — держитесь у костра.</p>
+          <h3>Управление</h3>
+          <ul>
+            <li><kbd>ЛКМ</kbd> (удерживать или клик) — идти к курсору</li>
+            <li><kbd>←</kbd><kbd>↑</kbd><kbd>→</kbd><kbd>↓</kbd> или <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> — движение</li>
+            <li>Мышь — направление взгляда</li>
+            <li><kbd>1</kbd>–<kbd>5</kbd> или колесо — выбор оружия</li>
+            <li><kbd>E</kbd> съесть · <kbd>R</kbd> посадить семя</li>
+            <li><kbd>G</kbd> грядка · <kbd>B</kbd> костёр (у курсора)</li>
+            <li><kbd>Esc</kbd> пауза</li>
+          </ul>
+        </div>
+        <div>
+          <h3>Автоматические действия</h3>
+          <p>Стрельба и удары — сами, когда монстр входит в радиус оружия. Рубка деревьев, сбор ягод, урожая и открытие сундуков — сами, стоит подойти.</p>
+          <h3>Выживание</h3>
+          <ul>
+            <li>Сытость падает — ешьте мясо с монстров, ягоды и овощи.</li>
+            <li>Семена редкие: в сундуках и у сильных монстров.</li>
+            <li>Сажайте на грядках в лагере (<kbd>R</kbd>), урожай собирается сам.</li>
+            <li>Костёр лечит и отпугивает теней. Дрова подкидываются сами, если стоять рядом.</li>
+            <li>Оружие лежит в руинах под охраной — чем дальше от лагеря, тем сильнее охрана и лучше награда.</li>
+          </ul>
+        </div>
+      </div>
+      <button class="btn ghost" data-back="menu">Назад</button>
+    </div>
+  </div>
+
+  <!-- Пауза -->
+  <div id="pause" class="screen hidden">
+    <div class="card">
+      <h2>Пауза</h2>
+      <p id="pauseNote" class="note"></p>
+      <button id="btnResume" class="btn gold">Продолжить</button>
+      <button id="btnQuit" class="btn ghost">Выйти в меню</button>
+    </div>
+  </div>
+
+  <!-- Конец игры -->
+  <div id="over" class="screen hidden">
+    <div class="card">
+      <h2 id="overTitle">Конец</h2>
+      <p id="overText" class="note"></p>
+      <button id="btnRetry" class="btn gold">Играть снова</button>
+      <button id="btnMenu" class="btn ghost">В меню</button>
+    </div>
+  </div>
+
+  <!-- Библиотека WebRTC (PeerJS) с запасным CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <script>
+    // запасной CDN, если основной недоступен
+    if (!window.Peer) { var s = document.createElement('script'); s.src = 'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js'; document.head.appendChild(s); }
+  </script>
+
+  <script src="config.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/world.js"></script>
+  <script src="js/sim.js"></script>
+  <script src="js/sprites.js"></script>
+  <script src="js/fx.js"></script>
+  <script src="js/render.js"></script>
+  <script src="js/net.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
