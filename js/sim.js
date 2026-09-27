@@ -4,7 +4,7 @@
   const TAU = Math.PI * 2;
   const MON_TYPES = ['wolf', 'ghoul', 'shade', 'brute', 'alpha', 'spider', 'spitter', 'giant', 'packlord', 'witch', 'golem'];
   AB.MON_TYPES = MON_TYPES;
-  const ITEM_KEYS = ['wood', 'meat', 'berry', 'carrot', 'pumpkin', 'cooked_meat', 'cooked_carrot', 'cooked_pumpkin', 'seed_carrot', 'seed_pumpkin'];
+  const ITEM_KEYS = ['wood', 'meat', 'berry', 'carrot', 'pumpkin', 'cooked_meat', 'cooked_carrot', 'cooked_pumpkin', 'plank', 'hide', 'seed_carrot', 'seed_pumpkin', 'coin'];
   AB.ITEM_KEYS = ITEM_KEYS;
   AB.monDef = (t) => C().MONSTERS[t] || C().BOSSES[t];
   AB.isBoss = (t) => !!C().BOSSES[t];
@@ -22,8 +22,11 @@
       fires: W.fires.map((f, i) => ({ id: i, x: f.x, y: f.y, fuel: cfg.FIRE_FUEL_START, main: f.main, lvl: 1, mod: false, lm: 1 })),
       nextId: 1, spawnT: 2, fxOut: [], treeDirty: new Set(), bushDirty: new Set(),
       over: null, stats: { kills: 0 }, fireLevel: 1, nextBoss: cfg.BOSS_FIRST_NIGHT, bossCount: 0, team: {},
-      store: { x: W.fires[0].x + cfg.STORAGE_OFFSET[0], y: W.fires[0].y + cfg.STORAGE_OFFSET[1], wood: 0, feedT: 0 },
-      kitchen: { x: W.fires[0].x + cfg.KITCHEN_OFFSET[0], y: W.fires[0].y + cfg.KITCHEN_OFFSET[1], slots: [], queue: [] }, fireT: 0,
+      store: { x: W.fires[0].x + cfg.STORAGE_OFFSET[0], y: W.fires[0].y + cfg.STORAGE_OFFSET[1], logs: 0, planks: cfg.MILL.startPlanks, lvl: 1, up: 0, sawT: 0, feedT: 0 },
+      coins: cfg.START_COINS, fireUp: 0, debt: 0, upkeepLast: 0,
+      crypto: { price: cfg.EXCHANGE.startPrice, hist: [cfg.EXCHANGE.startPrice], held: 0, t: 0 },
+      merchant: null,
+      kitchen: { x: W.fires[0].x + cfg.KITCHEN_OFFSET[0], y: W.fires[0].y + cfg.KITCHEN_OFFSET[1], slots: [], queue: [], lvl: 1, up: 0 }, fireT: 0,
     };
     if (mode !== 'guest') {
       W.sites.forEach((s) => {
@@ -46,7 +49,7 @@
       hp: cfg.PLAYER_MAX_HP, mhp: cfg.PLAYER_MAX_HP, food: cfg.PLAYER_MAX_FOOD, dead: false, rs: 0,
       w: pd.weapons[pd.weapons.length - 1], ws: pd.weapons.slice(), inv: {},
       atkCd: 0, chopCd: 0, feedCd: 0, sw: 0, sk: 'axe', sa: 0, tp: 0, hurt: 0,
-      level: 1, queue: [], offers: null, skills: [], rr: 0, st: {}, swl: 0,
+      level: 1, queue: [], offers: null, skills: [], rr: 0, st: {}, swl: 0, wl: {},
       adrenT: 0, mineT: 0, meteorT: 0, lightT: 0, auraT: 0, droneCd: [], repT: 0,
     };
     ITEM_KEYS.forEach(k => p.inv[k] = cfg.START_ITEMS[k] || 0);
@@ -149,6 +152,7 @@
     if (!ti.isNight && prevNight) {
       if (prevDay >= cfg.NIGHTS_TO_WIN) { G.over = 'win'; Sim.fx(G, { k: 'over', s: 'win' }); return; }
       onDawn(G, prevDay);
+      dailyEconomy(G);
     }
     updatePlayers(G, dt);
     updateStructs(G, dt);
@@ -159,11 +163,13 @@
     updateDrops(G, dt);
     updateWorld(G, dt);
     spawnLogic(G, dt);
+    updateEconomy(G, dt);
     if (G.players.length && G.players.every(p => p.dead)) { G.over = 'lose'; Sim.fx(G, { k: 'over', s: 'lose' }); }
   };
 
   function onNight(G) {
     const cfg = C();
+    if (G.merchant) { G.merchant = null; G.players.forEach(p => p.mo = []); Sim.msg(G, 'Торговец ушёл до следующего визита', -1, '#c8b890'); }
     Sim.msg(G, `Ночь ${G.day}. Держитесь у костра!`, -1, '#9fb8ff');
     Sim.fx(G, { k: 'snd', s: 'night' });
     G.monsters.forEach(m => { if (!m.guard) m.hunter = true; });
@@ -176,16 +182,34 @@
 
   function onDawn(G, prevDay) {
     const cfg = C();
+    if ((prevDay + 1) % cfg.MERCHANT.every === 0) {
+      const f = G.fires.find(q => q.main);
+      G.merchant = { x: f.x + cfg.MERCHANT.offset[0], y: f.y + cfg.MERCHANT.offset[1] };
+      for (const p of G.players) p.mgBought = {};
+      for (const p of G.players) p.mo = (!cfg.MERCHANT.onlyHunter || p.st.shopBuild > 0) ? merchantOffers(G, p) : [];
+      Sim.msg(G, 'К лагерю пришёл торговец! Он уйдёт с наступлением ночи', -1, '#ffd24a');
+    }
     Sim.msg(G, `Рассвет! Пережито ночей: ${prevDay} из ${cfg.NIGHTS_TO_WIN}`, -1, '#ffd98a');
     G.monsters.forEach(m => { if (!m.boss) m.hunter = false; if (m.type === 'shade') m.dying = 1.2; });
     for (const p of G.players) {
       p.level++;
       p.queue.push(p.level % cfg.SUPER_EVERY === 0 ? 's' : 'n');
-      if (p.st.harvest > 0) { G.store.wood += Math.round(p.st.harvest); Sim.msg(G, `Собиратель: +${Math.round(p.st.harvest)} дерева на склад`, p.id, '#c8f0a0'); }
+      if (p.st.harvest > 0) { G.store.logs += Math.round(p.st.harvest); Sim.msg(G, `Собиратель: +${Math.round(p.st.harvest)} бревен на лесопилку`, p.id, '#c8f0a0'); }
       AB.Skills.ensureOffers(G, p);
       Sim.fx(G, { k: 'lvl', x: p.x, y: p.y, pid: p.id, n: p.level, sup: p.level % cfg.SUPER_EVERY === 0 ? 1 : 0 });
     }
   }
+
+  function merchantOffers(G, p) {
+    const cfg = C(), M = cfg.MERCHANT;
+    const out = [];
+    for (let i = 0; i < M.offers; i++) {
+      const o = AB.Skills.makeOffers(G, p, 'n')[0];
+      if (o && !out.some(q => q.id === o.id)) out.push({ id: o.id, tier: o.tier, price: M.prices[o.tier - 1], sold: 0 });
+    }
+    return out;
+  }
+  Sim.upgradePrice = (tier) => C().MERCHANT.upgradePrices[tier] || null;
 
   function spawnBoss(G) {
     const cfg = C();
@@ -225,20 +249,22 @@
       }
       return false;
     }
+    if (k === 'coin') { G.coins += n; return true; }
     if (Sim.bagItem(k) && Sim.bagUsed(p) + n > Sim.bagCap(p)) return false;
     p.inv[k] = (p.inv[k] || 0) + n;
     return true;
   }
   // Рюкзак: дерево и еда занимают место, семена — нет
-  Sim.bagItem = (k) => k === 'wood' || !!C().FOOD[k];
+  Sim.bagItem = (k) => k === 'wood' || k === 'plank' || k === 'hide';
   Sim.bagUsed = (p) => { let n = 0; for (const k in p.inv) if (Sim.bagItem(k)) n += p.inv[k] || 0; return n; };
   Sim.bagCap = (p) => C().BACKPACK_START + ((p.st && p.st.bag) || 0) + (p.bagUp || 0);
-  // Дерево: из рюкзака + со склада лагеря
-  Sim.woodOf = (G, p) => (p.inv.wood || 0) + ((G.store && G.store.wood) || 0);
+  // Доски: из рюкзака + с лесопилки
+  Sim.woodOf = (G, p) => (p.inv.plank || 0) + ((G.store && G.store.planks) || 0);
   Sim.spendWood = function (G, p, n) {
-    const a = Math.min(p.inv.wood || 0, n);
-    p.inv.wood -= a; G.store.wood -= n - a;
+    const a = Math.min(p.inv.plank || 0, n);
+    p.inv.plank -= a; G.store.planks -= n - a;
   };
+  Sim.millCap = (S) => C().MILL.capacity + C().MILL.capPerLevel * ((S.lvl || 1) - 1);
 
   Sim.dropItem = function (G, k, n, x, y, spread) {
     for (let i = 0; i < n; i++) {
@@ -320,14 +346,27 @@
     const mb = p ? p.st.meatBonus : (G.team.meatBonus || 0) / Math.max(1, G.players.length);
     if (mb > 0 && rnd() * 100 < mb) meat++;
     if (meat > 0) Sim.dropItem(G, 'meat', meat, m.x, m.y, 12);
+    if (def.hide && rnd() < def.hide * (1 + luck / 100)) Sim.dropItem(G, 'hide', 1, m.x, m.y, 12);
+    dropCoins(G, m);
     if (rnd() < def.seedChance * (1 + luck / 100)) Sim.dropItem(G, rnd() < 0.7 ? 'seed_carrot' : 'seed_pumpkin', 1, m.x, m.y, 12);
     if (p && p.st.killHeal > 0 && !p.dead) p.hp = Math.min(p.mhp, p.hp + p.st.killHeal);
+  }
+
+  function dropCoins(G, m) {
+    const cfg = C(), cd = cfg.COIN_DROP[m.boss ? 'boss' : m.type];
+    if (!cd) return;
+    const depth = Sim.depth(G, m.x, m.y);
+    let n = cd[0] + Math.floor(rnd() * (cd[1] - cd[0] + 1));
+    n = Math.round(n * (1 + (cfg.DEPTH_COINS - 1) * depth));
+    if (n > 0) Sim.dropItem(G, 'coin', n, m.x, m.y, 16);
   }
 
   function bossReward(G, m) {
     const cfg = C(), R = cfg.BOSS_REWARD;
     Sim.dropItem(G, 'meat', R.meat, m.x, m.y, 40);
+    dropCoins(G, m);
     Sim.dropItem(G, 'wood', R.wood, m.x, m.y, 40);
+    if (R.hides) Sim.dropItem(G, 'hide', R.hides, m.x, m.y, 30);
     for (let i = 0; i < R.seeds; i++) Sim.dropItem(G, rnd() < 0.5 ? 'seed_carrot' : 'seed_pumpkin', 1, m.x, m.y, 30);
     Sim.msg(G, `Босс «${cfg.BOSSES[m.type].name}» повержен! Бонусное умение каждому`, -1, '#ffd24a');
     G.tele = G.tele.filter(t => t.owner !== m.id);
@@ -422,7 +461,8 @@
     if (st.syn_nest > 0 && nearStruct(G, p.x, p.y, 80, ['tower'])) dmgPct += st.syn_nest;
     let rangeMul = 1, crit = st.crit;
     if (p.prof === 'hunter' && T.syn_loophole > 0 && nearStruct(G, p.x, p.y, 90, ['wall', 'tower'])) { rangeMul += T.syn_loophole / 100; crit += T.syn_loophole / 2; }
-    const dmg = Math.max(1, (w.damage + (melee ? st.melee : st.ranged)) * (1 + dmgPct / 100));
+    const wlv = (p.wl && p.wl[p.w]) || 0;
+    const dmg = Math.max(1, (w.damage + (melee ? st.melee : st.ranged)) * (1 + dmgPct / 100) * (1 + C().WORKSHOP.dmg * wlv));
     const spd = Math.max(0.5, 1 + (st.atkSpd + (p.adrenT > 0 ? st.adren : 0)) / 100);
     const range = (w.range + (melee ? st.range * 0.4 : st.range)) * (melee ? 1 : rangeMul);
     return { w, melee, dmg, cd: w.cooldown / spd, range, crit, critMult: cfg.CRIT_MULT + st.critMult, proj: 1 + (melee ? 0 : st.proj), pierce: (w.pierce || 1) + st.pierce };
@@ -645,23 +685,42 @@
       if (s.hp <= 0) { G.structs.splice(i, 1); Sim.fx(G, { k: 'sbreak', x: s.x, y: s.y }); continue; }
       s.cd -= dt;
       const owner = G.players.find(p => p.id === s.owner) || { st: {} };
+      if (s.kind === 'shop') { updateShop(G, s, dt); continue; }
+      if (s.kind === 'exchange') {
+        if (G.debt > 0) continue;
+        s.mineT = (s.mineT || 0) + dt;
+        if (s.mineT >= cfg.EXCHANGE.mineEvery) {
+          s.mineT = 0;
+          const n = cfg.EXCHANGE.mineCoins + Math.floor((owner.st.eng || 0) / 4);
+          Sim.dropItem(G, 'coin', n, s.x, s.y + 24, 14);
+          Sim.fx(G, { k: 'sold', x: s.x, y: s.y, n });
+        }
+        continue;
+      }
+      if (s.kind === 'workshop' || s.kind === 'townhall') continue;
+      const modLv = 1 + cfg.MODULE_LEVELS.mult * ((s.ml || 1) - 1);
+      if (G.debt > 0) continue;
       if (s.kind === 'turret' || (s.kind === 'tower' && (s.armed || s.mod))) {
         let range, dmg, cdv, speed, src, extra = {};
         if (s.kind === 'turret') {
           const Tt = cfg.TURRET, eng = owner.st.eng || 0;
           range = Tt.range; dmg = Tt.damage + eng * Tt.engScale; cdv = Tt.cooldown; speed = Tt.projSpeed; src = 'turret';
           dmg *= 1 + (owner.st.turretDmg || 0) / 100;
-          if (s.mod) { dmg *= 1 + cfg.MODULES.turret.dmg / 100; range *= 1 + cfg.MODULES.turret.range / 100; cdv /= 1 + (T.syn_compat || 0) / 100; }
+          dmg *= 1 + cfg.CANNON_LEVELS.dmg * ((s.cl || 1) - 1);
+          if (s.mod) { dmg *= 1 + cfg.MODULES.turret.dmg * modLv / 100; range *= 1 + cfg.MODULES.turret.range * modLv / 100; cdv /= 1 + (T.syn_compat || 0) / 100; }
           if (owner.st.syn_caliber > 0 && G.structs.some(o => o !== s && o.kind !== 'turret' && AB.dist2(o.x, o.y, s.x, s.y) < 150 * 150)) dmg *= 1 + owner.st.syn_caliber / 100;
         } else if (s.armed) {
           const Cn = cfg.CANNON, eng = (G.players.find(p => p.id === s.armedBy) || owner).st.eng || 0;
           range = Cn.range; dmg = (Cn.damage + eng * Cn.engScale) * (1 + (T.syn_mount || 0) / 100); cdv = Cn.cooldown; speed = Cn.projSpeed; src = 'cannon';
           extra.splash = Cn.splash;
-          if (s.mod) { dmg *= 1 + cfg.MODULES.turret.dmg * modMult(G, s) / 100; range *= 1 + cfg.MODULES.turret.range / 100; cdv /= 1 + (T.syn_compat || 0) / 100; }
+          dmg *= 1 + cfg.CANNON_LEVELS.dmg * ((s.cl || 1) - 1);
+          if (s.mod) { dmg *= 1 + cfg.MODULES.turret.dmg * modMult(G, s) * modLv / 100; range *= 1 + cfg.MODULES.turret.range * modLv / 100; cdv /= 1 + (T.syn_compat || 0) / 100; }
         } else {
           const Lz = cfg.MODULES.tower, prog = G.players.find(p => p.id === s.modBy) || owner;
-          range = Lz.range; dmg = (Lz.damage + (prog.st.eng || 0) * Lz.engScale) * modMult(G, s); cdv = Lz.cooldown; speed = 900; src = 'laser';
+          range = Lz.range; dmg = (Lz.damage + (prog.st.eng || 0) * Lz.engScale) * modMult(G, s) * modLv; cdv = Lz.cooldown; speed = 900; src = 'laser';
         }
+        if (s.kind === 'tower') range *= 1 + cfg.TOWER_LEVELS.range * ((s.tl || 1) - 1);
+        dmg *= 1 + cfg.STRUCT_DMG_PER_NIGHT * (G.day - 1);
         range *= 1 + (T.syn_targeting || 0) / 100;
         if (s.cd <= 0) {
           const t = nearestMonster(G, s.x, s.y - 20, range, src === 'laser' && T.syn_scope > 0);
@@ -684,6 +743,35 @@
         G.mines.splice(i, 1);
         explode(G, mn.x, mn.y, C().MINE.radius, mn.dmg, G.players.find(p => p.id === mn.owner), null, 'mine');
       }
+    }
+  }
+
+  // Лавка: принимает товары, медленно продаёт, выдаёт монеты владельцу
+  function updateShop(G, s, dt) {
+    const cfg = C(), SH = cfg.SHOP;
+    s.stock = s.stock || []; s.sellT = s.sellT || 0;
+    for (const p of G.players) {
+      if (p.dead || AB.dist2(p.x, p.y, s.x, s.y) > SH.depositRadius ** 2) continue;
+      const got = [];
+      let foodLeft = Object.keys(SH.prices).filter(k => cfg.FOOD[k]).reduce((a, k) => a + (p.inv[k] || 0), 0);
+      for (const k in SH.prices) {
+        let n = p.inv[k] || 0;
+        if (cfg.FOOD[k]) n = Math.max(0, Math.min(n, foodLeft - SH.keepFood));
+        if (n <= 0) continue;
+        if (cfg.FOOD[k]) foodLeft -= n;
+        for (let i = 0; i < n; i++) s.stock.push(k);
+        p.inv[k] -= n;
+        got.push(`${AB.itemName(k).toLowerCase()} ×${n}`);
+      }
+      if (got.length) { Sim.msg(G, `В лавку: ${got.join(', ')}`, p.id, '#ffd24a'); Sim.fx(G, { k: 'rustle', x: s.x, y: s.y }); }
+    }
+    if (!s.stock.length) { s.sellT = 0; return; }
+    s.sellT += dt;
+    if (s.sellT >= SH.sellTime) {
+      s.sellT = 0;
+      const it = s.stock.shift(), n = SH.prices[it] || 1;
+      for (let i = 0; i < n; i++) { const a = rnd() * TAU, r = 18 + rnd() * 16; G.drops.push({ id: G.nextId++, k: 'coin', x: s.x + Math.cos(a) * r, y: s.y + 20 + Math.sin(a) * r * 0.6, t: 0, age: 0 }); }
+      Sim.fx(G, { k: 'sold', x: s.x, y: s.y, n });
     }
   }
 
@@ -796,7 +884,7 @@
           m.x = s.x + dx / d * rr; m.y = s.y + dy / d * rr;
           if (s.kind === 'wall' && (s.mod || fenceDps > 0)) {
             const own = G.players.find(p => p.id === s.modBy) || { st: {} };
-            const dps = (s.mod ? (cfg.MODULES.wall.damage + (own.st.eng || 0) * cfg.MODULES.wall.engScale) * modMult(G, s) : 0) + fenceDps;
+            const dps = (s.mod ? (cfg.MODULES.wall.damage + (own.st.eng || 0) * cfg.MODULES.wall.engScale) * modMult(G, s) * (1 + cfg.MODULE_LEVELS.mult * ((s.ml || 1) - 1)) : 0) + fenceDps;
             m.fenceT = (m.fenceT || 0) - dt;
             if (m.fenceT <= 0) { m.fenceT = 0.5; m.slowT = 1; m.slowPct = Math.max(m.slowPct || 0, cfg.MODULES.wall.slow); damageMonster(G, m, dps * 0.5, { src: 'fence', noProc: true }); Sim.fx(G, { k: 'zap', x: (m.x + s.x) / 2, y: (m.y + s.y) / 2 }); }
           }
@@ -1069,10 +1157,11 @@
     for (let i = G.drops.length - 1; i >= 0; i--) {
       const d = G.drops[i];
       d.age += dt;
+      if (!cfg.AUTO_PICKUP) continue;
       if (d.age < 0.35) continue;
       let best = null, bd = Infinity, br = 0;
       for (const p of G.players) {
-        if (p.dead) continue;
+        if (p.dead || (d.o !== undefined && d.o !== p.id)) continue;
         const mr = cfg.MAGNET_RADIUS * (1 + p.st.pickup / 100);
         const dd = AB.dist(d.x, d.y, p.x, p.y);
         if (dd < mr && dd < bd) { bd = dd; best = p; br = mr; }
@@ -1138,21 +1227,87 @@
     }
   }
 
-  // Склад: забирает дерево у подошедших, подкидывает дрова в главный костёр
+  // Лесопилка: принимает бревна, пилит их в доски, подкидывает бревна в главный костёр
   function updateStore(G, dt) {
-    const cfg = C(), S = G.store;
+    const cfg = C(), M = cfg.MILL, S = G.store;
     for (const p of G.players) {
-      if (p.dead || !(p.inv.wood > 0) || AB.dist2(p.x, p.y, S.x, S.y) > cfg.STORAGE_RADIUS ** 2) continue;
-      S.wood += p.inv.wood;
-      Sim.msg(G, `На склад: дерево ×${p.inv.wood} (всего ${S.wood})`, p.id, '#c8a06a');
+      if (p.dead || !(p.inv.wood > 0) || AB.dist2(p.x, p.y, S.x, S.y) > M.radius ** 2) continue;
+      S.logs += p.inv.wood;
+      Sim.msg(G, `На лесопилку: бревна ×${p.inv.wood}`, p.id, '#c8a06a');
       Sim.fx(G, { k: 'build', x: S.x, y: S.y });
       p.inv.wood = 0;
     }
+    const cap = Sim.millCap(S);
+    if (S.logs > 0 && S.planks < cap) {
+      S.sawT += dt * (G.debt > 0 ? 0.5 : 1);
+      const need = M.sawTime / (1 + M.sawPerLevel * (S.lvl - 1));
+      if (S.sawT >= need) { S.sawT = 0; S.logs--; S.planks = Math.min(cap, S.planks + M.planksPerLog); Sim.fx(G, { k: 'saw', x: S.x, y: S.y }); }
+    } else S.sawT = 0;
     S.feedT -= dt;
     const f = G.fires.find(q => q.main);
-    if (cfg.STORAGE_FEED_FIRE && f && S.wood > 0 && S.feedT <= 0 && f.fuel < cfg.FIRE_FUEL_MAX * cfg.STORAGE_FEED_BELOW) {
-      S.feedT = 1; S.wood--; f.fuel = Math.min(cfg.FIRE_FUEL_MAX, f.fuel + cfg.FUEL_PER_WOOD);
+    if (M.feedFire && f && S.logs > 0 && S.feedT <= 0 && f.fuel < cfg.FIRE_FUEL_MAX * M.feedBelow) {
+      S.feedT = 1; S.logs--; f.fuel = Math.min(cfg.FIRE_FUEL_MAX, f.fuel + cfg.FUEL_PER_WOOD);
       Sim.fx(G, { k: 'feed', x: f.x, y: f.y });
+    }
+  }
+
+  /* ======================= ЭКОНОМИКА ======================= */
+  // Список статей содержания: [название, монет]
+  Sim.upkeepList = function (G) {
+    const cfg = C(), U = cfg.UPKEEP, out = [];
+    const add = (name, arr, lvl) => { const v = arr[0] + arr[1] * Math.max(0, (lvl || 1) - 1); if (v > 0) out.push([name, v]); };
+    for (const s of G.structs) {
+      if (s.kind === 'tower') { add('Вышка', U.tower, s.tl); if (s.armed) add('Пушка', U.cannon, s.cl); }
+      else if (U[s.kind]) add(cfg.STRUCTURES[s.kind].name, U[s.kind], s.kind === 'turret' ? s.cl : 1);
+      if (s.mod) add('Модуль', U.module, s.ml);
+    }
+    add('Кухня', U.kitchen, G.kitchen.lvl); add('Лесопилка', U.mill, G.store.lvl); add('Костёр', U.fire, G.fireLevel);
+    return out;
+  };
+  Sim.upkeepTotal = function (G) {
+    const cfg = C();
+    let t = Sim.upkeepList(G).reduce((a, x) => a + x[1], 0);
+    if (G.structs.some(s => s.kind === 'townhall')) t = Math.ceil(t * (1 - cfg.TOWNHALL.upkeepDiscount / 100));
+    return t;
+  };
+  function dailyEconomy(G) {
+    const cfg = C();
+    const th = G.structs.find(s => s.kind === 'townhall');
+    if (th) {
+      const tax = cfg.TOWNHALL.taxBase + Math.floor(G.structs.length / cfg.TOWNHALL.taxPerStructs);
+      G.coins += tax;
+      Sim.msg(G, `Ратуша собрала налог: +${tax} $`, -1, '#ffd24a');
+    }
+    const total = Sim.upkeepTotal(G);
+    G.upkeepLast = total;
+    if (total <= 0) { G.debt = 0; return; }
+    if (G.coins >= total) {
+      G.coins -= total; G.debt = 0;
+      Sim.msg(G, `Содержание построек: −${total} $ (в казне ${G.coins} $)`, -1, '#e0c890');
+    } else {
+      G.debt = total;
+      Sim.msg(G, `Не хватает ${total - G.coins} $ на содержание! Турели и пушки отключены, кухня и лесопилка работают вполовину`, -1, '#ff8a6a');
+    }
+  }
+  function updateEconomy(G, dt) {
+    const cfg = C(), E = cfg.EXCHANGE;
+    // долг гасится, как только в казне хватает монет
+    if (G.debt > 0 && G.coins >= G.debt) { G.coins -= G.debt; G.debt = 0; Sim.msg(G, 'Долг за содержание оплачен — постройки снова работают', -1, '#8fe08a'); }
+    // курс крипты
+    if (G.structs.some(s => s.kind === 'exchange')) {
+      const cr = G.crypto;
+      cr.t += dt;
+      if (cr.t >= E.tick) {
+        cr.t = 0;
+        let pr = cr.price * (1 + (rnd() - 0.48) * 2 * E.volatility);
+        if (rnd() < E.eventChance) {
+          const up = rnd() < 0.5, r = up ? E.pump : E.crash, k = r[0] + rnd() * (r[1] - r[0]);
+          pr = cr.price * k;
+          Sim.msg(G, up ? `AviCoin взлетел ×${k.toFixed(1)}!` : `Обвал AviCoin ×${k.toFixed(1)}!`, -1, up ? '#8fe08a' : '#ff8a6a');
+        }
+        cr.price = Math.max(E.minPrice, Math.round(pr * 10) / 10);
+        cr.hist.push(cr.price); if (cr.hist.length > 40) cr.hist.shift();
+      }
     }
   }
 
@@ -1175,11 +1330,12 @@
       if (!lit && K.queue.length && !(K.warnT > 0)) { K.warnT = 8; Sim.msg(G, 'Кухня не готовит: главный костёр погас!', p.id, '#ff9d7a'); }
     }
     K.warnT = (K.warnT || 0) - dt;
-    while (K.slots.length < cfg.KITCHEN_SLOTS && K.queue.length) K.slots.push({ k: K.queue.shift(), t: 0 });
+    while (K.slots.length < K.lvl && K.queue.length) K.slots.push({ k: K.queue.shift(), t: 0 });
     if (!lit) return;
+    const kdt = G.debt > 0 ? dt * 0.5 : dt;
     for (let i = K.slots.length - 1; i >= 0; i--) {
       const sl = K.slots[i], ck = cfg.COOKING[sl.k];
-      sl.t += dt;
+      sl.t += kdt;
       if (sl.t >= ck.time) {
         K.slots.splice(i, 1);
         Sim.dropItem(G, ck.out, 1, K.x, K.y + 26, 14);
@@ -1251,29 +1407,61 @@
     if (!p || G.over) return;
     if (c === 'pick') { AB.Skills.pick(G, p, x | 0); return; }
     if (c === 'reroll') { AB.Skills.reroll(G, p); return; }
+    if (c === 'goods') {
+      const M = cfg.MERCHANT, g = cfg.MERCHANT_GOODS.find(q => q.id === x);
+      if (!g || !G.merchant || AB.dist(p.x, p.y, G.merchant.x, G.merchant.y) > M.radius * 1.6) return;
+      if (g.once && p.mgBought && p.mgBought[g.id]) { Sim.msg(G, 'Этот товар уже куплен в этот визит', p.id, '#ff9d7a'); return; }
+      if (G.coins < g.price) { Sim.msg(G, `Нужно монет: ${g.price}`, p.id, '#ff9d7a'); return; }
+      G.coins -= g.price;
+      if (g.id === 'bag') { p.bagUp = (p.bagUp || 0) + 2; } else p.inv[g.id] = (p.inv[g.id] || 0) + 1;
+      p.mgBought = p.mgBought || {}; p.mgBought[g.id] = 1;
+      Sim.fx(G, { k: 'skill', x: p.x, y: p.y, pid: p.id, s: g.name, t: 1 });
+      return;
+    }
+    if (c === 'pickup') { pickupDrop(G, p, x); return; }
+    if (c === 'dropk') {
+      if (!(p.inv[x] > 0) || x === 'coin') return;
+      p.inv[x]--;
+      G.drops.push({ id: G.nextId++, k: x, x: p.x + (rnd() - 0.5) * 20, y: p.y + 14 + rnd() * 8, t: 0, age: 0 });
+      return;
+    }
+    if (c === 'eatk') { eatFood(G, p, x); return; }
+    if (c === 'upnear') { upgradeNear(G, p); return; }
+    if (c === 'build3') { buildEcon(G, p, x, y); return; }
+    if (c === 'cbuy' || c === 'csell') { cryptoTrade(G, p, c, x); return; }
+    if (c === 'wup') { weaponUpgrade(G, p); return; }
+    if (c === 'buy' || c === 'upgrade') {
+      const M = cfg.MERCHANT;
+      if (!G.merchant || AB.dist(p.x, p.y, G.merchant.x, G.merchant.y) > M.radius * 1.6) { Sim.msg(G, 'Подойдите к торговцу', p.id, '#ff9d7a'); return; }
+      if (M.onlyHunter && !(p.st.shopBuild > 0)) { Sim.msg(G, 'Торговец работает только с охотником', p.id, '#ff9d7a'); return; }
+      if (c === 'buy') {
+        const o = (p.mo || [])[x | 0];
+        if (!o || o.sold) return;
+        if (G.coins < o.price) { Sim.msg(G, `Нужно монет: ${o.price}`, p.id, '#ff9d7a'); return; }
+        G.coins -= o.price; o.sold = 1;
+        p.skills.push({ id: o.id, tier: o.tier, sup: 0 });
+        AB.Skills.recalc(p);
+        Sim.fx(G, { k: 'skill', x: p.x, y: p.y, pid: p.id, s: AB.Skills.find(o.id).name, t: o.tier });
+      } else {
+        const list = p.skills.filter(q => q.id === x && !q.sup && q.tier < 4);
+        if (!list.length) return;
+        const sk = list.reduce((a, b) => (b.tier > a.tier ? b : a));
+        const price = Sim.upgradePrice(sk.tier);
+        if (G.coins < price) { Sim.msg(G, `Нужно монет: ${price}`, p.id, '#ff9d7a'); return; }
+        G.coins -= price; sk.tier++;
+        AB.Skills.recalc(p);
+        Sim.fx(G, { k: 'skill', x: p.x, y: p.y, pid: p.id, s: `${AB.Skills.find(sk.id).name} → ${cfg.TIER_NAMES[sk.tier - 1]}`, t: sk.tier });
+      }
+      return;
+    }
     if (p.dead) return;
     let bx = x, by = y;
     if (typeof x === 'number') {
       const d = AB.dist(p.x, p.y, bx, by);
       if (d > cfg.BUILD_RANGE) { bx = p.x + (bx - p.x) / d * cfg.BUILD_RANGE; by = p.y + (by - p.y) / d * cfg.BUILD_RANGE; }
     }
-    if (c === 'eat') {
-      const avail = Object.keys(cfg.FOOD).filter(k => p.inv[k] > 0);
-      if (!avail.length) { Sim.msg(G, 'Нет еды! Охотьтесь, собирайте ягоды, сажайте огород', p.id, '#ff9d7a'); return; }
-      const need = cfg.PLAYER_MAX_FOOD - p.food, hurt = p.mhp - p.hp;
-      let cands = avail.filter(k => cfg.FOOD[k].hp >= 0);
-      if (need < 3 && !(hurt > 3 && cands.length)) { Sim.msg(G, 'Вы сыты', p.id); return; }
-      if (!cands.length) cands = avail;
-      cands.sort((a, b) => cfg.FOOD[a].food - cfg.FOOD[b].food);
-      let pick = cands[0];
-      for (const k of cands) if (cfg.FOOD[k].food <= need + 4) pick = k;
-      const F = cfg.FOOD[pick];
-      p.inv[pick]--;
-      p.food = Math.min(cfg.PLAYER_MAX_FOOD, p.food + F.food);
-      if (F.hp >= 0) p.hp = Math.min(p.mhp, p.hp + F.hp);
-      else if (p.hp > cfg.RAW_EAT_MIN_HP) p.hp = Math.max(cfg.RAW_EAT_MIN_HP, p.hp + F.hp);
-      Sim.fx(G, { k: 'eat', x: p.x, y: p.y, it: pick, pid: p.id, hp: F.hp });
-      if (F.hp < 0 && !p._rawWarn) { p._rawWarn = true; Sim.msg(G, 'Сырая еда вредит здоровью. Готовьте её на полевой кухне у костра!', p.id, '#ffb36b'); }
+    if (c === 'eat') { eatFood(G, p, null); return; }
+    if (false) {
     } else if (c === 'plant') {
       const seedKey = p.inv.seed_carrot > 0 ? 'seed_carrot' : (p.inv.seed_pumpkin > 0 ? 'seed_pumpkin' : null);
       if (!seedKey) { Sim.msg(G, 'Нет семян. Ищите их в сундуках и у сильных монстров', p.id, '#ff9d7a'); return; }
@@ -1291,7 +1479,7 @@
       if (c === 'bed') G.plots.push({ id: G.plots.length, x: bx, y: by, crop: null, t: 0, ready: false, mod: false });
       else G.fires.push({ id: G.fires.length, x: bx, y: by, fuel: cfg.FIRE_FUEL_MAX * 0.5, main: false, lvl: 1, mod: false, lm: 1 });
       Sim.fx(G, { k: 'build', x: bx, y: by });
-    } else if (c === 'upfire') {
+    } else if (c === 'upfire_old') {
       const f = G.fires.find(q => q.main);
       if (AB.dist(p.x, p.y, f.x, f.y) > 110) { Sim.msg(G, 'Подойдите к главному костру в лагере', p.id, '#ff9d7a'); return; }
       const cost = Sim.fireUpCost(G, p);
@@ -1304,13 +1492,143 @@
     } else if (c === 'build1' || c === 'build2') {
       // T / Y: действие зависит от профессии
       const st = p.st;
-      if (st.structBuild > 0) buildStruct(G, p, c === 'build1' ? 'wall' : 'tower', bx, by);
+      if (st.shopBuild > 0 && c === 'build1') { buildEcon(G, p, bx, by); }
+      else if (st.structBuild > 0) buildStruct(G, p, c === 'build1' ? 'wall' : 'tower', bx, by);
       else if (c === 'build2') Sim.msg(G, 'Вышки строит только архитектор', p.id, '#ff9d7a');
       else if (st.turretBuild > 0) engineerBuild(G, p, bx, by);
       else if (st.moduleBuild > 0) installModule(G, p, bx, by);
       else Sim.msg(G, 'У вашей профессии нет построек — зато есть сила!', p.id, '#aab4aa');
     }
   };
+
+  function eatFood(G, p, key) {
+    const cfg = C();
+    const avail = Object.keys(cfg.FOOD).filter(k => p.inv[k] > 0);
+    if (!avail.length) { Sim.msg(G, 'Нет еды! Охотьтесь, собирайте ягоды, сажайте огород', p.id, '#ff9d7a'); return; }
+    const need = cfg.PLAYER_MAX_FOOD - p.food, hurt = p.mhp - p.hp;
+    let pick = key && p.inv[key] > 0 ? key : null;
+    if (!pick) {
+      let cands = avail.filter(k => cfg.FOOD[k].hp >= 0);
+      if (need < 3 && !(hurt > 3 && cands.length)) { Sim.msg(G, 'Вы сыты', p.id); return; }
+      if (!cands.length) cands = avail;
+      cands.sort((a, b) => cfg.FOOD[a].food - cfg.FOOD[b].food);
+      pick = cands[0];
+      for (const k of cands) if (cfg.FOOD[k].food <= need + 4) pick = k;
+    }
+    const F = cfg.FOOD[pick];
+    p.inv[pick]--;
+    p.food = Math.min(cfg.PLAYER_MAX_FOOD, p.food + F.food);
+    if (F.hp >= 0) p.hp = Math.min(p.mhp, p.hp + F.hp);
+    else if (p.hp > cfg.RAW_EAT_MIN_HP) p.hp = Math.max(cfg.RAW_EAT_MIN_HP, p.hp + F.hp);
+    Sim.fx(G, { k: 'eat', x: p.x, y: p.y, it: pick, pid: p.id, hp: F.hp });
+    if (F.hp < 0 && !p._rawWarn) { p._rawWarn = true; Sim.msg(G, 'Сырая еда вредит здоровью. Готовьте её на полевой кухне у костра!', p.id, '#ffb36b'); }
+  }
+
+  // Подбор предмета кликом: берёт кликнутый и такие же рядом
+  function pickupDrop(G, p, id) {
+    const cfg = C();
+    const d = G.drops.find(q => q.id === id);
+    if (!d || AB.dist(p.x, p.y, d.x, d.y) > cfg.PICKUP_REACH + 14) return;
+    const group = G.drops.filter(q => q.k === d.k && AB.dist2(q.x, q.y, d.x, d.y) < 40 * 40);
+    let got = 0, full = false;
+    for (const q of group) {
+      if (!giveItem(G, p, q.k, 1)) { full = true; break; }
+      G.drops.splice(G.drops.indexOf(q), 1); got++;
+    }
+    if (got) Sim.fx(G, { k: 'pick', x: d.x, y: d.y, it: d.k, pid: p.id, n: got });
+    if (full) Sim.msg(G, `Рюкзак полон (${Sim.bagCap(p)})! Бревна — на лесопилку, шкуры — в лавку, или выбросьте лишнее (клик по ячейке рюкзака)`, p.id, '#ffb36b');
+  }
+
+  // Что можно улучшить рядом (клавиша U)
+  Sim.upgradeInfo = function (G, p) {
+    const cfg = C(), R = cfg.UPGRADE_RANGE, st = p.st || {};
+    const cands = [];
+    const d2 = (o) => AB.dist2(p.x, p.y, o.x, o.y);
+    const lvlCost = (l) => cfg.UPGRADE_COST.base + cfg.UPGRADE_COST.step * (l - 1);
+    const f = G.fires.find(q => q.main);
+    if (f) { const c = Sim.fireUpCost(G, p); cands.push({ o: f, d: d2(f), name: 'Костёр', key: 'fire', lvl: G.fireLevel, max: 4, cost: c, prog: G.fireUp || 0 }); }
+    const K = G.kitchen; if (K) cands.push({ o: K, d: d2(K), name: 'Кухня', key: 'kitchen', lvl: K.lvl, max: cfg.KITCHEN_MAX_LEVEL, cost: lvlCost(K.lvl), prog: K.up || 0 });
+    const S = G.store; if (S) cands.push({ o: S, d: d2(S), name: 'Лесопилка', key: 'mill', lvl: S.lvl, max: cfg.MILL.maxLevel, cost: lvlCost(S.lvl), prog: S.up || 0 });
+    for (const s of G.structs) {
+      const up = s.up || {};
+      if (s.kind === 'tower' && st.structBuild > 0) cands.push({ o: s, d: d2(s), name: 'Вышка', key: 'tl', lvl: s.tl || 1, max: cfg.TOWER_LEVELS.max, cost: cfg.TOWER_LEVELS.cost[(s.tl || 1) - 1], prog: up.tl || 0 });
+      if (((s.kind === 'tower' && s.armed) || s.kind === 'turret') && st.turretBuild > 0) cands.push({ o: s, d: d2(s), name: s.kind === 'turret' ? 'Турель' : 'Пушка', key: 'cl', lvl: s.cl || 1, max: cfg.CANNON_LEVELS.max, cost: cfg.CANNON_LEVELS.cost[(s.cl || 1) - 1], prog: up.cl || 0 });
+      if (s.mod && st.moduleBuild > 0) cands.push({ o: s, d: d2(s), name: 'Модуль', key: 'ml', lvl: s.ml || 1, max: cfg.MODULE_LEVELS.max, cost: cfg.MODULE_LEVELS.cost[(s.ml || 1) - 1], prog: up.ml || 0 });
+    }
+    const near = cands.filter(c => c.d < R * R).sort((a, b) => a.d - b.d);
+    return near[0] || null;
+  };
+
+  function upgradeNear(G, p) {
+    const cfg = C(), info = Sim.upgradeInfo(G, p);
+    if (!info) { Sim.msg(G, 'Рядом нечего улучшать (костёр, кухня, лесопилка, вышки и турели)', p.id, '#aab4aa'); return; }
+    if (info.lvl >= info.max || info.cost == null) { Sim.msg(G, `${info.name}: максимальный уровень`, p.id); return; }
+    const have = Sim.woodOf(G, p);
+    const put = Math.min(have, info.cost - info.prog);
+    if (put <= 0) { Sim.msg(G, `Нужны доски (${info.prog}/${info.cost}). Несите бревна на лесопилку`, p.id, '#ff9d7a'); return; }
+    Sim.spendWood(G, p, put);
+    const o = info.o, prog = info.prog + put;
+    const set = (v) => {
+      if (info.key === 'fire') G.fireUp = v;
+      else if (info.key === 'kitchen' || info.key === 'mill') o.up = v;
+      else { o.up = o.up || {}; o.up[info.key] = v; }
+    };
+    if (prog < info.cost) { set(prog); Sim.msg(G, `${info.name}: вложено ${prog}/${info.cost} досок`, p.id, '#e0c890'); Sim.fx(G, { k: 'build', x: o.x, y: o.y }); return; }
+    set(0);
+    if (info.key === 'fire') {
+      G.fireLevel++; o.fuel = cfg.FIRE_FUEL_MAX;
+      Sim.msg(G, `Костёр ур. ${G.fireLevel}! Территория расширена, новые умения: «${cfg.TIER_NAMES[G.fireLevel - 1]}»`, -1, cfg.TIER_COLORS[G.fireLevel - 1]);
+      Sim.fx(G, { k: 'fireup', x: o.x, y: o.y });
+      return;
+    }
+    if (info.key === 'kitchen') o.lvl++;
+    else if (info.key === 'mill') o.lvl++;
+    else if (info.key === 'tl') { o.tl = (o.tl || 1) + 1; const k = 1 + cfg.TOWER_LEVELS.hp; o.mhp *= k; o.hp = Math.min(o.mhp, o.hp * k); }
+    else if (info.key === 'cl') o.cl = (o.cl || 1) + 1;
+    else if (info.key === 'ml') o.ml = (o.ml || 1) + 1;
+    const lv = info.key === 'kitchen' || info.key === 'mill' ? o.lvl : o[info.key];
+    Sim.msg(G, `${info.name} улучшен до ур. ${lv}!`, -1, '#8fe08a');
+    Sim.fx(G, { k: 'fireup', x: o.x, y: o.y });
+  }
+
+  // Экономическое здание профессии (клавиша H)
+  function buildEcon(G, p, x, y) {
+    const cfg = C(), kind = cfg.ECON_BUILDINGS[p.prof];
+    if (!kind) return;
+    if (G.structs.some(q => q.kind === kind && q.owner === p.id)) { Sim.msg(G, `${cfg.STRUCTURES[kind].name} уже построена`, p.id, '#ff9d7a'); return; }
+    const d = AB.dist(p.x, p.y, x, y);
+    if (d > cfg.BUILD_RANGE) { x = p.x + (x - p.x) / d * cfg.BUILD_RANGE; y = p.y + (y - p.y) / d * cfg.BUILD_RANGE; }
+    buildStruct(G, p, kind, x, y);
+  }
+
+  function cryptoTrade(G, p, c, n) {
+    const cr = G.crypto;
+    if (!G.structs.some(s => s.kind === 'exchange' && AB.dist2(p.x, p.y, s.x, s.y) < 90 * 90)) { Sim.msg(G, 'Подойдите к бирже', p.id, '#ff9d7a'); return; }
+    if (c === 'cbuy') {
+      const k = Math.min(n | 0 || 1, Math.floor(G.coins / cr.price));
+      if (k <= 0) { Sim.msg(G, `Нужно ${Math.ceil(cr.price)} $ за 1 AviCoin`, p.id, '#ff9d7a'); return; }
+      G.coins -= Math.ceil(cr.price * k); cr.held += k;
+      Sim.fx(G, { k: 'skill', x: p.x, y: p.y, pid: p.id, s: `Куплено ${k} AviCoin`, t: 2 });
+    } else {
+      const k = n === 'all' ? cr.held : Math.min(n | 0 || 1, cr.held);
+      if (k <= 0) return;
+      const got = Math.floor(cr.price * k);
+      cr.held -= k; G.coins += got;
+      Sim.fx(G, { k: 'sold', x: p.x, y: p.y, n: got });
+    }
+  }
+
+  function weaponUpgrade(G, p) {
+    const cfg = C(), W = cfg.WORKSHOP;
+    if (!G.structs.some(s => s.kind === 'workshop' && AB.dist2(p.x, p.y, s.x, s.y) < 90 * 90)) { Sim.msg(G, 'Подойдите к мастерской инженера', p.id, '#ff9d7a'); return; }
+    p.wl = p.wl || {};
+    const lv = p.wl[p.w] || 0;
+    if (lv >= W.maxLevel) { Sim.msg(G, 'Оружие улучшено до максимума', p.id); return; }
+    if (G.coins < W.coins[lv] || Sim.woodOf(G, p) < W.planks[lv]) { Sim.msg(G, `Нужно ${W.coins[lv]} $ и ${W.planks[lv]} досок`, p.id, '#ff9d7a'); return; }
+    G.coins -= W.coins[lv]; Sim.spendWood(G, p, W.planks[lv]);
+    p.wl[p.w] = lv + 1;
+    Sim.fx(G, { k: 'skill', x: p.x, y: p.y, pid: p.id, s: `${cfg.WEAPONS[p.w].name} +${lv + 1}`, t: Math.min(4, lv + 1) });
+  }
 
   function buildStruct(G, p, kind, x, y) {
     const cfg = C(), S = cfg.STRUCTURES[kind];
@@ -1319,7 +1637,7 @@
     if (!placeOk(G, p, x, y, S.radius)) return;
     pay(G, p, cost);
     const mhp = S.hp * (1 + (p.st.structHp || 0) / 100);
-    G.structs.push({ id: G.nextId++, kind, x, y, hp: mhp, mhp, r: S.radius, owner: p.id, armed: false, mod: false, cd: 0, a: 0 });
+    G.structs.push({ id: G.nextId++, kind, x, y, hp: mhp, mhp, r: S.radius, owner: p.id, armed: false, mod: false, cd: 0, a: 0, stock: [], sellT: 0, tl: 1, cl: 1, ml: 1, up: {} });
     Sim.fx(G, { k: 'build', x, y });
   }
 
@@ -1344,7 +1662,7 @@
     const cfg = C();
     let best = null, bd = 70 * 70, kind = null;
     const test = (o, k) => { const d = AB.dist2(o.x, o.y, x, y); if (!o.mod && d < bd) { bd = d; best = o; kind = k; } };
-    G.structs.forEach(s => test(s, s.kind === 'turret' ? 'turret' : s.kind === 'tower' ? (s.armed ? 'turret' : 'tower') : 'wall'));
+    G.structs.filter(s => s.kind !== 'shop').forEach(s => test(s, s.kind === 'turret' ? 'turret' : s.kind === 'tower' ? (s.armed ? 'turret' : 'tower') : 'wall'));
     G.fires.forEach(f => test(f, 'fire'));
     G.plots.forEach(pl => test(pl, 'plot'));
     if (!best) { Sim.msg(G, 'Наведите курсор на постройку, костёр или грядку без модуля', p.id, '#ff9d7a'); return; }
@@ -1364,7 +1682,7 @@
       p: G.players.map(p => ({
         id: p.id, n: p.name, pr: p.prof, x: r1(p.x), y: r1(p.y), a: r1(p.a), hp: r1(p.hp), mh: r1(p.mhp), f: r1(p.food), d: p.dead ? 1 : 0, rs: r1(p.rs),
         w: p.w, ws: p.ws, inv: p.inv, sw: r1(p.sw), sk: p.sk, sa: r1(p.sa), tp: p.tp, h: r1(p.hurt), mv: p.moving ? 1 : 0,
-        sl: p.slowT > 0 ? p.slowPct : 0, lv: p.level, q: p.queue, of: p.offers, sks: p.skills.map(q => q.id + ':' + q.tier + ':' + (q.sup || 0)), st: stCompact(p.st), rr: p.rr, swl: p.swl,
+        sl: p.slowT > 0 ? p.slowPct : 0, mo: p.mo || [], wl: p.wl || {}, bu: p.bagUp || 0, mg: p.mgBought || {}, lv: p.level, q: p.queue, of: p.offers, sks: p.skills.map(q => q.id + ':' + q.tier + ':' + (q.sup || 0)), st: stCompact(p.st), rr: p.rr, swl: p.swl,
       })),
       m: G.monsters.map(m => [m.id, MON_TYPES.indexOf(m.type), r1(m.x), r1(m.y), r1(m.a), Math.round(m.hp), Math.round(m.maxHp), m.hurt > 0 ? 1 : 0,
         (m.guard ? 1 : 0) | (m.hunter ? 2 : 0) | (m.st === 'chase' ? 4 : 0) | ((m.atk || 0) > 0 ? 8 : 0) | (m.burn ? 16 : 0) | (m.slowT > 0 ? 32 : 0) | (m.act ? 64 : 0) | (m.mark > 0 ? 128 : 0),
@@ -1372,14 +1690,17 @@
       pr: G.projs.map(p => [p.id, p.k, r1(p.x), r1(p.y), Math.round(p.vx), Math.round(p.vy)]),
       ep: G.eprojs.map(e => [r1(e.x), r1(e.y), Math.round(e.vx), Math.round(e.vy)]),
       te: G.tele.map(t => [t.sh, r1(t.x), r1(t.y), t.r || 0, r1(t.a || 0), t.len || 0, t.w || 0, Math.round(t.t / t.dur * 100) / 100, t.fr]),
-      stc: G.structs.map(q => [q.id, q.kind, r1(q.x), r1(q.y), Math.round(q.hp), Math.round(q.mhp), q.owner, q.armed ? 1 : 0, q.mod ? 1 : 0, r1(q.a)]),
+      stc: G.structs.map(q => [q.id, q.kind, r1(q.x), r1(q.y), Math.round(q.hp), Math.round(q.mhp), q.owner, q.armed ? 1 : 0, q.mod ? 1 : 0, r1(q.a), q.stock ? q.stock.length : 0, q.stock && q.stock.length ? Math.round(q.sellT / C().SHOP.sellTime * 100) / 100 : 0, q.tl || 1, q.cl || 1, q.ml || 1, q.up || {}]),
+      mc: G.merchant ? [G.merchant.x, G.merchant.y] : 0,
       mn: G.mines.map(q => [r1(q.x), r1(q.y)]),
       d: G.drops.map(d => [d.id, d.k, r1(d.x), r1(d.y)]),
       pl: G.plots.map(p => [r1(p.x), r1(p.y), p.crop, Math.round(p.t), p.ready ? 1 : 0, p.mod ? 1 : 0]),
       f: G.fires.map(f => [r1(f.x), r1(f.y), r1(f.fuel), f.main ? 1 : 0, f.lvl, f.mod ? 1 : 0, f.lm]),
       ch: W.sites.filter(s2 => s2.opened).map(s2 => s2.id),
-      so: [G.store.x, G.store.y, G.store.wood],
+      so: [G.store.x, G.store.y, G.store.logs, G.store.planks, G.store.lvl, G.store.up, Math.round(G.store.sawT * 10) / 10],
+      eco: [G.coins, G.fireUp, G.debt, G.upkeepLast, Math.round(G.crypto.price * 10) / 10, G.crypto.held, G.crypto.hist],
       bag: G.players.map(p => p.bagUp || 0),
+      kl: [G.kitchen.lvl, G.kitchen.up],
       kc: [G.kitchen.x, G.kitchen.y, G.kitchen.slots.map(q => [q.k, Math.round(q.t / C().COOKING[q.k].time * 100) / 100]), G.kitchen.queue.length],
       fx: G.fxOut,
     };
@@ -1410,7 +1731,7 @@
       if (!mine) { p.a = sp.a; p.moving = !!sp.mv; }
       p.name = sp.n; p.prof = sp.pr; p.hp = sp.hp; p.mhp = sp.mh; p.food = sp.f; p.dead = !!sp.d; p.rs = sp.rs;
       p.ws = sp.ws; p.inv = sp.inv; p.sw = sp.sw; p.sk = sp.sk; p.sa = sp.sa; p.tp = sp.tp; p.hurt = sp.h;
-      p.slowT = sp.sl ? 1 : 0; p.slowPct = sp.sl || 0; p.level = sp.lv; p.queue = sp.q; p.offers = sp.of; p.rr = sp.rr; p.swl = sp.swl;
+      p.mo = sp.mo; p.wl = sp.wl; p.bagUp = sp.bu; p.mgBought = sp.mg; p.slowT = sp.sl ? 1 : 0; p.slowPct = sp.sl || 0; p.level = sp.lv; p.queue = sp.q; p.offers = sp.of; p.rr = sp.rr; p.swl = sp.swl;
       p.skills = sp.sks.map(x => { const a = x.split(':'); return { id: a[0], tier: +a[1], sup: +a[2] }; });
       const st = {}; AB.Skills.statKeys().forEach(k => st[k] = sp.st[k] || 0); p.st = st;
       if (!mine || !p.ws.includes(p.w)) p.w = sp.w;
@@ -1432,16 +1753,18 @@
     G.projs = s.pr.map(a => ({ id: a[0], k: a[1], x: a[2], y: a[3], vx: a[4], vy: a[5] }));
     G.eprojs = s.ep.map(a => ({ x: a[0], y: a[1], vx: a[2], vy: a[3] }));
     G.tele = s.te.map(a => ({ sh: a[0], x: a[1], y: a[2], r: a[3], a: a[4], len: a[5], w: a[6], prog: a[7], fr: a[8] }));
-    G.structs = s.stc.map(a => ({ id: a[0], kind: a[1], x: a[2], y: a[3], hp: a[4], mhp: a[5], owner: a[6], armed: !!a[7], mod: !!a[8], a: a[9], r: cfg.STRUCTURES[a[1]].radius }));
+    G.structs = s.stc.map(a => ({ id: a[0], kind: a[1], x: a[2], y: a[3], hp: a[4], mhp: a[5], owner: a[6], armed: !!a[7], mod: !!a[8], a: a[9], r: cfg.STRUCTURES[a[1]].radius, stockN: a[10], sellP: a[11], tl: a[12], cl: a[13], ml: a[14], up: a[15] }));
+    G.merchant = s.mc ? { x: s.mc[0], y: s.mc[1] } : null;
     G.mines = s.mn.map(a => ({ x: a[0], y: a[1] }));
     const dmap = new Map(G.drops.map(d => [d.id, d]));
     G.drops = s.d.map(a => { const o = dmap.get(a[0]); return { id: a[0], k: a[1], x: a[2], y: a[3], age: o ? o.age : 0 }; });
     G.plots = s.pl.map((a, i) => ({ id: i, x: a[0], y: a[1], crop: a[2], t: a[3], ready: !!a[4], mod: !!a[5] }));
     G.fires = s.f.map((a, i) => ({ id: i, x: a[0], y: a[1], fuel: a[2], main: !!a[3], lvl: a[4], mod: !!a[5], lm: a[6] }));
     s.ch.forEach(id => { if (W.sites[id]) W.sites[id].opened = true; });
-    if (s.so) G.store = { x: s.so[0], y: s.so[1], wood: s.so[2] };
+    if (s.so) G.store = { x: s.so[0], y: s.so[1], logs: s.so[2], planks: s.so[3], lvl: s.so[4], up: s.so[5], sawT: s.so[6] };
+    if (s.eco) { G.coins = s.eco[0]; G.fireUp = s.eco[1]; G.debt = s.eco[2]; G.upkeepLast = s.eco[3]; G.crypto = { price: s.eco[4], held: s.eco[5], hist: s.eco[6] }; }
     if (s.bag) G.players.forEach((p, i) => { p.bagUp = s.bag[i] || 0; });
-    if (s.kc) G.kitchen = { x: s.kc[0], y: s.kc[1], slots: s.kc[2].map(a => ({ k: a[0], prog: a[1] })), queue: new Array(s.kc[3]) };
+    if (s.kc) G.kitchen = { x: s.kc[0], y: s.kc[1], slots: s.kc[2].map(a => ({ k: a[0], prog: a[1] })), queue: new Array(s.kc[3]), lvl: s.kl ? s.kl[0] : 1, up: s.kl ? s.kl[1] : 0 };
     s.tr.forEach(a => { const t = W.trees[a[0]]; if (t) { if (a[1] < t.hp && !a[2]) t.shake = 0.35; t.hp = a[1]; t.dead = !!a[2]; } });
     s.bu.forEach(a => { const b = W.bushes[a[0]]; if (b) b.berries = a[1]; });
     if (AB.FX) s.fx.forEach(ev => AB.FX.play(ev));

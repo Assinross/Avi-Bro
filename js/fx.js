@@ -97,6 +97,7 @@
         if (ev.hp) FX.text(ev.x + 14, ev.y - 44, (ev.hp > 0 ? '+' : '') + ev.hp + ' ♥', ev.hp > 0 ? '#8fe08a' : '#ff6a6a');
         Sound.play('eat', near); break;
       }
+      case 'sold': burst(ev.x, ev.y - 20, 10, ['#ffd24a', '#fff2a8'], 90, { type: 'spark', g: -40, life: 0.9 }); FX.text(ev.x, ev.y - 40, '+' + ev.n + ' $', '#ffd24a'); Sound.play('pick', near); break;
       case 'cooked': burst(ev.x - 19, ev.y - 20, 10, ['#ffd24a', '#fff2a8'], 80, { type: 'spark', g: -40, life: 0.8 }); Sound.play('pick', near); break;
       case 'leap': burst(ev.x, ev.y, 6, ['#8a7a60', '#5e5040'], 90); Sound.play('swing', near); break;
       case 'windup': Sound.play('growl', near); break;

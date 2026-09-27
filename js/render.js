@@ -556,6 +556,67 @@
         ctx.fillStyle = '#c83a2a'; ctx.beginPath(); ctx.moveTo(x + 1.5, y - 72); ctx.lineTo(x + 15 + Math.sin(t * 4) * 2, y - 67); ctx.lineTo(x + 1.5, y - 62); ctx.fill();
       }
       if (s.mod) drawModuleLight(ctx, x - 12, y - 56, t);
+    } else if (s.kind === 'shop') {
+      S().ell(ctx, x, y + 6, 26, 8, 'rgba(0,0,0,0.35)');
+      // прилавок
+      ctx.fillStyle = '#1e140c'; ctx.fillRect(x - 22, y - 16, 44, 22);
+      ctx.fillStyle = '#8a5a30'; ctx.fillRect(x - 21, y - 15, 42, 20);
+      ctx.fillStyle = '#a8743f'; ctx.fillRect(x - 21, y - 15, 42, 4);
+      ctx.fillStyle = '#5e3c20'; for (let i = -14; i <= 14; i += 7) ctx.fillRect(x + i, y - 10, 1.5, 14);
+      // товары на прилавке
+      const n = s.stockN !== undefined ? s.stockN : (s.stock ? s.stock.length : 0);
+      if (n > 0) ctx.drawImage(S().icons.hide, x - 18, y - 26, 14, 14);
+      if (n > 1) ctx.drawImage(S().icons.cooked_meat, x - 5, y - 26, 13, 13);
+      if (n > 2) ctx.drawImage(S().icons.cooked_pumpkin, x + 7, y - 26, 13, 13);
+      // столбы и полосатый навес
+      ctx.fillStyle = '#1e140c'; ctx.fillRect(x - 23, y - 46, 4, 32); ctx.fillRect(x + 19, y - 46, 4, 32);
+      for (let i = 0; i < 6; i++) {
+        ctx.fillStyle = i % 2 ? '#f2e8d0' : '#3f8a3a';
+        ctx.beginPath(); ctx.moveTo(x - 27 + i * 9, y - 50); ctx.lineTo(x - 18 + i * 9, y - 50); ctx.lineTo(x - 18 + i * 9, y - 40); ctx.quadraticCurveTo(x - 22.5 + i * 9, y - 35, x - 27 + i * 9, y - 40); ctx.fill();
+      }
+      ctx.fillStyle = '#1e140c'; ctx.fillRect(x - 28, y - 52, 56, 3);
+      // вывеска с монеткой
+      S().circle(ctx, x, y - 58, 7, '#1e140c'); S().circle(ctx, x, y - 58, 6, '#ffd24a'); ctx.fillStyle = '#b8862a'; ctx.font = 'bold 8px system-ui'; ctx.textAlign = 'center'; ctx.fillText('$', x, y - 55);
+      if (n > 0) {
+        const prog = s.sellP !== undefined ? s.sellP : (s.sellT || 0) / C().SHOP.sellTime;
+        hpBar(ctx, x, y + 12, 36, prog, '#ffd24a');
+        ctx.font = 'bold 9px "Nunito", system-ui'; ctx.fillStyle = '#ffe7a8'; ctx.fillText(`товаров: ${n}`, x, y + 26);
+      }
+      if (near) { ctx.font = 'bold 9px "Nunito", system-ui'; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(255,231,168,0.85)'; ctx.fillText('Лавка', x, y - 68); }
+      return;
+    } else if (s.kind === 'exchange') {
+      S().ell(ctx, x, y + 6, 24, 8, 'rgba(0,0,0,0.35)');
+      ctx.fillStyle = '#111'; ctx.fillRect(x - 20, y - 40, 40, 44);
+      ctx.fillStyle = '#2a3a4a'; ctx.fillRect(x - 18, y - 38, 36, 40);
+      for (let i = 0; i < 4; i++) { ctx.fillStyle = '#1a2430'; ctx.fillRect(x - 16, y - 20 + i * 5, 32, 3); S().circle(ctx, x + 12, y - 18.5 + i * 5, 1, Math.sin(t * 8 + i) > 0 ? '#5aff8a' : '#2a6a3a'); }
+      ctx.fillStyle = '#081018'; ctx.fillRect(x - 15, y - 35, 30, 13);
+      const h = G_ref && G_ref.crypto ? G_ref.crypto.hist : [];
+      if (h && h.length > 1) {
+        const mx = Math.max(...h), mn = Math.min(...h);
+        ctx.strokeStyle = h[h.length - 1] >= h[h.length - 2] ? '#5aff8a' : '#ff5a4a'; ctx.lineWidth = 1.2; ctx.beginPath();
+        h.forEach((v, i) => { const px = x - 14 + i / (h.length - 1) * 28, py = y - 24 - (mx > mn ? (v - mn) / (mx - mn) : 0.5) * 9; i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); });
+        ctx.stroke();
+      }
+      ctx.fillStyle = '#5aa8ff'; ctx.fillRect(x - 1, y - 52, 2, 12); S().circle(ctx, x, y - 53, 2.5, Math.sin(t * 5) > 0 ? '#9fdcff' : '#3a6a9a');
+      if (near) { ctx.font = 'bold 9px "Nunito", system-ui'; ctx.textAlign = 'center'; ctx.fillStyle = '#9fdcff'; ctx.fillText(`Биржа · AviCoin ${G_ref.crypto.price}$`, x, y - 62); }
+    } else if (s.kind === 'workshop') {
+      S().ell(ctx, x, y + 6, 26, 8, 'rgba(0,0,0,0.35)');
+      ctx.fillStyle = '#1e140c'; ctx.fillRect(x - 24, y - 14, 48, 18); ctx.fillStyle = '#6b4a2e'; ctx.fillRect(x - 23, y - 13, 46, 16); ctx.fillStyle = '#86603c'; ctx.fillRect(x - 23, y - 13, 46, 3);
+      ctx.fillStyle = '#111'; ctx.fillRect(x - 8, y - 24, 18, 8); ctx.fillStyle = '#4a4f55'; ctx.fillRect(x - 7, y - 23, 16, 6); ctx.fillRect(x - 12, y - 23, 5, 3);
+      ctx.fillStyle = '#4a4f55'; ctx.fillRect(x - 2, y - 17, 5, 5);
+      ctx.save(); ctx.translate(x + 16, y - 20); ctx.rotate(-0.6 + Math.sin(t * 3) * 0.1); ctx.fillStyle = '#6b4a2e'; ctx.fillRect(0, -1.5, 12, 3); ctx.fillStyle = '#888'; ctx.fillRect(10, -4, 5, 8); ctx.restore();
+      if (Math.random() < 0.05) AB.FX.add({ t: 'spark', x: x, y: y - 24, z: 4, vx: (Math.random() - 0.5) * 60, vy: 0, vz: 50, g: 150, life: 0.4, size: 1.5, c: '#ffd24a' });
+      if (near) { ctx.font = 'bold 9px "Nunito", system-ui'; ctx.textAlign = 'center'; ctx.fillStyle = '#ffb23a'; ctx.fillText('Мастерская', x, y - 32); }
+    } else if (s.kind === 'townhall') {
+      S().ell(ctx, x, y + 6, 32, 9, 'rgba(0,0,0,0.35)');
+      ctx.fillStyle = '#1e140c'; ctx.fillRect(x - 28, y - 34, 56, 38);
+      ctx.fillStyle = '#b8a888'; ctx.fillRect(x - 27, y - 33, 54, 36); ctx.fillStyle = '#9a8a6a'; for (let i = -24; i < 26; i += 8) ctx.fillRect(x + i, y - 33, 1, 36);
+      ctx.fillStyle = '#1e140c'; ctx.beginPath(); ctx.moveTo(x - 32, y - 32); ctx.lineTo(x, y - 54); ctx.lineTo(x + 32, y - 32); ctx.fill();
+      ctx.fillStyle = '#7a4a9a'; ctx.beginPath(); ctx.moveTo(x - 29, y - 33); ctx.lineTo(x, y - 51); ctx.lineTo(x + 29, y - 33); ctx.fill();
+      ctx.fillStyle = '#3a2616'; ctx.fillRect(x - 6, y - 16, 12, 20);
+      ctx.fillStyle = '#ffd24a'; ctx.fillRect(x - 20, y - 24, 8, 8); ctx.fillRect(x + 12, y - 24, 8, 8);
+      ctx.fillStyle = '#1e140c'; ctx.fillRect(x - 1, y - 70, 2, 18); ctx.fillStyle = '#d08aff'; ctx.beginPath(); ctx.moveTo(x + 1, y - 70); ctx.lineTo(x + 14 + Math.sin(t * 4) * 2, y - 66); ctx.lineTo(x + 1, y - 62); ctx.fill();
+      if (near) { ctx.font = 'bold 9px "Nunito", system-ui'; ctx.textAlign = 'center'; ctx.fillStyle = '#d08aff'; ctx.fillText(`Ратуша · содержание −${C().TOWNHALL.upkeepDiscount}%`, x, y - 78); }
     } else if (s.kind === 'turret') {
       S().ell(ctx, x, y + 4, 15, 6, 'rgba(0,0,0,0.35)');
       ctx.fillStyle = '#111'; ctx.beginPath(); ctx.moveTo(x - 12, y + 3); ctx.lineTo(x - 7, y - 10); ctx.lineTo(x + 7, y - 10); ctx.lineTo(x + 12, y + 3); ctx.fill();
@@ -568,7 +629,15 @@
       if (s.mod) drawModuleLight(ctx, x, y - 22, t);
     }
     if (s.hp < s.mhp || near) hpBar(ctx, x, y + 10, 30, s.hp / s.mhp, '#8fd45a');
+    // уровни: А — вышка (архитектор), И — пушка/турель (инженер), П — модуль (программист)
+    const pips = [];
+    if (s.kind === 'tower' && (s.tl || 1) > 1) pips.push(['#d08aff', s.tl]);
+    if ((s.armed || s.kind === 'turret') && (s.cl || 1) > 1) pips.push(['#ffb23a', s.cl]);
+    if (s.mod && (s.ml || 1) > 1) pips.push(['#5aa8ff', s.ml]);
+    pips.forEach((pp, i) => { ctx.font = 'bold 9px "Nunito", system-ui'; ctx.textAlign = 'center'; const px = x - (pips.length - 1) * 9 + i * 18; S().circle(ctx, px, y + 22, 6.5, '#111'); S().circle(ctx, px, y + 22, 5.5, pp[0]); ctx.fillStyle = '#111'; ctx.fillText(pp[1], px, y + 25); });
+    if (G_ref && G_ref.debt > 0 && s.kind !== 'wall') { ctx.font = 'bold 12px system-ui'; ctx.textAlign = 'center'; ctx.fillStyle = '#ff5a4a'; ctx.fillText('$✕', x, y - 30 - (s.kind === 'tower' ? 44 : 0)); }
   }
+  let G_ref = null;
   // Полевая кухня: навес, котёл на треноге, стол
   function drawKitchen(ctx, K, t, G) {
     const x = K.x, y = K.y, cfg = C();
@@ -600,33 +669,70 @@
       ctx.fillStyle = '#ffae3a'; ctx.fillRect(bx + 2, by + 20, 18 * AB.clamp(prog, 0, 1), 3);
     });
     const qn = K.queue ? K.queue.length : 0;
-    if (qn) { ctx.font = 'bold 10px "Nunito", system-ui'; ctx.textAlign = 'left'; ctx.fillStyle = '#ffe7a8'; ctx.fillText('+' + qn, x - 34 + cfg.KITCHEN_SLOTS * 26, y - 44); }
-    ctx.font = 'bold 9px "Nunito", system-ui'; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(255,231,168,0.8)'; ctx.fillText('Кухня', x, y + 20);
+    if (qn) { ctx.font = 'bold 10px "Nunito", system-ui'; ctx.textAlign = 'left'; ctx.fillStyle = '#ffe7a8'; ctx.fillText('+' + qn, x - 34 + (K.slots ? K.slots.length : 0) * 26, y - 44); }
+    ctx.font = 'bold 9px "Nunito", system-ui'; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(255,231,168,0.8)'; ctx.fillText(`Кухня ур.${K.lvl || 1}`, x, y + 20);
   }
-  // Склад лагеря: ящики и поленница, растёт с запасом дерева
-  function drawStore(ctx, S, t) {
-    const x = S.x, y = S.y;
-    S_ell(ctx, x, y + 8, 38, 9, 'rgba(0,0,0,0.3)');
-    const crate = (cx, cy, s) => {
-      ctx.fillStyle = '#1e140c'; ctx.fillRect(cx - s / 2 - 1, cy - s - 1, s + 2, s + 2);
-      ctx.fillStyle = '#9a6a38'; ctx.fillRect(cx - s / 2, cy - s, s, s);
-      ctx.fillStyle = '#b8844a'; ctx.fillRect(cx - s / 2, cy - s, s, 3);
-      ctx.strokeStyle = '#5e3c20'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(cx - s / 2, cy - s); ctx.lineTo(cx + s / 2, cy); ctx.moveTo(cx + s / 2, cy - s); ctx.lineTo(cx - s / 2, cy); ctx.stroke();
-    };
-    crate(x - 18, y + 4, 18); crate(x - 2, y + 6, 20); crate(x - 10, y - 14, 16);
-    const logs = Math.min(8, Math.ceil((S.wood || 0) / 5));
+  // Лесопилка: козлы с пилой, куча бревен, стопка досок
+  function drawStore(ctx, Mo, t) {
+    const x = Mo.x, y = Mo.y;
+    S_ell(ctx, x, y + 8, 42, 10, 'rgba(0,0,0,0.3)');
+    // бревна (вход)
+    const logs = Math.min(9, Mo.logs || 0);
     for (let i = 0; i < logs; i++) {
-      const row = Math.floor(i / 3), col = i % 3;
-      const lx = x + 16 + col * 7 - row * 3, ly = y + 4 - row * 7;
-      S_ell(ctx, lx, ly, 4.5, 4.5, '#1e140c'); S_ell(ctx, lx, ly, 3.6, 3.6, '#c8a06a'); S_ell(ctx, lx, ly, 1.3, 1.3, '#9a7646');
+      const row = Math.floor(i / 3), col = i % 3, lx = x - 34 + col * 8 + row * 4, ly = y + 4 - row * 7;
+      ctx.fillStyle = '#1e140c'; ctx.fillRect(lx - 1, ly - 4, 14, 8); ctx.fillStyle = '#6b4a2e'; ctx.fillRect(lx, ly - 3, 12, 6);
+      S_ell(ctx, lx + 12, ly, 3, 3.5, '#c8a06a');
+    }
+    // козлы и бревно под пилой
+    ctx.fillStyle = '#1e140c'; ctx.fillRect(x - 12, y - 10, 26, 5); ctx.fillRect(x - 10, y - 6, 3, 12); ctx.fillRect(x + 8, y - 6, 3, 12);
+    ctx.fillStyle = '#8a5a30'; ctx.fillRect(x - 11, y - 9, 24, 3);
+    // дисковая пила
+    const sawing = (Mo.sawT || 0) > 0;
+    ctx.save(); ctx.translate(x + 1, y - 18); ctx.rotate(sawing ? t * 20 : 0);
+    S().circle(ctx, 0, 0, 9, '#111'); S().circle(ctx, 0, 0, 7.5, '#b9c2c9');
+    ctx.fillStyle = '#111'; for (let i = 0; i < 10; i++) { ctx.rotate(Math.PI / 5); ctx.fillRect(7, -1, 3, 2); }
+    S().circle(ctx, 0, 0, 2, '#555');
+    ctx.restore();
+    if (sawing && Math.random() < 0.3) AB.FX.add({ t: 'p', x: x + 1, y: y - 12, z: 4, vx: (Math.random() - 0.5) * 60, vy: 10, vz: 40, g: 200, life: 0.5, size: 2, c: '#e0c08a' });
+    // доски (выход)
+    const pl = Math.min(8, Math.ceil((Mo.planks || 0) / 2));
+    for (let i = 0; i < pl; i++) {
+      const py = y + 4 - i * 3;
+      ctx.fillStyle = '#1e140c'; ctx.fillRect(x + 18, py - 2, 22, 4); ctx.fillStyle = i % 2 ? '#d8b078' : '#c8a06a'; ctx.fillRect(x + 19, py - 1.5, 20, 3);
     }
     ctx.font = 'bold 10px "Nunito", system-ui'; ctx.textAlign = 'center';
-    const label = `Склад: ${S.wood || 0}`;
+    const label = `Лесопилка ур.${Mo.lvl || 1} · доски ${Mo.planks || 0}/${AB.Sim.millCap(Mo)}`;
     const w = ctx.measureText(label).width + 12;
     ctx.fillStyle = 'rgba(10,16,12,0.8)'; roundRect(ctx, x - w / 2, y + 14, w, 14, 7); ctx.fill();
     ctx.fillStyle = '#e0c08a'; ctx.fillText(label, x, y + 21.5);
   }
   const S_ell = (c, x, y, rx, ry, col) => S().ell(c, x, y, rx, ry, col);
+  // Странствующий торговец с тележкой
+  function drawMerchant(ctx, M, t) {
+    const x = M.x, y = M.y, bob = Math.sin(t * 2) * 1;
+    S_ell(ctx, x + 10, y + 8, 40, 9, 'rgba(0,0,0,0.35)');
+    // тележка
+    ctx.fillStyle = '#1e140c'; ctx.fillRect(x + 4, y - 22, 44, 22);
+    ctx.fillStyle = '#7a4a22'; ctx.fillRect(x + 5, y - 21, 42, 20);
+    ctx.fillStyle = '#c8a06a'; ctx.beginPath(); ctx.moveTo(x + 2, y - 22); ctx.quadraticCurveTo(x + 26, y - 48, x + 50, y - 22); ctx.fill();
+    ctx.strokeStyle = '#8a6a3a'; ctx.lineWidth = 1.5; ctx.stroke();
+    for (const wx of [x + 12, x + 40]) { S_ell(ctx, wx, y, 7, 7, '#1e140c'); S_ell(ctx, wx, y, 5.5, 5.5, '#6b4a2e'); S_ell(ctx, wx, y, 1.5, 1.5, '#1e140c'); }
+    ctx.drawImage(S().icons.seed_pumpkin, x + 10, y - 34, 12, 12); ctx.drawImage(S().icons.hide, x + 26, y - 33, 13, 13);
+    // сам торговец
+    S_ell(ctx, x - 14, y + 7, 11, 4, 'rgba(0,0,0,0.3)');
+    S().circle(ctx, x - 14, y - 6 + bob, 10.5, '#120c08'); S().circle(ctx, x - 14, y - 6 + bob, 9.2, '#6a3a6a');
+    ctx.fillStyle = '#d8b050'; ctx.fillRect(x - 22, y - 4 + bob, 16, 2.5);
+    S().circle(ctx, x - 14, y - 18 + bob, 8, '#120c08'); S().circle(ctx, x - 14, y - 18 + bob, 7, '#e8b890');
+    ctx.fillStyle = '#4a2a4a'; ctx.beginPath(); ctx.ellipse(x - 14, y - 22 + bob, 12, 3.5, 0, 0, TAU); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(x - 14, y - 26 + bob, 6.5, 5, 0, Math.PI, TAU); ctx.fill();
+    ctx.fillStyle = '#1a120c'; ctx.fillRect(x - 17, y - 18 + bob, 2, 2); ctx.fillRect(x - 12, y - 18 + bob, 2, 2);
+    ctx.fillStyle = '#c8c0b0'; ctx.fillRect(x - 17, y - 14 + bob, 6, 2);
+    // табличка
+    ctx.font = 'bold 10px "Nunito", system-ui'; ctx.textAlign = 'center';
+    const w = 70; ctx.fillStyle = 'rgba(10,16,12,0.85)'; roundRect(ctx, x - w / 2 + 6, y - 64, w, 15, 7); ctx.fill();
+    ctx.strokeStyle = '#ffd24a'; ctx.lineWidth = 1; ctx.stroke(); ctx.fillStyle = '#ffd24a'; ctx.fillText('Торговец', x + 6, y - 56);
+    if (Math.sin(t * 3) > 0.95) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; S().circle(ctx, x + 30, y - 40, 3, '#fff6c0'); ctx.restore(); }
+  }
   function drawMine(ctx, mn, t) {
     S().ell(ctx, mn.x, mn.y, 7, 4, '#1a1a1a'); S().ell(ctx, mn.x, mn.y - 1, 5.5, 3, '#5a5f66');
     if (Math.sin(t * 6 + mn.x) > 0) S().circle(ctx, mn.x, mn.y - 2, 1.5, '#ff3a2a');
@@ -742,6 +848,8 @@
     }
   }
   function drawDrop(ctx, d, t) {
+    if (R.hoverDrop === d.id) { ctx.save(); ctx.strokeStyle = '#fff6c0'; ctx.lineWidth = 2; ctx.setLineDash([4, 3]); ctx.beginPath(); ctx.ellipse(d.x, d.y - 4, 15, 12, 0, 0, TAU); ctx.stroke(); ctx.restore();
+      ctx.font = 'bold 10px "Nunito", system-ui'; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(10,16,12,0.85)'; const nm = AB.itemName(d.k); const w = ctx.measureText(nm).width + 10; roundRect(ctx, d.x - w / 2, d.y - 38, w, 14, 6); ctx.fill(); ctx.fillStyle = '#fff'; ctx.fillText(nm, d.x, d.y - 30); }
     const ic = S().icons[d.k];
     const bob = Math.sin(t * 4 + d.id) * 2.5;
     S().ell(ctx, d.x, d.y + 5, 7, 3, 'rgba(0,0,0,0.3)');
@@ -816,6 +924,7 @@
 
   /* ============================ КАДР ============================ */
   R.draw = function (G, me, cam, dt, ui) {
+    G_ref = G;
     const ctx = R.ctx, W = G.W, cfg = C();
     R.time += dt;
     const t = R.time;
@@ -886,6 +995,7 @@
     for (const s of G.structs) if (s.x > x0 && s.x < x1 && s.y > y0 && s.y < y1) vis.push({ y: s.y, k: 9, o: s });
     if (G.kitchen) vis.push({ y: G.kitchen.y, k: 10, o: G.kitchen });
     if (G.store) vis.push({ y: G.store.y, k: 11, o: G.store });
+    if (G.merchant) vis.push({ y: G.merchant.y, k: 12, o: G.merchant });
     for (const f of G.fires) if (f.x > x0 && f.x < x1 && f.y > y0 && f.y < y1) vis.push({ y: f.y, k: 5, o: f });
     for (const d of G.drops) if (d.x > x0 && d.x < x1 && d.y > y0 && d.y < y1) vis.push({ y: d.y - 1, k: 6, o: d });
     for (const m of G.monsters) if (m.x > x0 && m.x < x1 && m.y > y0 && m.y < y1) vis.push({ y: m.y, k: 7, o: m });
@@ -919,6 +1029,7 @@
         case 9: drawStruct(ctx, o, t, me && AB.dist2(me.x, me.y, o.x, o.y) < 120 * 120); break;
         case 10: drawKitchen(ctx, o, t, G); break;
         case 11: drawStore(ctx, o, t); break;
+        case 12: drawMerchant(ctx, o, t); break;
       }
     }
     for (const p of G.projs) drawProjectile(ctx, p);
@@ -1098,6 +1209,7 @@
     const ctx = R.ctx, cfg = C();
     ctx.save(); ctx.setTransform(R.dpr, 0, 0, R.dpr, 0, 0);
     const k = AB.clamp(Math.min(R.w / 1400, R.h / 800), 0.7, 1.25);
+    R.hudK = k;
     ctx.scale(k, k);
     const SW = R.w / k, SH = R.h / k;
     const ti = AB.Sim.timeInfo(G.clock);
@@ -1152,23 +1264,53 @@
     }
     // --- ресурсы справа сверху
     if (me) {
-      const items = AB.ITEM_KEYS.filter(k => k === 'wood' || (me.inv[k] || 0) > 0);
-      const w = items.length * 74 + 12 + 150;
+      R.clicks = [];
+      const K = R.hudK || 1;
+      const click = (x, y, w, h, c, v) => R.clicks.push({ x: x * K, y: y * K, w: w * K, h: h * K, c, v });
+      const items = AB.ITEM_KEYS.filter(k => !AB.Sim.bagItem(k) && k !== 'coin' && (me.inv[k] || 0) > 0);
+      const w = items.length * 64 + 175;
       panel(ctx, SW - w - 14, 14, w, 46);
+      // казна
       {
-        const used = AB.Sim.bagUsed(me), cap = AB.Sim.bagCap(me), bx = SW - 160;
-        ctx.fillStyle = '#6a4a2a'; roundRect(ctx, bx, 22, 22, 26, 5); ctx.fill(); ctx.fillStyle = '#8a6a3a'; roundRect(ctx, bx + 3, 18, 16, 8, 4); ctx.fill();
-        ctx.fillStyle = '#5a3a1a'; ctx.fillRect(bx + 4, 32, 14, 3);
-        ctx.font = 'bold 14px "Nunito", system-ui'; ctx.textAlign = 'left';
-        ctx.fillStyle = used >= cap ? '#ff8a6a' : '#fff'; ctx.fillText(`${used}/${cap}`, bx + 28, 31);
-        ctx.font = '600 10px "Nunito", system-ui'; ctx.fillStyle = '#c8a06a'; ctx.fillText(`склад: ${G.store ? G.store.wood : 0}`, bx + 28, 45);
+        const bx = SW - 175;
+        ctx.drawImage(S().icons.coin, bx, 20, 30, 30);
+        ctx.font = 'bold 16px "Nunito", system-ui'; ctx.textAlign = 'left';
+        ctx.fillStyle = G.debt > 0 ? '#ff8a6a' : '#ffd24a'; ctx.fillText(`${G.coins || 0} $`, bx + 34, 31);
+        ctx.font = '600 10px "Nunito", system-ui'; ctx.fillStyle = G.debt > 0 ? '#ff8a6a' : '#c8b890';
+        ctx.fillText(G.debt > 0 ? `долг ${G.debt} $!` : `содерж.: ${AB.Sim.upkeepTotal(G)} $/день`, bx + 34, 45);
       }
       items.forEach((it, i) => {
-        const x = SW - w - 14 + 10 + i * 74;
+        const x = SW - w - 14 + 10 + i * 64;
         ctx.drawImage(S().icons[it], x, 21, 30, 30);
-        ctx.font = 'bold 15px "Nunito", system-ui, sans-serif'; ctx.textAlign = 'left'; ctx.fillStyle = (me.inv[it] || 0) > 0 ? '#fff' : '#6d7a70';
+        ctx.font = 'bold 15px "Nunito", system-ui, sans-serif'; ctx.textAlign = 'left'; ctx.fillStyle = '#fff';
         ctx.fillText(String(me.inv[it] || 0), x + 32, 38);
+        if (cfg.FOOD[it]) click(x - 2, 18, 60, 36, 'eatk', it);
       });
+      // рюкзак (внизу слева)
+      {
+        const cap = AB.Sim.bagCap(me), used = AB.Sim.bagUsed(me);
+        const cells = [];
+        ['wood', 'plank', 'hide'].forEach(k => { for (let i = 0; i < (me.inv[k] || 0); i++) cells.push(k); });
+        const per = 7, cs = 34, rows = Math.ceil(cap / per);
+        const px = 14, pw = per * (cs + 4) + 16, ph = 46 + rows * (cs + 4) + 20;
+        const py = SH - ph - 14;
+        panel(ctx, px, py, pw, ph);
+        ctx.font = 'bold 13px "Nunito", system-ui'; ctx.textAlign = 'left'; ctx.fillStyle = used >= cap ? '#ff8a6a' : '#fff';
+        ctx.fillText(`Рюкзак ${used}/${cap}`, px + 12, py + 16);
+        ctx.font = '600 10px "Nunito", system-ui'; ctx.fillStyle = '#aab4aa'; ctx.textAlign = 'right';
+        ctx.fillText('клик — выбросить', px + pw - 12, py + 16);
+        for (let i = 0; i < cap; i++) {
+          const cx = px + 8 + (i % per) * (cs + 4), cy = py + 28 + Math.floor(i / per) * (cs + 4);
+          ctx.fillStyle = 'rgba(0,0,0,0.45)'; roundRect(ctx, cx, cy, cs, cs, 6); ctx.fill();
+          ctx.strokeStyle = 'rgba(160,190,150,0.2)'; ctx.lineWidth = 1; ctx.stroke();
+          if (cells[i]) { ctx.drawImage(S().icons[cells[i]], cx + 3, cy + 3, cs - 6, cs - 6); click(cx, cy, cs, cs, 'dropk', cells[i]); }
+        }
+        const S0 = G.store;
+        if (S0) {
+          ctx.font = '600 11px "Nunito", system-ui'; ctx.textAlign = 'left'; ctx.fillStyle = '#e0c08a';
+          ctx.fillText(`Лесопилка ур.${S0.lvl}: доски ${S0.planks}/${AB.Sim.millCap(S0)} · бревна ${S0.logs}`, px + 12, py + ph - 9);
+        }
+      }
       // цели
       const opened = G.W.sites.filter(s => s.opened).length;
       const lines = [
@@ -1216,14 +1358,15 @@
       if (st.structBuild > 0) { hints.push(['T', `Частокол (${bc(cfg.STRUCTURES.wall.cost)})`]); hints.push(['Y', `Вышка (${bc(cfg.STRUCTURES.tower.cost)})`]); }
       else if (st.turretBuild > 0) hints.push(['T', `Турель/пушка (${bc(cfg.STRUCTURES.turret.cost)})`]);
       else if (st.moduleBuild > 0) hints.push(['T', `Модуль (${cfg.MODULE_COST})`]);
-      const mf = G.fires.find(f => f.main);
-      const upc = AB.Sim.fireUpCost(G, me);
-      if (mf && upc !== null && AB.dist(me.x, me.y, mf.x, mf.y) < 160) hints.push(['U', `Улучшить костёр (${upc})`]);
+      const eb = cfg.ECON_BUILDINGS[me.prof];
+      if (eb && !G.structs.some(q => q.kind === eb && q.owner === me.id)) hints.push(['H', `${cfg.STRUCTURES[eb].name} (${bc(cfg.STRUCTURES[eb].cost)})`]);
+      const ui2 = AB.Sim.upgradeInfo(G, me);
+      if (ui2) hints.push(['U', ui2.lvl >= ui2.max || ui2.cost == null ? `${ui2.name}: макс.` : `${ui2.name} ур.${ui2.lvl}→${ui2.lvl + 1}: ${ui2.prog}/${ui2.cost} досок`]);
       hints.push(['Tab', 'Сборка']);
       ctx.font = '600 12px "Nunito", system-ui, sans-serif';
       let hxx = 0;
       hints.forEach(h => { hxx += ctx.measureText(h[1]).width + 40 + (h[0].length > 1 ? 12 : 0); });
-      hxx = SW / 2 - hxx / 2;
+      hxx = Math.max(SW / 2 - hxx / 2, 330);
       const hyy = hy - 30;
       hints.forEach(h => {
         const tw2 = ctx.measureText(h[1]).width;
@@ -1299,6 +1442,7 @@
     }
     { const [tx, ty] = P(W.camp.x, W.camp.y); ctx.strokeStyle = 'rgba(255,210,120,0.8)'; ctx.lineWidth = 1.2; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.arc(tx, ty, AB.Sim.territory(G) * sc, 0, TAU); ctx.stroke(); ctx.setLineDash([]); }
     for (const f of G.fires) { const [px, py] = P(f.x, f.y); S().circle(ctx, px, py, 3, f.fuel > 0 ? '#ff9a2a' : '#555'); }
+    if (G.merchant) { const [px, py] = P(G.merchant.x, G.merchant.y); S().circle(ctx, px, py, 4.5, '#000'); S().circle(ctx, px, py, 3.5, '#ffd24a'); }
     for (const st of G.structs) { const [px, py] = P(st.x, st.y); ctx.fillStyle = st.kind === 'turret' ? '#ffb23a' : '#d08aff'; ctx.fillRect(px - 1.5, py - 1.5, 3, 3); }
     for (const m of G.monsters) if (m.boss) { const [px, py] = P(m.x, m.y); S().circle(ctx, px, py, 5, '#000'); S().circle(ctx, px, py, 4, '#ff3a2a'); }
     // лагерь

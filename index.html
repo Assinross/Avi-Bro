@@ -105,7 +105,9 @@
             <li><kbd>E</kbd> съесть · <kbd>R</kbd> посадить семя</li>
             <li><kbd>G</kbd> грядка · <kbd>B</kbd> костёр (у курсора)</li>
             <li><kbd>T</kbd> / <kbd>Y</kbd> — постройка вашей профессии</li>
-            <li><kbd>U</kbd> — улучшить главный костёр · <kbd>Tab</kbd> — сборка</li>
+            <li><kbd>U</kbd> — улучшить то, что рядом (костёр, кухня, лесопилка, вышка, турель, модуль)</li>
+            <li><kbd>H</kbd> — экономическое здание профессии · <kbd>Tab</kbd> — сборка</li>
+            <li>Клик по предмету на земле — поднять; клик по ячейке рюкзака — выбросить; клик по еде вверху — съесть</li>
             <li><kbd>Esc</kbd> пауза</li>
           </ul>
         </div>
@@ -116,8 +118,11 @@
           <ul>
             <li>Сытость падает. Всё можно есть сырым, но сырое мясо и овощи отнимают здоровье (ягоды наоборот лечат).</li>
             <li>Подойдите к <b>полевой кухне</b> у костра — вся сырая еда начнёт готовиться (5–20 с). Жареное мясо лечит.</li>
-            <li><b>Рюкзак</b> вмещает 7 единиц дерева и еды. Дерево относите на <b>склад</b> — из него строятся постройки и кормится костёр.</li>
+            <li><b>Рюкзак</b> вмещает 7 материалов (бревна, доски, шкуры). Еда, семена и монеты места не занимают.</li>
+            <li>Бревна несите на <b>лесопилку</b> — она пилит их в доски. Доски идут на постройки и улучшения.</li>
+            <li>Монеты — общая казна. Постройки требуют содержания каждый рассвет; нет денег — турели отключаются.</li>
             <li>Рюкзак растёт от умения «Большой рюкзак» и находок в охраняемых руинах.</li>
+            <li>Охотник строит <b>лавку</b> (T): сдавайте туда шкуры и готовую еду, рядом появятся монеты. Каждый 3-й день приходит <b>торговец</b> — у него охотник покупает и улучшает умения.</li>
             <li>Семена редкие: в сундуках и у сильных монстров.</li>
             <li>Сажайте на грядках в лагере (<kbd>R</kbd>), урожай собирается сам.</li>
             <li>Костёр лечит игроков и жжёт монстров (нежить — сильнее). Дрова подкидываются сами.</li>
@@ -149,6 +154,45 @@
         <button id="btnReroll" class="btn small ghost">Перебросить</button>
         <span class="note">Клавиши <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> · <kbd>Tab</kbd> — ваша сборка</span>
       </div>
+    </div>
+  </div>
+
+  <!-- Торговец -->
+  <div id="merchant" class="overlay hidden">
+    <div class="lvpanel">
+      <div class="lvtitle small">Странствующий торговец</div>
+      <div id="mcCoins" class="note"></div>
+      <div class="mchead">Товары для всех</div>
+      <div id="mcGoods" class="uplist"></div>
+      <div class="mchead">Купить умение (только охотник)</div>
+      <div id="mcOffers" class="skills four"></div>
+      <div class="mchead">Улучшить навык (повысить редкость)</div>
+      <div id="mcUp" class="uplist"></div>
+    </div>
+  </div>
+
+  <!-- Биржа программиста -->
+  <div id="exchange" class="overlay side hidden">
+    <div class="buildpanel ecopanel">
+      <div class="lvtitle small">Крипто-биржа</div>
+      <canvas id="exChart" width="300" height="110"></canvas>
+      <div id="exInfo" class="note"></div>
+      <div class="row wrap">
+        <button class="btn small" data-ex="cbuy:1">Купить 1</button>
+        <button class="btn small" data-ex="cbuy:5">Купить 5</button>
+        <button class="btn small" data-ex="csell:1">Продать 1</button>
+        <button class="btn small gold" data-ex="csell:all">Продать всё</button>
+      </div>
+      <div class="note">Курс меняется каждые несколько секунд, бывают обвалы и взлёты. Биржа ещё и майнит монеты.</div>
+    </div>
+  </div>
+
+  <!-- Мастерская инженера -->
+  <div id="workshop" class="overlay side hidden">
+    <div class="buildpanel ecopanel">
+      <div class="lvtitle small">Мастерская</div>
+      <div id="wsInfo" class="note"></div>
+      <button id="btnWup" class="btn gold small"></button>
     </div>
   </div>
 

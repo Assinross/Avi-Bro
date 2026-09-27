@@ -182,7 +182,8 @@
       }
       if (k === 'KeyT') command('build1');
       if (k === 'KeyY') command('build2');
-      if (k === 'KeyU') command('upfire');
+      if (k === 'KeyU') command('upnear');
+      if (k === 'KeyH') command('build3');
       if (k === 'KeyE') command('eat');
       if (k === 'KeyR') command('plant');
       if (k === 'KeyG') command('bed');
@@ -197,6 +198,19 @@
       if (e.button !== 0 || App.state !== 'play' || App.paused) return;
       const s = slotAt(e.clientX, e.clientY);
       if (s >= 0) { selectWeapon(s); return; }
+      // клики по интерфейсу (рюкзак, еда)
+      for (const c of (AB.Render.clicks || [])) {
+        if (e.clientX >= c.x && e.clientX <= c.x + c.w && e.clientY >= c.y && e.clientY <= c.y + c.h) { AB.Sound.play('click', 1); sendCmd(c.c, c.v); return; }
+      }
+      // клик по предмету на земле
+      const d = dropUnderMouse();
+      if (d) {
+        const me = App.me();
+        if (me && AB.dist(me.x, me.y, d.x, d.y) <= C().PICKUP_REACH) sendCmd('pickup', d.id);
+        else { App.pendingPick = d.id; App.moveTarget = { x: d.x, y: d.y }; App.clickMark = { x: d.x, y: d.y, t: 1 }; }
+        return;
+      }
+      App.pendingPick = null;
       App.mouse.down = true;
     });
     window.addEventListener('mouseup', (e) => { if (e.button === 0) App.mouse.down = false; });
@@ -228,6 +242,17 @@
     const me = App.me(); if (!me) return;
     const w = C().WEAPON_ORDER.filter(x => me.ws.includes(x))[i];
     if (w) { me.w = w; AB.Sound.play('click', 1); }
+  }
+  function sendCmd(c, x) {
+    if (App.mode === 'guest') AB.Net.send({ t: 'cmd', c, x, y: 0 });
+    else AB.Sim.command(App.G, App.myId, c, x, 0);
+  }
+  function dropUnderMouse() {
+    if (!App.G || !App.mouse.onCanvas) return null;
+    const mw = mouseWorld();
+    let best = null, bd = 22 * 22;
+    for (const d of App.G.drops) { const dd = AB.dist2(mw.x, mw.y, d.x, d.y - 6); if (dd < bd) { bd = dd; best = d; } }
+    return best;
   }
   function mouseWorld() {
     const z = AB.Render.zoom || 1;
@@ -289,6 +314,105 @@
     $('btnReroll').disabled = woodHave < cost;
     $('btnReroll').style.opacity = woodHave < cost ? 0.5 : 1;
   }
+  // Окно торговца
+  function merchantCmd(c, x) {
+    AB.Sound.play('click', 1);
+    if (App.mode === 'guest') AB.Net.send({ t: 'cmd', c, x, y: 0 });
+    else AB.Sim.command(App.G, App.myId, c, x, 0);
+    App.mcSig = null;
+  }
+  function updateMerchantUI(me) {
+    const cfg = C(), box = $('merchant'), G = App.G;
+    const M = G && G.merchant;
+    const near = M && me && !me.dead && App.state === 'play' && !me.offers && AB.dist(me.x, me.y, M.x, M.y) < cfg.MERCHANT.radius;
+    if (!near) { box.classList.add('hidden'); App.mcSig = null; return; }
+    box.classList.remove('hidden');
+    const coins = G.coins || 0;
+    const sig = JSON.stringify(me.mo) + coins + JSON.stringify(me.skills) + JSON.stringify(me.mgBought || {});
+    if (sig === App.mcSig) return;
+    App.mcSig = sig;
+    $('mcCoins').innerHTML = `В казне: <b style="color:#ffd24a">${coins} $</b>. Монеты дают монстры, лавка охотника, биржа программиста и ратуша.`;
+    const gb = $('mcGoods'); gb.innerHTML = '';
+    cfg.MERCHANT_GOODS.forEach(g => {
+      const b = document.createElement('button');
+      b.className = 'upbtn'; b.style.borderColor = '#ffd24a';
+      const done = g.once && me.mgBought && me.mgBought[g.id];
+      b.innerHTML = `${g.name} · <b style="color:#ffd24a">${g.price} $</b>${done ? ' (куплено)' : ''}`;
+      if (coins < g.price || done) b.disabled = true;
+      b.addEventListener('click', () => merchantCmd('goods', g.id));
+      gb.appendChild(b);
+    });
+    const box2 = $('mcOffers'); box2.innerHTML = '';
+    (me.mo || []).forEach((o, i) => {
+      const def = AB.Skills.find(o.id); if (!def) return;
+      const col = cfg.TIER_COLORS[o.tier - 1];
+      const el = document.createElement('div');
+      el.className = 'skill' + (o.sold ? ' sold' : '') + (coins < o.price ? ' poor' : '');
+      el.style.borderColor = col; el.style.minHeight = '150px';
+      el.innerHTML = `<div class="sico" style="color:${col}">${def.icon || '✦'}</div><div class="sname">${def.name}</div>
+        <div class="stier" style="color:${col}">${cfg.TIER_NAMES[o.tier - 1]}</div>
+        ${AB.Skills.lines(def, o.tier).map(l => `<div class="sline${l.bad ? ' bad' : ''}">${l.s}</div>`).join('')}
+        <div class="price">${o.sold ? 'Куплено' : o.price + ' $'}</div>`;
+      el.addEventListener('click', () => merchantCmd('buy', i));
+      box2.appendChild(el);
+    });
+    if (!(me.mo || []).length) box2.innerHTML = `<span class="note">${me.st.shopBuild > 0 ? 'Умения закончились.' : 'Умения торговец продаёт только охотнику.'}</span>`;
+    const up = $('mcUp'); up.innerHTML = '';
+    const best = {};
+    me.skills.forEach(s => { if (!s.sup && s.tier < 4 && (!best[s.id] || s.tier > best[s.id])) best[s.id] = s.tier; });
+    const ids = Object.keys(best);
+    if (!ids.length) up.innerHTML = '<span class="note">Нет навыков для улучшения.</span>';
+    ids.forEach(id => {
+      const def = AB.Skills.find(id), tr = best[id], price = AB.Sim.upgradePrice(tr);
+      const b = document.createElement('button');
+      b.className = 'upbtn'; b.style.borderColor = cfg.TIER_COLORS[tr];
+      b.innerHTML = `${def.icon || ''} ${def.name}: <span style="color:${cfg.TIER_COLORS[tr - 1]}">${cfg.TIER_NAMES[tr - 1]}</span> → <span style="color:${cfg.TIER_COLORS[tr]}">${cfg.TIER_NAMES[tr]}</span> · <b style="color:#ffd24a">${price} $</b>`;
+      if (coins < price) b.disabled = true;
+      b.addEventListener('click', () => merchantCmd('upgrade', id));
+      up.appendChild(b);
+    });
+  }
+  // Окна биржи и мастерской
+  function nearStructOf(me, kind) {
+    return App.G.structs.find(s => s.kind === kind && AB.dist2(me.x, me.y, s.x, s.y) < 80 * 80);
+  }
+  function updateEcoUI(me) {
+    const cfg = C(), G = App.G;
+    const ok = me && !me.dead && App.state === 'play' && !me.offers;
+    const ex = ok && nearStructOf(me, 'exchange');
+    $('exchange').classList.toggle('hidden', !ex);
+    if (ex) {
+      const cr = G.crypto, h = cr.hist || [];
+      const sig = h.join(',') + cr.held + G.coins;
+      if (sig !== App.exSig) {
+        App.exSig = sig;
+        const cv = $('exChart'), c = cv.getContext('2d');
+        c.clearRect(0, 0, cv.width, cv.height);
+        if (h.length > 1) {
+          const mx = Math.max(...h) * 1.05, mn = Math.min(...h) * 0.95;
+          c.strokeStyle = 'rgba(255,255,255,0.08)'; for (let i = 1; i < 4; i++) { c.beginPath(); c.moveTo(0, i * 27); c.lineTo(300, i * 27); c.stroke(); }
+          c.strokeStyle = h[h.length - 1] >= h[0] ? '#5aff8a' : '#ff5a4a'; c.lineWidth = 2; c.beginPath();
+          h.forEach((v, i) => { const x = i / (h.length - 1) * 296 + 2, y = 106 - (v - mn) / (mx - mn || 1) * 100; i ? c.lineTo(x, y) : c.moveTo(x, y); });
+          c.stroke();
+        }
+        $('exInfo').innerHTML = `Курс AviCoin: <b style="color:#9fdcff">${cr.price} $</b> · у команды: <b>${cr.held}</b> (≈${Math.floor(cr.held * cr.price)} $) · в казне: <b style="color:#ffd24a">${G.coins} $</b>`;
+      }
+    }
+    const ws = ok && nearStructOf(me, 'workshop');
+    $('workshop').classList.toggle('hidden', !ws);
+    if (ws) {
+      const W = cfg.WORKSHOP, lv = (me.wl && me.wl[me.w]) || 0, wn = cfg.WEAPONS[me.w].name;
+      const sig = me.w + lv + G.coins + AB.Sim.woodOf(G, me);
+      if (sig !== App.wsSig) {
+        App.wsSig = sig;
+        $('wsInfo').innerHTML = `Оружие в руках: <b>${wn}</b> · уровень ${lv}/${W.maxLevel} (урон +${Math.round(W.dmg * lv * 100)}%).<br>Смените оружие клавишами 1–5, чтобы улучшить другое.`;
+        const b = $('btnWup');
+        if (lv >= W.maxLevel) { b.textContent = 'Максимум'; b.disabled = true; }
+        else { b.textContent = `Улучшить: ${W.coins[lv]} $ + ${W.planks[lv]} досок`; b.disabled = G.coins < W.coins[lv] || AB.Sim.woodOf(G, me) < W.planks[lv]; }
+        b.style.opacity = b.disabled ? 0.5 : 1;
+      }
+    }
+  }
   function toggleBuild() { App.showBuild = !App.showBuild; App.buildSig = null; }
   function updateBuildUI(me) {
     const cfg = C();
@@ -334,6 +458,11 @@
         if (d < C().CLICK_STOP_DIST) App.moveTarget = null;
         else { dx = tx; dy = ty; }
       }
+    }
+    if (App.pendingPick) {
+      const d = App.G.drops.find(q => q.id === App.pendingPick);
+      if (!d) App.pendingPick = null;
+      else if (AB.dist(me.x, me.y, d.x, d.y) <= C().PICKUP_REACH * 0.8) { sendCmd('pickup', d.id); App.pendingPick = null; App.moveTarget = null; dx = 0; dy = 0; }
     }
     const ox = me.x, oy = me.y;
     AB.movePlayer(App.G.W, me, dx, dy, dt);
@@ -404,7 +533,10 @@
     AB.FX.update(dt);
     R.draw(G, me, App.cam, dt, { clickMark: App.clickMark });
     R.hud(G, me, { mouse: App.mouse.onCanvas ? App.mouse : null, hoverSlot: App.hoverSlot });
+    AB.Render.hoverDrop = (dropUnderMouse() || {}).id;
     updateLevelUI(me);
+    updateMerchantUI(me);
+    updateEcoUI(me);
     updateBuildUI(me);
   }
 
@@ -457,6 +589,8 @@
     try { App.prof = localStorage.getItem('avibro-prof') || 'hunter'; } catch (e) { App.prof = 'hunter'; }
     bind('btnSolo', () => chooseProf(startSolo, 'menu'));
     bind('btnReroll', reroll);
+    bind('btnWup', () => { sendCmd('wup', 0); App.wsSig = null; });
+    document.querySelectorAll('[data-ex]').forEach(b => b.addEventListener('click', () => { AB.Sound.play('click', 1); const [c, v] = b.dataset.ex.split(':'); sendCmd(c, v === 'all' ? 'all' : +v); App.exSig = null; }));
     bind('btnCoop', () => { show('coop'); $('coopErr').textContent = ''; $('peerWarn').classList.toggle('hidden', AB.Net.available()); });
     bind('btnHelp', () => show('help'));
     bind('btnHost', () => chooseProf(startHost, 'coop'));

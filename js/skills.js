@@ -7,7 +7,7 @@
   Sk.statKeys = function () {
     if (Sk._keys) return Sk._keys;
     const set = new Set(Object.keys(C().STAT_LABELS));
-    ['turretBuild', 'moduleBuild', 'structBuild', 'mark'].forEach(k => set.add(k));
+    ['turretBuild', 'moduleBuild', 'structBuild', 'mark', 'shopBuild'].forEach(k => set.add(k));
     Sk._keys = Array.from(set);
     return Sk._keys;
   };

@@ -108,3 +108,19 @@ input:focus { border-color: var(--gold); }
 .bstats { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; font-size: 12.5px; }
 .bstats .v { text-align: right; font-weight: 800; }
 .bstats .v.neg { color: #ff8a7a; }
+
+/* ---------- торговец ---------- */
+.skills.four { grid-template-columns: repeat(4, 1fr); }
+@media (max-width: 800px) { .skills.four { grid-template-columns: repeat(2, 1fr); } }
+.skill.sold { opacity: 0.35; pointer-events: none; }
+.skill.poor { opacity: 0.6; }
+.skill .price { text-align: center; font-weight: 800; color: #ffd24a; font-size: 15px; margin-top: auto; }
+.mchead { font-weight: 800; color: var(--gold); margin: 8px 0 2px; font-size: 14px; }
+.uplist { display: flex; flex-wrap: wrap; gap: 6px; max-height: 150px; overflow: auto; }
+.upbtn { border: 1px solid; border-radius: 9px; background: rgba(0,0,0,0.35); color: var(--text); padding: 6px 9px; font: 700 12.5px 'Nunito', system-ui; cursor: pointer; }
+.upbtn:hover { background: rgba(255,255,255,0.07); }
+.upbtn[disabled] { opacity: 0.45; cursor: default; }
+
+.ecopanel { margin-left: 16px; display: flex; flex-direction: column; gap: 8px; }
+.ecopanel canvas { width: 100%; background: #081018; border-radius: 8px; border: 1px solid var(--line); }
+.row.wrap { flex-wrap: wrap; }

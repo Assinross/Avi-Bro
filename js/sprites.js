@@ -296,6 +296,28 @@
         ctx.strokeStyle = 'rgba(255,255,255,0.75)'; ctx.lineWidth = 1.3; ctx.beginPath(); ctx.moveTo(12, 13); ctx.quadraticCurveTo(14, 9, 12, 5); ctx.moveTo(19, 13); ctx.quadraticCurveTo(21, 9, 19, 5); ctx.stroke();
         break;
       }
+      case 'plank': {
+        for (let i = 0; i < 3; i++) {
+          const y = 9 + i * 6, x = 4 + (i % 2) * 2;
+          ctx.fillStyle = O; ctx.fillRect(x - 1, y - 1, 24, 7);
+          ctx.fillStyle = i % 2 ? '#d8b078' : '#c8a06a'; ctx.fillRect(x, y, 22, 5);
+          ctx.fillStyle = '#a07848'; ctx.fillRect(x + 4, y + 2, 6, 1); ctx.fillRect(x + 13, y + 1, 5, 1);
+        }
+        break;
+      }
+      case 'hide': {
+        ctx.fillStyle = O; ctx.beginPath(); ctx.moveTo(6, 8); ctx.lineTo(12, 4); ctx.lineTo(20, 4); ctx.lineTo(26, 8); ctx.lineTo(28, 18); ctx.lineTo(24, 28); ctx.lineTo(16, 25); ctx.lineTo(8, 28); ctx.lineTo(4, 18); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#8a7058'; ctx.beginPath(); ctx.moveTo(7, 9); ctx.lineTo(12, 6); ctx.lineTo(20, 6); ctx.lineTo(25, 9); ctx.lineTo(26, 18); ctx.lineTo(23, 26); ctx.lineTo(16, 23); ctx.lineTo(9, 26); ctx.lineTo(6, 18); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#a88a6a'; ctx.beginPath(); ctx.ellipse(16, 14, 6, 7, 0, 0, TAU); ctx.fill();
+        ctx.fillStyle = '#6a5040'; for (let i = 0; i < 6; i++) ctx.fillRect(9 + (i * 5) % 14, 10 + i * 2.5, 2, 1);
+        break;
+      }
+      case 'coin': {
+        circle(ctx, 16, 17, 11, O); circle(ctx, 16, 17, 9.5, '#e0a82a'); circle(ctx, 16, 16, 8, '#ffd24a');
+        ctx.fillStyle = '#b8862a'; ctx.font = 'bold 12px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('$', 16, 16.5);
+        ctx.fillStyle = '#fff6c0'; ctx.fillRect(11, 11, 3, 2);
+        break;
+      }
       case 'seed_carrot': case 'seed_pumpkin': {
         ctx.fillStyle = O; ctx.beginPath(); ctx.moveTo(7, 9); ctx.lineTo(25, 9); ctx.lineTo(27, 29); ctx.lineTo(5, 29); ctx.closePath(); ctx.fill();
         ctx.fillStyle = '#c8a56a'; ctx.beginPath(); ctx.moveTo(8, 11); ctx.lineTo(24, 11); ctx.lineTo(25, 27); ctx.lineTo(7, 27); ctx.closePath(); ctx.fill();
@@ -388,6 +410,6 @@
     S.chest = makeChest(false); S.chestOpen = makeChest(true);
     S.tent = makeTent(); S.logs = makeLogs();
     S.icons = {};
-    ['wood', 'meat', 'berry', 'carrot', 'pumpkin', 'cooked_meat', 'cooked_carrot', 'cooked_pumpkin', 'seed_carrot', 'seed_pumpkin', 'axe', 'knife', 'spear', 'bow', 'crossbow', 'rifle'].forEach(k => S.icons[k] = makeIcon(k));
+    ['wood', 'meat', 'berry', 'carrot', 'pumpkin', 'cooked_meat', 'cooked_carrot', 'cooked_pumpkin', 'plank', 'hide', 'coin', 'seed_carrot', 'seed_pumpkin', 'axe', 'knife', 'spear', 'bow', 'crossbow', 'rifle'].forEach(k => S.icons[k] = makeIcon(k));
   };
 })(window.AB);
