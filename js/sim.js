@@ -2055,9 +2055,17 @@
     } else if (c === 'plant') {
       const seedKey = p.inv.seed_carrot > 0 ? 'seed_carrot' : (p.inv.seed_pumpkin > 0 ? 'seed_pumpkin' : null);
       if (!seedKey) { Sim.msg(G, 'Нет семян. Ищите их в сундуках и у сильных монстров', p.id, '#ff9d7a'); return; }
-      let best = null, bd = cfg.PLANT_RANGE;
-      for (const pl of G.plots) { if (pl.crop) continue; const d = AB.dist(p.x, p.y, pl.x, pl.y); if (d < bd) { bd = d; best = pl; } }
-      if (!best) { Sim.msg(G, 'Подойдите к свободной грядке (или постройте её клавишей G)', p.id, '#ff9d7a'); return; }
+      let best = null;
+      if (typeof x === 'string' && x[0] === 'p') {
+        // посадка ПКМ в конкретную грядку
+        const pl0 = G.plots.find(q => q.id === +x.slice(1));
+        if (pl0 && !pl0.crop && AB.dist(p.x, p.y, pl0.x, pl0.y) <= cfg.PLANT_RANGE) best = pl0;
+        else { Sim.msg(G, pl0 && pl0.crop ? 'Грядка уже засажена' : 'Подойдите к грядке ближе', p.id, '#ff9d7a'); return; }
+      } else {
+        let bd = cfg.PLANT_RANGE;
+        for (const pl of G.plots) { if (pl.crop) continue; const d = AB.dist(p.x, p.y, pl.x, pl.y); if (d < bd) { bd = d; best = pl; } }
+        if (!best) { Sim.msg(G, 'Подойдите к свободной грядке (или постройте её клавишей G)', p.id, '#ff9d7a'); return; }
+      }
       p.inv[seedKey]--;
       best.crop = seedKey === 'seed_carrot' ? 'carrot' : 'pumpkin'; best.t = 0; best.ready = false;
       Sim.fx(G, { k: 'plant', x: best.x, y: best.y });
