@@ -2025,8 +2025,9 @@
       if (c === 'buy') {
         const o = (p.mo || [])[x | 0];
         if (!o || o.sold) return;
-        if (G.coins < o.price) { Sim.msg(G, `Нужно монет: ${o.price}`, p.id, '#ff9d7a'); return; }
-        G.coins -= o.price; o.sold = 1;
+        const price = (p.st.shopBuild > 0) ? Math.round(o.price * 0.75) : o.price; // охотнику −25%
+        if (G.coins < price) { Sim.msg(G, `Нужно монет: ${price}`, p.id, '#ff9d7a'); return; }
+        G.coins -= price; o.sold = 1;
         p.skills.push({ id: o.id, tier: o.tier, sup: 0 });
         AB.Skills.recalc(p);
         Sim.fx(G, { k: 'skill', x: p.x, y: p.y, pid: p.id, s: AB.Skills.find(o.id).name, t: o.tier });

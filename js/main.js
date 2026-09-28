@@ -420,17 +420,18 @@
     (me.mo || []).forEach((o, i) => {
       const def = AB.Skills.find(o.id); if (!def) return;
       const col = cfg.TIER_COLORS[o.tier - 1];
+      const price = (me.st.shopBuild > 0) ? Math.round(o.price * 0.75) : o.price; // охотнику −25%
       const el = document.createElement('div');
-      el.className = 'skill' + (o.sold ? ' sold' : '') + (coins < o.price ? ' poor' : '');
+      el.className = 'skill' + (o.sold ? ' sold' : '') + (coins < price ? ' poor' : '');
       el.style.borderColor = col; el.style.minHeight = '150px';
       el.innerHTML = `<div class="sico" style="color:${col}">${def.icon || '✦'}</div><div class="sname">${def.name}</div>
         <div class="stier" style="color:${col}">${cfg.TIER_NAMES[o.tier - 1]}</div>
         ${AB.Skills.lines(def, o.tier).map(l => `<div class="sline${l.bad ? ' bad' : ''}">${l.s}</div>`).join('')}
-        <div class="price">${o.sold ? 'Куплено' : o.price + ' $'}</div>`;
+        <div class="price">${o.sold ? 'Куплено' : price + ' $'}</div>`;
       el.addEventListener('click', () => merchantCmd('buy', i));
       box2.appendChild(el);
     });
-    if (!(me.mo || []).length) box2.innerHTML = `<span class="note">${me.st.shopBuild > 0 ? 'Умения закончились.' : 'Умения торговец продаёт только охотнику.'}</span>`;
+    if (!(me.mo || []).length) box2.innerHTML = `<span class="note">Умения закончились.</span>`;
     const up = $('mcUp'); up.innerHTML = '';
     const best = {};
     me.skills.forEach(s => { if (!s.sup && s.tier < 4 && (!best[s.id] || s.tier > best[s.id])) best[s.id] = s.tier; });
