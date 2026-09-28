@@ -44,6 +44,7 @@
     App.pendingDump = null;
     App.pendingPlant = null;
     App.lvOpen = false; App.aoRef = null; App.aoWasOpen = false;
+    App.buildMode = null;
     setAutoPick(App.autoPick, true);
   }
   // Автоподбор предметов (у каждого игрока свой, по умолчанию выключен)
@@ -185,7 +186,7 @@
       if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(k)) e.preventDefault();
       if (App.state !== 'play') return;
       if (k === 'Tab') { e.preventDefault(); if (!e.repeat) toggleBuild(); return; }
-      if (k === 'Escape') { if (App.lvOpen) { App.lvOpen = false; App.lvSig = null; return; } const me0e = App.me(); if (me0e && me0e.ao && !me0e.offers && !App.abDefer) { App.abDefer = true; App.lvSig = null; return; } if (App.selRef) { App.selRef = null; return; } togglePause(); return; }
+      if (k === 'Escape') { if (App.buildMode) { App.buildMode = null; return; } if (App.lvOpen) { App.lvOpen = false; App.lvSig = null; return; } const me0e = App.me(); if (me0e && me0e.ao && !me0e.offers && !App.abDefer) { App.abDefer = true; App.lvSig = null; return; } if (App.selRef) { App.selRef = null; return; } togglePause(); return; }
       if (App.paused) return;
       App.keys.add(k);
       if (e.repeat) return;
@@ -203,7 +204,6 @@
       if (k === 'KeyE') command('eat');
       if (k === 'KeyR') command('plant');
       if (k === 'KeyG') command('bed');
-      if (k === 'KeyB') command('fire');
       if (k === 'KeyF') setAutoPick(!App.autoPick);
     });
     window.addEventListener('keyup', (e) => App.keys.delete(e.code));
@@ -213,6 +213,8 @@
     cv.addEventListener('mousedown', (e) => {
       AB.Sound.unlock();
       if (e.button === 2 && App.state === 'play' && App.G) {
+        // в режиме стройки ПКМ отменяет его
+        if (App.buildMode) { App.buildMode = null; return; }
         const mw = mouseWorld();
         const ref = AB.Sim.buildingAt(App.G, mw.x, mw.y);
         const me = App.me();
@@ -232,6 +234,17 @@
           else if (S) { App.pendingDump = ref; App.pendingPick = null; App.moveTarget = { x: S.x, y: S.y + 24 }; App.clickMark = { x: S.x, y: S.y, t: 1 }; }
           return;
         }
+        // ПКМ по грядке — посадить семя (если далеко — сначала подойти)
+        {
+          const pl = App.G.plots.find(q => AB.dist(mw.x, mw.y, q.x, q.y) < 34);
+          if (pl && me && !me.dead && !App.paused) {
+            if (pl.crop) return;
+            AB.Sound.play('click', 1);
+            if (AB.dist(me.x, me.y, pl.x, pl.y) <= C().PLANT_RANGE) sendCmd('plant', 'p' + pl.id);
+            else { App.pendingPlant = pl.id; App.pendingPick = null; App.pendingDump = null; App.moveTarget = { x: pl.x, y: pl.y + 16 }; App.clickMark = { x: pl.x, y: pl.y, t: 1 }; }
+            return;
+          }
+        }
         App.selRef = ref;
         App.bpSig = null;
         if (App.selRef) AB.Sound.play('click', 1);
@@ -239,16 +252,15 @@
       }
       if (e.button !== 0 || App.state !== 'play' || App.paused) return;
       if (slotAt(e.clientX, e.clientY) >= 0) return;
-      // клики по интерфейсу (рюкзак, еда, выбор навыка)
+      // клики по интерфейсу (рюкзак, еда, выбор навыка, стройка)
       for (const c of (AB.Render.clicks || [])) {
         if (e.clientX >= c.x && e.clientX <= c.x + c.w && e.clientY >= c.y && e.clientY <= c.y + c.h) {
-          AB.Sound.play('click', 1);
-          if (c.c === 'abopen') { App.abDefer = false; App.lvSig = null; }
-          else if (c.c === 'lvopen') { App.lvOpen = true; App.lvSig = null; }
-          else sendCmd(c.c, c.v);
+          clickBtn(c);
           return;
         }
       }
+      // режим стройки с верхней панели: клик по земле ставит постройку
+      if (App.buildMode) { command(App.buildMode); return; }
       // клик по предмету на земле
       const d = dropUnderMouse();
       if (d) {
@@ -257,8 +269,21 @@
         else { App.pendingPick = d.id; App.moveTarget = { x: d.x, y: d.y }; App.clickMark = { x: d.x, y: d.y, t: 1 }; }
         return;
       }
-      App.pendingPick = null; App.pendingDump = null;
+      App.pendingPick = null; App.pendingDump = null; App.pendingPlant = null;
       App.mouse.down = true;
+    });
+    // клик колесом (средняя кнопка) — съесть
+    cv.addEventListener('mousedown', (e) => {
+      if (!(e.button === 1 && App.state === 'play' && App.G && !App.paused)) return;
+      e.preventDefault();
+      AB.Sound.unlock();
+      for (const c of (AB.Render.clicks || [])) {
+        if (e.clientX >= c.x && e.clientX <= c.x + c.w && e.clientY >= c.y && e.clientY <= c.y + c.h) {
+          clickBtn(c);
+          return;
+        }
+      }
+      command('eat');
     });
     window.addEventListener('mouseup', (e) => { if (e.button === 0) App.mouse.down = false; });
     cv.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -279,6 +304,18 @@
   function sendCmd(c, x) {
     if (App.mode === 'guest') AB.Net.send({ t: 'cmd', c, x, y: 0 });
     else AB.Sim.command(App.G, App.myId, c, x, 0);
+  }
+  // клик по кнопке интерфейса: выбор режима стройки переключается, остальное — команды
+  function clickBtn(c) {
+    AB.Sound.play('click', 1);
+    if (c.c === 'abopen') { App.abDefer = false; App.lvSig = null; return; }
+    if (c.c === 'lvopen') { App.lvOpen = true; App.lvSig = null; return; }
+    if (c.c === 'buildmode') {
+      App.buildMode = (App.buildMode === c.v) ? null : c.v;
+      if (App.buildMode) AB.FX.toast('Режим стройки: клик по земле — построить, ПКМ/Esc — отмена', '#ffe7a8');
+      return;
+    }
+    sendCmd(c.c, c.v);
   }
   function dropUnderMouse() {
     if (!App.G || !App.mouse.onCanvas) return null;
@@ -616,6 +653,12 @@
         else if (AB.dist(me.x, me.y, f.x, f.y) <= C().FIRE_DUMP_RANGE * 0.9) { sendCmd('dumpfire', App.pendingDump); App.pendingDump = null; App.moveTarget = null; dx = 0; dy = 0; }
       }
     }
+    // подошли к грядке по ПКМ — сажаем в неё
+    if (App.pendingPlant !== null && App.pendingPlant !== undefined) {
+      const pl = App.G.plots.find(q => q.id === App.pendingPlant);
+      if (!pl || pl.crop || (dx === 0 && dy === 0 && !App.moveTarget)) App.pendingPlant = null;
+      else if (AB.dist(me.x, me.y, pl.x, pl.y) <= C().PLANT_RANGE * 0.9) { sendCmd('plant', 'p' + pl.id); App.pendingPlant = null; App.moveTarget = null; dx = 0; dy = 0; }
+    }
     if (App.pendingPick) {
       const d = App.G.drops.find(q => q.id === App.pendingPick);
       if (!d) App.pendingPick = null;
@@ -695,7 +738,7 @@
       if (!App.aoWasOpen) { App.abDefer = true; App.lvSig = null; }
     } else if (!me || !me.ao) App.aoRef = null;
     const lvPlus = me && !me.dead && me.offers && !App.lvOpen && App.state === 'play' ? me.queue.length : 0;
-    R.hud(G, me, { mouse: App.mouse.onCanvas ? App.mouse : null, hoverSlot: App.hoverSlot, lvPlus });
+    R.hud(G, me, { mouse: App.mouse.onCanvas ? App.mouse : null, hoverSlot: App.hoverSlot, lvPlus, buildMode: App.buildMode });
     AB.Render.hoverDrop = (dropUnderMouse() || {}).id;
     updateLevelUI(me);
     updateMerchantUI(me);

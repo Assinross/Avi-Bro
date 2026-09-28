@@ -1595,6 +1595,42 @@
         ctx.fillText(String(me.inv[it] || 0), x + 32, 38);
         if (cfg.FOOD[it]) click(x - 2, 18, 60, 36, 'eatk', it);
       });
+      // --- панель стройки сверху по центру: доступные горят ярко, клик включает режим стройки
+      {
+        const st = me.st || {};
+        const bc2 = (v) => Math.max(1, Math.round(v * (1 - Math.min(80, st.buildCost || 0) / 100)));
+        const woodHave = AB.Sim.woodOf(G, me);
+        const pal = [{ cmd: 'bed', key: 'Г', name: 'Грядка', cost: bc2(cfg.GARDEN_BED_COST) }];
+        if (st.structBuild > 0) { pal.push({ cmd: 'build1', key: 'T', name: 'Частокол', cost: bc2(cfg.STRUCTURES.wall.cost) }); pal.push({ cmd: 'build2', key: 'Y', name: 'Вышка', cost: bc2(cfg.STRUCTURES.tower.cost) }); }
+        else if (st.turretBuild > 0) pal.push({ cmd: 'build1', key: 'T', name: 'Турель', cost: bc2(cfg.STRUCTURES.turret.cost) });
+        else if (st.moduleBuild > 0) pal.push({ cmd: 'build1', key: 'T', name: 'Модуль', cost: cfg.MODULE_COST });
+        const eb = cfg.ECON_BUILDINGS[me.prof];
+        const ebShort = { shop: 'Лавка', exchange: 'Биржа', workshop: 'Мастерская', townhall: 'Ратуша' };
+        if (eb && !G.structs.some(q => q.kind === eb && q.owner === me.id)) pal.push({ cmd: 'build3', key: 'H', name: ebShort[eb] || cfg.STRUCTURES[eb].name, cost: bc2(cfg.STRUCTURES[eb].cost) });
+        const bw = 66, bh = 56, gp = 6;
+        const totw = pal.length * (bw + gp) - gp;
+        let px = Math.round(SW / 2 - totw / 2); const py = 14;
+        ctx.textAlign = 'center';
+        pal.forEach(it => {
+          const ok = woodHave >= it.cost, sel = ui && ui.buildMode === it.cmd;
+          ctx.globalAlpha = ok ? 1 : 0.45;
+          panel(ctx, px, py, bw, bh);
+          ctx.fillStyle = ok ? '#ffd24a' : '#8a8a8a';
+          roundRect(ctx, px + 5, py + 5, 18, 15, 3); ctx.fill();
+          ctx.fillStyle = '#1a1206'; ctx.font = 'bold 11px system-ui'; ctx.fillText(it.key, px + 14, py + 17);
+          ctx.fillStyle = ok ? '#fff' : '#9aa39a'; ctx.font = '600 10px "Nunito", system-ui';
+          ctx.fillText(it.name, px + bw / 2, py + 34);
+          ctx.fillStyle = ok ? '#e0c08a' : '#7d847d'; ctx.fillText(`${it.cost} д`, px + bw / 2, py + 47);
+          ctx.globalAlpha = 1;
+          if (sel) { ctx.strokeStyle = '#ffd24a'; ctx.lineWidth = 2; roundRect(ctx, px - 1, py - 1, bw + 2, bh + 2, 8); ctx.stroke(); }
+          click(px, py, bw, bh, 'buildmode', it.cmd);
+          px += bw + gp;
+        });
+        if (ui && ui.buildMode) {
+          ctx.font = '600 12px "Nunito", system-ui'; ctx.fillStyle = '#ffe7a8';
+          ctx.fillText('Клик по земле — построить, ПКМ/Esc — отмена', SW / 2, py + bh + 16);
+        }
+      }
       // рюкзак (внизу слева)
       {
         const cap = AB.Sim.bagCap(me), used = AB.Sim.bagUsed(me);
@@ -1715,7 +1751,7 @@
       }
       // подсказки
       const st = me.st || {}, bc = (v) => Math.max(1, Math.round(v * (1 - Math.min(80, st.buildCost || 0) / 100)));
-      const hints = [['E', 'Съесть'], ['R', 'Посадить'], ['G', `Грядка (${bc(cfg.GARDEN_BED_COST)})`], ['B', `Костёр (${AB.Sim.fireCost(me)})`]];
+      const hints = [['E', 'Съесть'], ['R', 'Посадить'], ['G', `Грядка (${bc(cfg.GARDEN_BED_COST)})`]];
       if (st.structBuild > 0) { hints.push(['T', `Частокол (${bc(cfg.STRUCTURES.wall.cost)})`]); hints.push(['Y', `Вышка (${bc(cfg.STRUCTURES.tower.cost)})`]); }
       else if (st.turretBuild > 0) hints.push(['T', `Турель/пушка (${bc(cfg.STRUCTURES.turret.cost)})`]);
       else if (st.moduleBuild > 0) hints.push(['T', `Модуль (${cfg.MODULE_COST})`]);
