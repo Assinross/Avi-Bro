@@ -457,7 +457,8 @@
     let kept = 0; for (let i = 0; i < meat; i++) if (rnd() < (cfg.MEAT_DROP_MULT !== undefined ? cfg.MEAT_DROP_MULT : 1)) kept++;
     if (kept > 0) Sim.dropItem(G, 'meat', kept, m.x, m.y, 12);
     const depth = Sim.depth(G, m.x, m.y);
-    const xv = (cfg.XP_DROP[m.type] || 1) * (m.xpk || 1) * (1 + (cfg.DEPTH_XP || 0) * depth);
+    // опыт растёт с ночью (G.day = номер дня, ночь N идёт в день N): ночь 1 ≈ ×1.0
+    const xv = (cfg.XP_DROP[m.type] || 1) * (m.xpk || 1) * (1 + (cfg.DEPTH_XP || 0) * depth) * (1 + (cfg.XP_NIGHT_GROWTH || 0) * (G.day - 1));
     Sim.dropItem(G, 'xp', Math.max(1, Math.round(xv * (0.8 + rnd() * 0.4))), m.x, m.y, 14);
     if (m.type === 'brute' && depth > 0.5 && rnd() < (cfg.IRON.bruteChance || 0) * (1 + luck / 100)) { Sim.dropItem(G, 'iron', 1, m.x, m.y, 12); Sim.msg(G, 'Громила обронил железо!', -1, '#c8d4e0'); }
     if (def.hide && rnd() < def.hide * (1 + luck / 100)) Sim.dropItem(G, 'hide', 1, m.x, m.y, 12);
