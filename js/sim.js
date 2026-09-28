@@ -80,7 +80,8 @@
   Sim.spawnMonster = function (G, type, x, y, guard, depth, power) {
     const cfg = C(), def = AB.monDef(type);
     depth = depth || 0; power = power || 1;
-    const hm = (guard ? 1 : Sim.hpMult(G.day)) * (1 + cfg.DEPTH_HP * depth) * power, dm = (guard ? 1 : Sim.dmgMult(G.day)) * (1 + cfg.DEPTH_DMG * depth) * Math.sqrt(power);
+    // стража логов крепнет с ночью: (1+hpMult)/2 — на 1-й ночи как раньше, к 99-й вдвое толще базы
+    const hm = (guard ? (1 + Sim.hpMult(G.day)) / 2 : Sim.hpMult(G.day)) * (1 + cfg.DEPTH_HP * depth) * power, dm = (guard ? (1 + Sim.dmgMult(G.day)) / 2 : Sim.dmgMult(G.day)) * (1 + cfg.DEPTH_DMG * depth) * Math.sqrt(power);
     const m = {
       id: G.nextId++, type, x, y, a: rnd() * TAU, hp: def.hp * hm, maxHp: def.hp * hm,
       dmg: def.damage * dm, speed: def.speed * cfg.MOVE_SPEED_MULT * cfg.MONSTER_SPEED_MULT * (0.92 + rnd() * 0.16), r: def.radius,
@@ -464,9 +465,10 @@
     const luck = p ? p.st.luck : 0;
     let meat = def.meat[0] + Math.floor(rnd() * (def.meat[1] - def.meat[0] + 1));
     const mb = p ? p.st.meatBonus : (G.team.meatBonus || 0) / Math.max(1, G.players.length);
-    if (mb > 0 && rnd() * 100 < mb) meat++;
     // мяса выпадает меньше: каждый кусок остаётся с вероятностью MEAT_DROP_MULT
     let kept = 0; for (let i = 0; i < meat; i++) if (rnd() < (cfg.MEAT_DROP_MULT !== undefined ? cfg.MEAT_DROP_MULT : 1)) kept++;
+    // бонус охотника — после мульта: гарантированный доп. кусок с шансом meatBonus (раньше съедался ×0.2)
+    if (mb > 0 && rnd() * 100 < mb) kept++;
     if (kept > 0) Sim.dropItem(G, 'meat', kept, m.x, m.y, 12);
     const depth = Sim.depth(G, m.x, m.y);
     // опыт растёт с ночью (G.day = номер дня, ночь N идёт в день N): ночь 1 ≈ ×1.0
@@ -490,13 +492,16 @@
 
   function bossReward(G, m) {
     const cfg = C(), R = cfg.BOSS_REWARD;
-    Sim.dropItem(G, 'meat', R.meat, m.x, m.y, 40);
+    // добыча растёт с каждым боссом: 1-й ×1.0, дальше +50% (иначе поздно награда — 12 дерева за 60k HP)
+    const mult = 1 + 0.5 * Math.max(0, (G.bossCount || 1) - 1);
+    Sim.dropItem(G, 'meat', Math.max(1, Math.round(R.meat * mult)), m.x, m.y, 40);
     dropCoins(G, m);
-    Sim.dropItem(G, 'wood', R.wood, m.x, m.y, 40);
-    if (R.hides) Sim.dropItem(G, 'hide', R.hides, m.x, m.y, 30);
-    if (R.coal) Sim.dropItem(G, 'coal', R.coal, m.x, m.y, 30);
-    if (R.iron) Sim.dropItem(G, 'iron', R.iron, m.x, m.y, 30);
-    Sim.dropItem(G, 'xp', cfg.XP_DROP.boss || 40, m.x, m.y, 40);
+    if (mult > 1) Sim.dropItem(G, 'coin', Math.round(25 * (mult - 1)), m.x, m.y, 30);
+    Sim.dropItem(G, 'wood', Math.round(R.wood * mult), m.x, m.y, 40);
+    if (R.hides) Sim.dropItem(G, 'hide', Math.max(1, Math.round(R.hides * mult)), m.x, m.y, 30);
+    if (R.coal) Sim.dropItem(G, 'coal', Math.max(1, Math.round(R.coal * mult)), m.x, m.y, 30);
+    if (R.iron) Sim.dropItem(G, 'iron', Math.max(1, Math.round(R.iron * mult)), m.x, m.y, 30);
+    Sim.dropItem(G, 'xp', Math.max(1, Math.round((cfg.XP_DROP.boss || 40) * mult)), m.x, m.y, 40);
     for (let i = 0; i < R.seeds; i++) Sim.dropItem(G, rnd() < 0.5 ? 'seed_carrot' : 'seed_pumpkin', 1, m.x, m.y, 30);
     Sim.msg(G, `Босс «${cfg.BOSSES[m.type].name}» повержен! Бонусное умение каждому`, -1, '#ffd24a');
     G.tele = G.tele.filter(t => t.owner !== m.id);
