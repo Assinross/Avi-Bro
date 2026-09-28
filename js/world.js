@@ -55,8 +55,8 @@
     const GUARDS = [
       [['ghoul', 'wolf', 'wolf'], ['wolf', 'wolf', 'spider', 'spider']],
       [['ghoul', 'ghoul', 'wolf', 'alpha'], ['alpha', 'wolf', 'wolf', 'spider']],
-      [['alpha', 'ghoul', 'ghoul', 'spitter'], ['brute', 'wolf', 'wolf', 'ghoul']],
-      [['brute', 'alpha', 'ghoul', 'spitter'], ['brute', 'brute', 'wolf', 'alpha']],
+      [['alpha', 'ghoul', 'ghoul', 'spitter'], ['brute', 'wolf', 'archer', 'ghoul'], ['alpha', 'archer', 'ghoul', 'spitter']],
+      [['brute', 'alpha', 'ghoul', 'spitter'], ['brute', 'brute', 'archer', 'alpha'], ['brute', 'archer', 'alpha', 'spitter']],
     ];
     const IR = cfg.IRON || {};
     siteList.forEach((s, i) => {
@@ -64,7 +64,7 @@
       const tier = Math.min(3, Math.floor((i / Math.max(1, n)) * 4));
       const pool = GUARDS[tier];
       let guards = pool[r.int(0, pool.length - 1)].slice();
-      if (hidden) guards = ['brute', 'alpha', 'spitter', 'ghoul', 'alpha'];
+      if (hidden) guards = ['brute', 'alpha', 'archer', 'spitter', 'ghoul', 'alpha'];
       const loot = {};
       const ns = r.int(cfg.CHEST_SEEDS[0], cfg.CHEST_SEEDS[1]);
       for (let k = 0; k < ns; k++) {

@@ -673,7 +673,7 @@
       // антенна
       ctx.fillStyle = '#16100b'; ctx.fillRect(x + 21, y - 96, 2, 22); S().circle(ctx, x + 22, y - 97, 2.4, Math.sin(t * 5) > 0 ? '#9fdcff' : '#3a6a9a');
       windowGlow(ctx, [[x + 25, y - 26, 16]], t);
-      if (near) label(ctx, `Крипто-биржа · AviCoin ${G_ref.crypto.price}$`, x, y - 110, '#9fdcff');
+      if (near) label(ctx, `Крипто-биржа · AviCoin ${G_ref.crypto ? G_ref.crypto.price : '—'}$`, x, y - 110, '#9fdcff');
     } else if (s.kind === 'workshop') {
       Bd().draw(ctx, 'workshop', x, y);
       // горн мерцает, из трубы дым, у наковальни искры
@@ -731,7 +731,7 @@
     if (cooking && Math.random() < 0.12) AB.FX.add({ t: 'smoke', x: x - 19 + (Math.random() - 0.5) * 8, y: y - 20, z: 8, vx: (Math.random() - 0.5) * 6, vy: -3, vz: 22, g: -4, life: 1.6, size: 4, c: 'rgba(230,230,230,' });
     // очередь и прогресс
     if (K.slots) K.slots.forEach((sl, i) => {
-      const prog = sl.prog !== undefined ? sl.prog : sl.t / cfg.COOKING[sl.k].time;
+      const prog = sl.prog !== undefined ? sl.prog : (cfg.COOKING[sl.k] ? sl.t / cfg.COOKING[sl.k].time : 0);
       const bx = x - 40 + (i % 5) * 26, by = y - 116 - Math.floor(i / 5) * 30;
       ctx.fillStyle = 'rgba(10,16,12,0.85)'; roundRect(ctx, bx, by, 22, 26, 5); ctx.fill();
       ctx.drawImage(S().icons[sl.k], bx + 3, by + 2, 16, 16);
@@ -939,7 +939,7 @@
     if (f.main) {
       let acc = 0; ctx.fillStyle = 'rgba(0,0,0,0.8)';
       const steps = C().FIRE_LEVEL_STEPS;
-      for (let i = 0; i < (f.lvl || 1) - 1; i++) { acc += steps[i]; ctx.fillRect(bx + acc * ppu * (w / (cap * ppu)) - 1, by - 2, 2, 10); }
+      for (let i = 0; i < (f.lvl || 1) - 1; i++) { acc += steps[i] || 0; ctx.fillRect(bx + acc * ppu * (w / (cap * ppu)) - 1, by - 2, 2, 10); }
       ctx.fillStyle = 'rgba(255,255,255,0.12)'; for (let u = 5; u < cap; u += 5) ctx.fillRect(bx + u / cap * w, by, 1, 6);
     }
     ctx.font = 'bold 9px "Nunito", system-ui'; ctx.textAlign = 'center'; ctx.fillStyle = '#ffe7a8';
@@ -971,6 +971,7 @@
     ctx.fillStyle = '#5e3c20'; for (let i = 0; i < 3; i++) ctx.fillRect(x - 14, y - 7 + i * 6, 28, 2.5);
     if (pl.crop) {
       const cd = C().CROPS[pl.crop];
+      if (!cd) return;
       const stage = pl.ready ? 3 : Math.min(2, Math.floor((pl.t / cd.grow) * 3));
       for (let i = -1; i <= 1; i += 2) S().drawCrop(ctx, x + i * 7, y + 2, pl.crop, stage, t);
       if (pl.ready) { ctx.globalAlpha = 0.5 + Math.sin(t * 4) * 0.3; S().circle(ctx, x + 12, y - 16, 2, '#fff6a0'); ctx.globalAlpha = 1; }
@@ -1232,6 +1233,7 @@
           }
           const alpha = markAll(o.x, o.y - 2, 30 * o.s, 115 * o.s) ? 0.42 : undefined;
           const tree = sp.trees[o.v];
+          if (!tree) break;
           if (o.shake > 0) {
             ctx.save(); ctx.translate(o.x, o.y); ctx.rotate(Math.sin(t * 50) * o.shake * 0.12); ctx.translate(-o.x, -o.y);
             drawSprite(ctx, tree, o.x, o.y, o.s, alpha); ctx.restore();
@@ -1241,12 +1243,13 @@
         case 1:
           see(markAll(o.x, o.y + 4, 22, o.kind === 'ore' ? (o.ore === 'iron' && !o.dead ? 44 : 20) : 30));
           if (o.kind === 'ore') {
-            const osp = o.dead ? sp.oresDead[o.ore] : sp.ores[o.ore][o.v];
+            const osp = o.dead ? (sp.oresDead || {})[o.ore] : (sp.ores[o.ore] || [])[o.v];
+            if (!osp) break;
             if (o.shake > 0) { ctx.save(); ctx.translate(Math.sin(t * 60) * o.shake * 4, 0); drawSprite(ctx, osp, o.x, o.y + 6, 1); ctx.restore(); }
             else drawSprite(ctx, osp, o.x, o.y + 6, 1);
             if (!o.dead && o.hp < C().ORE_HITS) hpBar(ctx, o.x, o.y + 12, 26, o.hp / C().ORE_HITS, o.ore === 'iron' ? '#d08060' : '#c8c0b0');
-            if (!o.dead && me && AB.dist2(me.x, me.y, o.x, o.y) < 70 * 70) label(ctx, `${C().ORES[o.ore].name}${me.pick ? '' : ' · нужна кирка'}`, o.x, o.y - 46, o.ore === 'iron' ? '#e0a080' : '#d8d0c0');
-          } else drawSprite(ctx, o.kind === 'ruin' ? sp.ruins[o.v] : sp.rocks[o.v], o.x, o.y + 10 * o.s, o.s);
+            if (!o.dead && me && AB.dist2(me.x, me.y, o.x, o.y) < 70 * 70 && C().ORES[o.ore]) label(ctx, `${C().ORES[o.ore].name}${me.pick ? '' : ' · нужна кирка'}`, o.x, o.y - 46, o.ore === 'iron' ? '#e0a080' : '#d8d0c0');
+          } else { const rsp = o.kind === 'ruin' ? (sp.ruins || [])[o.v] : (sp.rocks || [])[o.v]; if (rsp) drawSprite(ctx, rsp, o.x, o.y + 10 * o.s, o.s); }
           ctx.globalAlpha = 1;
           break;
         case 2: drawSprite(ctx, o.berries ? sp.bushBerries : sp.bush, o.x, o.y + 6); break;
@@ -1751,7 +1754,8 @@
       }
       // подсказки
       const st = me.st || {}, bc = (v) => Math.max(1, Math.round(v * (1 - Math.min(80, st.buildCost || 0) / 100)));
-      const hints = [['E', 'Съесть'], ['R', 'Посадить'], ['G', `Грядка (${bc(cfg.GARDEN_BED_COST)})`]];
+      const hints = [['E', 'Съесть'], ['R', 'Посадить'], ['G', `Грядка (${bc(cfg.GARDEN_BED_COST)})`], ['F', 'Автоподбор']];
+      if (me.aq > 0) hints.push(['K', 'Навык']);
       if (st.structBuild > 0) { hints.push(['T', `Частокол (${bc(cfg.STRUCTURES.wall.cost)})`]); hints.push(['Y', `Вышка (${bc(cfg.STRUCTURES.tower.cost)})`]); }
       else if (st.turretBuild > 0) hints.push(['T', `Турель/пушка (${bc(cfg.STRUCTURES.turret.cost)})`]);
       else if (st.moduleBuild > 0) hints.push(['T', `Модуль (${cfg.MODULE_COST})`]);
@@ -1785,11 +1789,12 @@
     // --- сообщения
     const boss = G.monsters.find(m => m.boss);
     let toastY = 90;
-    if (boss) {
+    const bossDef = boss && cfg.BOSSES[boss.type];
+    if (boss && bossDef) {
       const bw = Math.max(260, Math.min(520, SW - 620)), bx = SW / 2 - bw / 2, by = 82;
       panel(ctx, bx - 12, by - 8, bw + 24, 46);
       ctx.font = 'bold 14px "Nunito", system-ui'; ctx.textAlign = 'center'; ctx.fillStyle = '#ffb0a0';
-      ctx.fillText(`☠ ${cfg.BOSSES[boss.type].name}`, SW / 2, by + 4);
+      ctx.fillText(`☠ ${bossDef.name}`, SW / 2, by + 4);
       bar(ctx, bx, by + 14, bw, 14, boss.hp / boss.maxHp, '#ff4a3a', '#8a1a14', `${Math.ceil(boss.hp)} / ${Math.round(boss.maxHp)}`);
       toastY = 160;
     }
