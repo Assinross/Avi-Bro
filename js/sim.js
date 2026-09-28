@@ -2132,6 +2132,7 @@
   // ---------- Здания: описание, уровни, улучшения ----------
   const PROF_NAME = (k) => k === 'any' ? 'любой игрок' : ({ hunter: 'охотник', engineer: 'инженер', programmer: 'программист', architect: 'архитектор' })[k];
   const lvlCost = (l) => C().UPGRADE_COST.base + C().UPGRADE_COST.step * (l - 1);
+  const millLvlCost = (l) => C().MILL_UPGRADE.base + C().MILL_UPGRADE.step * (l - 1);
   Sim.bl = (s) => s.bl || 1;
 
   // Описание здания и список «граней» улучшения
@@ -2157,7 +2158,7 @@
     } else if (kind === 'mill') {
       title = 'Лесопилка'; desc = 'Подойдите — бревна, железо, камень и шкуры из рюкзака выгрузятся (шкуры — в кладовую, лавка продаёт их сама; шкуры можно сдать и правым кликом). Пилит бревна в доски.';
       now = [`На складе: доски ${o.planks}, уголь ${o.coal || 0}, железо ${o.iron || 0}, камень ${o.stone || 0}, шкуры ${o.hides || 0}`, `Бревна в очереди: ${o.logs}/${cfg.MILL.queueMax}`];
-      push('mill', 'Лесопилка', o.lvl, cfg.MILL.maxLevel, lvlCost(o.lvl), o.up, 'any', `${Sim.millLines({ lvl: o.lvl + 1 })} бревен пилится одновременно`);
+      push('mill', 'Лесопилка', o.lvl, cfg.MILL.maxLevel, millLvlCost(o.lvl), o.up, 'any', `${Sim.millLines({ lvl: o.lvl + 1 })} бревен пилится одновременно`);
     } else {
       const S = cfg.STRUCTURES[o.kind], up = o.up || {}, bl = Sim.bl(o);
       title = S.name;
