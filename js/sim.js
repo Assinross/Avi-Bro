@@ -1931,7 +1931,7 @@
       if (AB.dist(x, y, W.camp.x, W.camp.y) < terr + 80) continue;
       if (!G.isNight && AB.dist(x, y, W.camp.x, W.camp.y) < cfg.SAFE_CAMP_RADIUS * 2) continue;
       const depth = Sim.depth(G, x, y), effDay = G.day + cfg.DEPTH_NIGHTS * depth;
-      const table = cfg.SPAWN_TABLE.filter(e => e.from <= effDay && (G.isNight || e.day));
+      const table = cfg.SPAWN_TABLE.filter(e => e.from <= effDay && (G.isNight ? e.night !== false : e.day));
       if (!table.length) return;
       let r = rnd() * table.reduce((s, e) => s + e.weight, 0), k = 0;
       while (r > table[k].weight) { r -= table[k].weight; k++; }

@@ -28,7 +28,7 @@
     if (FX.toasts.length > 5) FX.toasts.shift();
   };
 
-  const BLOOD = { wolf: ['#8e1c1c', '#b3302a', '#5e1010'], alpha: ['#8e1c1c', '#b3302a', '#5e1010'], ghoul: ['#4c6b2a', '#2f4a1a', '#7a8f3a'], shade: ['#6a3fa0', '#9b6ad8', '#2a1840'], brute: ['#6a1c1c', '#3a4a1a', '#8e2c1c'] };
+  const BLOOD = { wolf: ['#8e1c1c', '#b3302a', '#5e1010'], alpha: ['#8e1c1c', '#b3302a', '#5e1010'], ghoul: ['#4c6b2a', '#2f4a1a', '#7a8f3a'], shade: ['#6a3fa0', '#9b6ad8', '#2a1840'], brute: ['#6a1c1c', '#3a4a1a', '#8e2c1c'], skeleton: ['#ddd6c2', '#b8b09a', '#8a8474'], zombie: ['#6f8a4a', '#465c2a', '#2e4020'], archer: ['#ddd6c2', '#b8b09a', '#8a8474'], lich: ['#9b6ad8', '#5a3f8a', '#2a1840'] };
 
   FX.play = function (ev) {
     const near = (ev.x === undefined) ? 1 : AB.clamp(1 - AB.dist(ev.x, ev.y, FX.listener.x, FX.listener.y) / 900, 0, 1);

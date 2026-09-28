@@ -172,7 +172,7 @@ window.CONFIG = {
   XP_NEED: { base: 6, lin: 6, sq: 0.9 },
   XP_NIGHT_GROWTH: 0.02,     // +2% к опыту с монстров за каждую ночь (ночь 1 ≈ ×1.0, ночь 50 ≈ ×2.0)
   XP_SHARE: 0.5,              // Какую долю опыта получает напарник (в кооперативе)
-  XP_DROP: { wolf: 1, ghoul: 2, shade: 2, spider: 1, alpha: 5, spitter: 3, brute: 8, boss: 40 }, // Опыт с монстров
+  XP_DROP: { wolf: 1, ghoul: 2, shade: 2, spider: 1, alpha: 5, spitter: 3, brute: 8, skeleton: 1, zombie: 2, archer: 3, lich: 6, boss: 40 }, // Опыт с монстров
   DEPTH_XP: 1.5,              // Глубоко в лесу опыта больше: +150% на краю карты
   XP_MAGNET: 90,              // Радиус притяжения шариков опыта и монет
   /* Описание навыков. kind — как работает:
@@ -274,6 +274,11 @@ window.CONFIG = {
     alpha:   { name: 'Вожак',         hp: 120, speed: 150, damage: 14, attackCd: 0.7, sight: 300, radius: 15, meat: [2, 3], seedChance: 0.25, hide: 0.4 },
     spitter: { name: 'Плевун',        hp: 45,  speed: 70,  damage: 10, attackCd: 1.0, sight: 320, radius: 12, meat: [0, 1], seedChance: 0.08, undead: true, ranged: { range: 230, cd: 2.2, speed: 230 } },
     brute:   { name: 'Громила',       hp: 240, speed: 92,  damage: 22, attackCd: 1.3, sight: 270, radius: 21, meat: [3, 5], seedChance: 0.35 },
+    // НЕЖИТЬ: бродит ночью вместо волков. Еды не даёт (meat [0,0]), только монеты и опыт
+    skeleton: { name: 'Скелет',        hp: 34,  speed: 120, damage: 8,  attackCd: 0.9, sight: 260, radius: 12, meat: [0, 0], seedChance: 0, undead: true },
+    zombie:   { name: 'Зомби',         hp: 70,  speed: 60,  damage: 12, attackCd: 1.2, sight: 220, radius: 13, meat: [0, 0], seedChance: 0, undead: true },
+    archer:   { name: 'Скелет-лучник', hp: 35,  speed: 75,  damage: 9,  attackCd: 1.0, sight: 300, radius: 12, meat: [0, 0], seedChance: 0, undead: true, ranged: { range: 220, cd: 2.5, speed: 240 } },
+    lich:     { name: 'Лич',           hp: 160, speed: 65,  damage: 16, attackCd: 1.2, sight: 340, radius: 15, meat: [0, 0], seedChance: 0, undead: true, ranged: { range: 260, cd: 2.8, speed: 260 } },
   },
   MEAT_DROP_MULT: 0.2,        // Множитель выпадения мяса (0.2 = в 5 раз меньше, чем указано в meat)
   // Рост монстров с каждой ночью n: множитель = 1 + LIN·(n−1) + SQ·(n−1)².
@@ -292,6 +297,10 @@ window.CONFIG = {
     spider:  { name: 'Паутина',         kind: 'target', minDist: 60, maxDist: 220, windup: 0.9,  radius: 45, cooldown: 6,  dmgMult: 0.5, slow: 50, slowTime: 2 },
     spitter: { name: 'Ядовитый залп',   kind: 'volley', minDist: 80, maxDist: 260, windup: 1.1,  radius: 42, count: 3, spread: 75, cooldown: 6, dmgMult: 1.3 },
     brute:   { name: 'Удар дубиной',    kind: 'smash',  minDist: 0,  maxDist: 75,  windup: 0.9,  radius: 62, cooldown: 4.5, dmgMult: 2.2 },
+    skeleton:{ name: 'Костяной рывок',  kind: 'lunge',  minDist: 55, maxDist: 190, chaseTime: 0.8, windup: 0.5,  distance: 175, time: 0.28, width: 30, recover: 0.4, cooldown: 3.0, dmgMult: 1.3 },
+    zombie:  { name: 'Тяжёлый удар',    kind: 'smash',  minDist: 0,  maxDist: 60,  windup: 1.0,  radius: 55, cooldown: 5,   dmgMult: 2.0 },
+    archer:  { name: 'Залп стрел',      kind: 'volley', minDist: 90, maxDist: 250, windup: 1.0,  radius: 40, count: 2, spread: 60, cooldown: 6, dmgMult: 1.2 },
+    lich:    { name: 'Тёмный взрыв',    kind: 'nova',   minDist: 0,  maxDist: 80,  windup: 1.0,  radius: 90, cooldown: 6,  dmgMult: 1.8 },
   },
   // Естественное движение: скорость поворота (рад/с), разгон, «вилянье» при беге
   MONSTER_TURN_RATE: 5,       // Как быстро монстр меняет направление
@@ -302,14 +311,19 @@ window.CONFIG = {
   MONSTER_HP_GROWTH_SQ: 0.0015,  // Квадратичный рост здоровья (был 0.0025: к 99-й ×35, не убить; теперь ≈ ×20)
   MONSTER_DMG_GROWTH: 0.05,      // Линейный рост урона за ночь
   MONSTER_DMG_GROWTH_SQ: 0.0008, // Квадратичный рост урона
-  // Кто появляется в лесу: type — вид, from — с какой ночи, weight — частота, day — появляется и днём.
-  // Сначала только волки (и они крепчают), потом постепенно добавляются остальные.
+  // Кто появляется в лесу: type — вид, from — с какой ночи, weight — частота, day — появляется и днём,
+  // night: false — НЕ появляется ночью (волки — только днём, ночью вместо них нежить).
+  // Днём: волки (потом упыри, пауки, вожаки). Ночью: скелеты с 1-й, зомби с 5-й, лучники с 9-й, личи с 15-й + остальные.
   SPAWN_TABLE: [
-    { type: 'wolf',    from: 1,  weight: 10, day: true },
+    { type: 'wolf',    from: 1,  weight: 10, day: true, night: false },
+    { type: 'skeleton', from: 1,  weight: 10 },
+    { type: 'zombie',   from: 5,  weight: 6 },
     { type: 'ghoul',   from: 4,  weight: 7,  day: true },
     { type: 'shade',   from: 7,  weight: 8,  day: false },
+    { type: 'archer',   from: 9,  weight: 4 },
     { type: 'spider',  from: 10, weight: 9,  day: true },
     { type: 'alpha',   from: 13, weight: 3,  day: true },
+    { type: 'lich',     from: 15, weight: 2 },
     { type: 'spitter', from: 16, weight: 4,  day: false },
     { type: 'brute',   from: 20, weight: 2,  day: false },
   ],
@@ -759,7 +773,7 @@ window.CONFIG = {
    * следующего рассвета, кухня и лесопилка работают вполовину.                         */
   START_COINS: 5,
   // Монеты с монстров [мин, макс]; глубоко в лесу больше (DEPTH_COINS — множитель на краю карты)
-  COIN_DROP: { wolf: [0, 1], ghoul: [0, 2], shade: [0, 1], spider: [0, 1], alpha: [2, 4], spitter: [1, 2], brute: [3, 6], boss: [20, 30] },
+  COIN_DROP: { wolf: [0, 1], ghoul: [0, 2], shade: [0, 1], spider: [0, 1], alpha: [2, 4], spitter: [1, 2], brute: [3, 6], skeleton: [0, 1], zombie: [0, 2], archer: [1, 2], lich: [2, 4], boss: [20, 30] },
   DEPTH_COINS: 2,
   // Содержание в день (монет): за постройку и за каждый её уровень выше первого
   UPKEEP: {
