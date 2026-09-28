@@ -42,6 +42,8 @@
     AB.FX.toast('Выживите 99 ночей! Собирайте голубые шарики опыта — они открывают боевые навыки', '#ffe7a8');
     AB.FX.toast('Движение: левый клик / стрелки. Оружие бьёт само, топор сам рубит деревья', '#cfe0ff');
     App.pendingDump = null;
+    App.pendingPlant = null;
+    App.lvOpen = false; App.aoRef = null; App.aoWasOpen = false;
     setAutoPick(App.autoPick, true);
   }
   // Автоподбор предметов (у каждого игрока свой, по умолчанию выключен)
@@ -183,7 +185,7 @@
       if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(k)) e.preventDefault();
       if (App.state !== 'play') return;
       if (k === 'Tab') { e.preventDefault(); if (!e.repeat) toggleBuild(); return; }
-      if (k === 'Escape') { if (App.selRef) { App.selRef = null; return; } togglePause(); return; }
+      if (k === 'Escape') { if (App.lvOpen) { App.lvOpen = false; App.lvSig = null; return; } const me0e = App.me(); if (me0e && me0e.ao && !me0e.offers && !App.abDefer) { App.abDefer = true; App.lvSig = null; return; } if (App.selRef) { App.selRef = null; return; } togglePause(); return; }
       if (App.paused) return;
       App.keys.add(k);
       if (e.repeat) return;
@@ -241,7 +243,9 @@
       for (const c of (AB.Render.clicks || [])) {
         if (e.clientX >= c.x && e.clientX <= c.x + c.w && e.clientY >= c.y && e.clientY <= c.y + c.h) {
           AB.Sound.play('click', 1);
-          if (c.c === 'abopen') { App.abDefer = false; App.lvSig = null; } else sendCmd(c.c, c.v);
+          if (c.c === 'abopen') { App.abDefer = false; App.lvSig = null; }
+          else if (c.c === 'lvopen') { App.lvOpen = true; App.lvSig = null; }
+          else sendCmd(c.c, c.v);
           return;
         }
       }
@@ -307,19 +311,23 @@
     const cfg = C();
     const box = $('levelup');
     const offers = me && !me.dead && me.offers && App.state === 'play' ? me.offers : null;
-    if (!offers && me && !me.dead && App.state === 'play' && abShown(me)) { abilityUI(me, box); return; }
+    // меню умений открывается только по клику «+» (игра не останавливается)
+    const showOffers = offers && App.lvOpen;
+    App.aoWasOpen = false;
+    if (!showOffers && me && !me.dead && App.state === 'play' && abShown(me)) { App.aoWasOpen = true; abilityUI(me, box); return; }
     if (me && !(me.aq > 0)) App.abDefer = false;
     $('btnLater').classList.add('hidden'); $('btnReroll').classList.remove('hidden');
-    if (!offers) { box.classList.add('hidden'); App.lvSig = null; return; }
+    if (!showOffers) { box.classList.add('hidden'); App.lvSig = null; if (!offers) App.lvOpen = false; return; }
     const woodHave = AB.Sim.woodOf(App.G, me);
     const sig = JSON.stringify(offers) + '|' + me.rr + '|' + me.queue.length + '|' + woodHave;
     box.classList.remove('hidden');
+    $('btnLater').classList.remove('hidden'); // «Выбрать позже» — игра идёт дальше
     if (sig === App.lvSig) return;
     App.lvSig = sig;
     const sup = me.queue[0] === 's';
     $('lvTitle').textContent = sup ? `Уровень ${me.level}: СУПЕР-УМЕНИЕ!` : `Уровень ${me.level}!`;
     $('lvTitle').className = 'lvtitle' + (sup ? ' super' : '');
-    $('lvSub').textContent = (me.queue.length > 1 ? `Ещё выборов: ${me.queue.length - 1}. ` : '') + (App.mode === 'solo' ? 'Игра на паузе.' : 'Игра не останавливается — будьте осторожны!') + ` Редкость умений зависит от уровня костра (сейчас ${App.G.fireLevel}).`;
+    $('lvSub').textContent = (me.queue.length > 1 ? `Ещё выборов: ${me.queue.length - 1}. ` : '') + ' Игра продолжается — будьте осторожны!' + ` Редкость умений зависит от уровня костра (сейчас ${App.G.fireLevel}).`;
     const cards = $('lvCards');
     cards.innerHTML = '';
     offers.forEach((o, i) => {
@@ -358,7 +366,7 @@
     $('lvTitle').textContent = `Уровень опыта ${me.xl}: боевой навык`;
     $('lvTitle').className = 'lvtitle ab';
     const learned = AB.Sim.abLearned(me);
-    $('lvSub').textContent = `Навыков: ${learned} из ${cfg.ABILITY_MAX} (плюс начальное оружие). ` + (learned >= cfg.ABILITY_MAX ? 'Все слоты заняты — улучшайте взятые навыки. ' : 'Возьмите новый навык или улучшите взятый. ') + (me.aq > 1 ? `Ещё выборов: ${me.aq - 1}. ` : '') + (App.mode === 'solo' ? 'Игра на паузе.' : 'Игра не останавливается!');
+    $('lvSub').textContent = `Навыков: ${learned} из ${cfg.ABILITY_MAX} (плюс начальное оружие). ` + (learned >= cfg.ABILITY_MAX ? 'Все слоты заняты — улучшайте взятые навыки. ' : 'Возьмите новый навык или улучшите взятый. ') + (me.aq > 1 ? `Ещё выборов: ${me.aq - 1}. ` : '') + 'Игра продолжается!';
     const cards = $('lvCards'); cards.innerHTML = '';
     me.ao.forEach((o, i) => {
       const def = AB.Sim.abDef(o.id); if (!def) return;
@@ -397,7 +405,7 @@
   function updateMerchantUI(me) {
     const cfg = C(), box = $('merchant'), G = App.G;
     const M = G && G.merchant;
-    const near = M && me && !me.dead && App.state === 'play' && !me.offers && AB.dist(me.x, me.y, M.x, M.y) < cfg.MERCHANT.radius;
+    const near = M && me && !me.dead && App.state === 'play' && !(me.offers && App.lvOpen) && AB.dist(me.x, me.y, M.x, M.y) < cfg.MERCHANT.radius;
     if (!near) { box.classList.add('hidden'); App.mcSig = null; return; }
     box.classList.remove('hidden');
     const coins = G.coins || 0;
@@ -454,7 +462,7 @@
   }
   function updateEcoUI(me) {
     const cfg = C(), G = App.G;
-    const ok = me && !me.dead && App.state === 'play' && !me.offers;
+    const ok = me && !me.dead && App.state === 'play' && !(me.offers && App.lvOpen);
     const ex = ok && nearStructOf(me, 'exchange');
     $('exchange').classList.toggle('hidden', !ex);
     if (ex) {
@@ -509,8 +517,8 @@
   // Меню здания (правый клик): описание, улучшения, модификации
   function updateBuildingUI(me) {
     const cfg = C(), box = $('bpanel'), G = App.G;
-    const b = App.selRef && me && App.state === 'play' && !me.offers ? AB.Sim.buildingByRef(G, App.selRef) : null;
-    if (!b) { box.classList.add('hidden'); App.bpSig = null; if (App.selRef && App.state === 'play' && !(me && me.offers)) App.selRef = null; return; }
+    const b = App.selRef && me && App.state === 'play' && !(me.offers && App.lvOpen) ? AB.Sim.buildingByRef(G, App.selRef) : null;
+    if (!b) { box.classList.add('hidden'); App.bpSig = null; if (App.selRef && App.state === 'play' && !(me && me.offers && App.lvOpen)) App.selRef = null; return; }
     box.classList.remove('hidden');
     const planks = AB.Sim.woodOf(G, me);
     const ironH = AB.Sim.ironOf(G, me), stoneH = AB.Sim.stoneOf(G, me);
@@ -649,8 +657,8 @@
       return;
     }
     const me = App.me();
-    const choosing = App.mode === 'solo' && me && !me.dead && (me.offers || abShown(me));
-    const running = !(App.paused && App.mode === 'solo') && !choosing && !G.over;
+    // игра не останавливается на выборах: меню умений/навыков открывается только по клику «+»
+    const running = !(App.paused && App.mode === 'solo') && !G.over;
     if (running) {
       controlLocal(me, dt);
       if (App.mode === 'solo' || App.mode === 'host') {
@@ -681,7 +689,13 @@
     if (App.clickMark) { App.clickMark.t -= dt * 2; if (App.clickMark.t <= 0) App.clickMark = null; }
     AB.FX.update(dt);
     R.draw(G, me, App.cam, dt, { clickMark: App.clickMark, sel: App.selRef });
-    R.hud(G, me, { mouse: App.mouse.onCanvas ? App.mouse : null, hoverSlot: App.hoverSlot });
+    // новый оффер боевого навыка ждёт клика «+», а не всплывает сам (но для следующего выбора меню не закрываем)
+    if (me && me.ao && me.ao !== App.aoRef) {
+      App.aoRef = me.ao;
+      if (!App.aoWasOpen) { App.abDefer = true; App.lvSig = null; }
+    } else if (!me || !me.ao) App.aoRef = null;
+    const lvPlus = me && !me.dead && me.offers && !App.lvOpen && App.state === 'play' ? me.queue.length : 0;
+    R.hud(G, me, { mouse: App.mouse.onCanvas ? App.mouse : null, hoverSlot: App.hoverSlot, lvPlus });
     AB.Render.hoverDrop = (dropUnderMouse() || {}).id;
     updateLevelUI(me);
     updateMerchantUI(me);
@@ -744,7 +758,7 @@
     bind('btnSolo', () => chooseProf(startSolo, 'menu'));
     bind('btnReroll', reroll);
     bind('bpClose', () => { App.selRef = null; });
-    bind('btnLater', () => { App.abDefer = true; App.lvSig = null; });
+    bind('btnLater', () => { App.abDefer = true; App.lvOpen = false; App.lvSig = null; });
     bind('btnAxeWs', () => { sendCmd('axeup', 0); App.wsSig = null; });
     bind('btnAxeMc', () => { sendCmd('axeup', 0); App.mcSig = null; });
     bind('btnPickWs', () => { sendCmd('pickcraft', 0); App.wsSig = null; });

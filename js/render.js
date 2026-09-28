@@ -1703,6 +1703,15 @@
           ctx.font = '600 11px "Nunito", system-ui'; ctx.fillText('K или клик — выбрать', bx + 75, by + 35);
           click(bx, by, 150, 50, 'abopen', 0);
         }
+        // кнопка «+» для рассветных умений: игра идёт, меню открывается по клику
+        if (ui && ui.lvPlus > 0) {
+          const bl = 0.6 + Math.sin(performance.now() / 140) * 0.4;
+          const bx = hx - 160, by = hy + 4;
+          ctx.globalAlpha = bl; ctx.fillStyle = '#ffd24a'; roundRect(ctx, bx, by, 150, 50, 10); ctx.fill(); ctx.globalAlpha = 1;
+          ctx.fillStyle = '#1a1206'; ctx.textAlign = 'center'; ctx.font = 'bold 13px "Nunito", system-ui'; ctx.fillText(`+${ui.lvPlus} умение`, bx + 75, by + 18);
+          ctx.font = '600 11px "Nunito", system-ui'; ctx.fillText('клик — выбрать', bx + 75, by + 35);
+          click(bx, by, 150, 50, 'lvopen', 0);
+        }
       }
       // подсказки
       const st = me.st || {}, bc = (v) => Math.max(1, Math.round(v * (1 - Math.min(80, st.buildCost || 0) / 100)));
