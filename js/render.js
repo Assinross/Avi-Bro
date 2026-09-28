@@ -704,7 +704,18 @@
     const sw = (Mo.saws || []);
     const prog = sw.length ? Math.max(...sw) / C().MILL.sawTime : 0;
     if (sw.length) hpBar(ctx, x, y - 38, 34, prog, '#e0c08a');
-    label(ctx, `Лесопилка ур.${Mo.lvl || 1} · очередь ${Mo.logs || 0}/${C().MILL.queueMax}`, x, y + 22, '#e0c08a');
+    // кладовая: стойка со шкурами справа от навеса (сдача — ПКМ по лесопилке)
+    if ((Mo.hides || 0) > 0) {
+      const hn = Math.min(5, Mo.hides);
+      ctx.fillStyle = '#16100b'; ctx.fillRect(x + 44, y - 6, 4, 26); ctx.fillRect(x + 58, y - 6, 4, 26);
+      for (let i = 0; i < hn; i++) {
+        const hy = y + 16 - i * 4;
+        ctx.fillStyle = '#16100b'; ctx.fillRect(x + 42, hy - 3, 24, 5);
+        ctx.fillStyle = i % 2 ? '#a8763e' : '#c08d4e'; ctx.fillRect(x + 43, hy - 2, 22, 3);
+      }
+      ctx.fillStyle = '#ffd24a'; ctx.fillRect(x + 42, y - 12, 24, 2);
+    }
+    label(ctx, `Лесопилка ур.${Mo.lvl || 1} · очередь ${Mo.logs || 0}/${C().MILL.queueMax}${(Mo.hides || 0) > 0 ? ` · шкуры ${Mo.hides}` : ''}`, x, y + 22, '#e0c08a');
   }
   const S_ell = (c, x, y, rx, ry, col) => S().ell(c, x, y, rx, ry, col);
   // Странствующий торговец с фургоном

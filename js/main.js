@@ -222,6 +222,14 @@
           else if (f) { App.pendingDump = ref; App.pendingPick = null; App.moveTarget = { x: f.x, y: f.y + 24 }; App.clickMark = { x: f.x, y: f.y, t: 1 }; }
           return;
         }
+        // правый клик по лесопилке со шкурами в рюкзаке — сдать все шкуры в кладовую (если далеко — сначала подойти)
+        if (ref === 'm' && me && !me.dead && (me.inv.hide || 0) > 0 && !App.paused) {
+          const S = App.G.store;
+          AB.Sound.play('click', 1);
+          if (S && AB.dist(me.x, me.y, S.x, S.y) <= C().MILL.radius) { sendCmd('dumphide', ref); App.pendingDump = null; }
+          else if (S) { App.pendingDump = ref; App.pendingPick = null; App.moveTarget = { x: S.x, y: S.y + 24 }; App.clickMark = { x: S.x, y: S.y, t: 1 }; }
+          return;
+        }
         App.selRef = ref;
         App.bpSig = null;
         if (App.selRef) AB.Sound.play('click', 1);
@@ -412,17 +420,18 @@
     (me.mo || []).forEach((o, i) => {
       const def = AB.Skills.find(o.id); if (!def) return;
       const col = cfg.TIER_COLORS[o.tier - 1];
+      const price = (me.st.shopBuild > 0) ? Math.round(o.price * 0.75) : o.price; // охотнику −25%
       const el = document.createElement('div');
-      el.className = 'skill' + (o.sold ? ' sold' : '') + (coins < o.price ? ' poor' : '');
+      el.className = 'skill' + (o.sold ? ' sold' : '') + (coins < price ? ' poor' : '');
       el.style.borderColor = col; el.style.minHeight = '150px';
       el.innerHTML = `<div class="sico" style="color:${col}">${def.icon || '✦'}</div><div class="sname">${def.name}</div>
         <div class="stier" style="color:${col}">${cfg.TIER_NAMES[o.tier - 1]}</div>
         ${AB.Skills.lines(def, o.tier).map(l => `<div class="sline${l.bad ? ' bad' : ''}">${l.s}</div>`).join('')}
-        <div class="price">${o.sold ? 'Куплено' : o.price + ' $'}</div>`;
+        <div class="price">${o.sold ? 'Куплено' : price + ' $'}</div>`;
       el.addEventListener('click', () => merchantCmd('buy', i));
       box2.appendChild(el);
     });
-    if (!(me.mo || []).length) box2.innerHTML = `<span class="note">${me.st.shopBuild > 0 ? 'Умения закончились.' : 'Умения торговец продаёт только охотнику.'}</span>`;
+    if (!(me.mo || []).length) box2.innerHTML = `<span class="note">Умения закончились.</span>`;
     const up = $('mcUp'); up.innerHTML = '';
     const best = {};
     me.skills.forEach(s => { if (!s.sup && s.tier < 4 && (!best[s.id] || s.tier > best[s.id])) best[s.id] = s.tier; });
@@ -589,9 +598,15 @@
       }
     }
     if (App.pendingDump) {
-      const f = App.G.fires.find(q => 'f' + q.id === App.pendingDump);
-      if (!f || !(me.inv.wood > 0) || (dx === 0 && dy === 0 && !App.moveTarget)) App.pendingDump = null;
-      else if (AB.dist(me.x, me.y, f.x, f.y) <= C().FIRE_DUMP_RANGE * 0.9) { sendCmd('dumpfire', App.pendingDump); App.pendingDump = null; App.moveTarget = null; dx = 0; dy = 0; }
+      if (App.pendingDump === 'm') {
+        const S = App.G.store;
+        if (!S || !(me.inv.hide > 0) || (dx === 0 && dy === 0 && !App.moveTarget)) App.pendingDump = null;
+        else if (AB.dist(me.x, me.y, S.x, S.y) <= C().MILL.radius * 0.9) { sendCmd('dumphide', App.pendingDump); App.pendingDump = null; App.moveTarget = null; dx = 0; dy = 0; }
+      } else {
+        const f = App.G.fires.find(q => 'f' + q.id === App.pendingDump);
+        if (!f || !(me.inv.wood > 0) || (dx === 0 && dy === 0 && !App.moveTarget)) App.pendingDump = null;
+        else if (AB.dist(me.x, me.y, f.x, f.y) <= C().FIRE_DUMP_RANGE * 0.9) { sendCmd('dumpfire', App.pendingDump); App.pendingDump = null; App.moveTarget = null; dx = 0; dy = 0; }
+      }
     }
     if (App.pendingPick) {
       const d = App.G.drops.find(q => q.id === App.pendingPick);
