@@ -423,6 +423,74 @@
       const ex = Math.cos(a) * 3, ey = Math.sin(a) * 2;
       S().circle(ctx, ex - 2.5, -12 + bob + ey, 1.6, '#f0ff60'); S().circle(ctx, ex + 2.5, -12 + bob + ey, 1.6, '#f0ff60');
       S().ell(ctx, ex * 1.6, -8 + bob + ey * 1.5, 3 * puff, 2.2 * puff, '#2a3a10');
+    } else if (m.type === 'skeleton') {
+      const bone = hurt ? '#ffffff' : '#ddd6c2', boneD = '#8a8474';
+      const bob = Math.sin(ph) * 1.5;
+      ctx.translate(x, y - 8);
+      ctx.strokeStyle = O; ctx.lineWidth = 5; ctx.lineCap = 'round';
+      for (const s of [-1, 1]) { const sw = Math.sin(ph + (s > 0 ? Math.PI : 0)) * 3; ctx.beginPath(); ctx.moveTo(s * 3, 4); ctx.lineTo(s * 3 + sw, 15); ctx.stroke(); }
+      ctx.strokeStyle = boneD; ctx.lineWidth = 3;
+      for (const s of [-1, 1]) { const sw = Math.sin(ph + (s > 0 ? Math.PI : 0)) * 3; ctx.beginPath(); ctx.moveTo(s * 3, 4); ctx.lineTo(s * 3 + sw, 15); ctx.stroke(); }
+      ctx.strokeStyle = O; ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(0, -8 + bob); ctx.lineTo(0, 4 + bob); ctx.stroke();
+      ctx.strokeStyle = bone; ctx.lineWidth = 3.5; ctx.beginPath(); ctx.moveTo(0, -8 + bob); ctx.lineTo(0, 4 + bob); ctx.stroke();
+      ctx.lineWidth = 2.5;
+      for (let i = 0; i < 3; i++) { const ry = -6 + bob + i * 4; ctx.beginPath(); ctx.moveTo(-6, ry); ctx.lineTo(6, ry); ctx.stroke(); }
+      const reach = m.atk > 0 ? 6 : 0;
+      ctx.strokeStyle = O; ctx.lineWidth = 4.5;
+      for (const s of [-1, 1]) { ctx.beginPath(); ctx.moveTo(s * 2, -6 + bob); ctx.lineTo(Math.cos(a) * (10 + reach) + s * 2, Math.sin(a) * 6 - 4 + bob); ctx.stroke(); }
+      S().circle(ctx, 0, -13 + bob, 7, O); S().circle(ctx, 0, -13 + bob, 5.8, bone);
+      const ex = Math.cos(a) * 2;
+      S().circle(ctx, -2 + ex, -14 + bob, 1.6, '#ff3a2a'); S().circle(ctx, 2 + ex, -14 + bob, 1.6, '#ff3a2a');
+      ctx.fillStyle = boneD; ctx.fillRect(-1.5 + ex, -11 + bob, 3, 1.6);
+    } else if (m.type === 'zombie') {
+      const skin = hurt ? '#ffffff' : '#6f8a4a', skinD = '#465c2a';
+      const bob = Math.sin(ph * 0.7) * 2, sc = m.r / 13;
+      ctx.translate(x, y - 8); ctx.scale(sc, sc);
+      S().ell(ctx, 0, bob + 2, 12, 11, O); S().ell(ctx, 0, bob + 2, 10.5, 9.5, skin);
+      ctx.fillStyle = skinD; ctx.fillRect(-8, bob + 6, 16, 3);
+      ctx.strokeStyle = O; ctx.lineWidth = 6; ctx.lineCap = 'round';
+      for (const s of [-1, 1]) { const sw = Math.sin(ph * 0.7 + s) * 2; ctx.beginPath(); ctx.moveTo(s * 5, bob + 8); ctx.lineTo(s * 5 + sw, bob + 20); ctx.stroke(); }
+      for (const s of [-1, 1]) { const reach = 12 + (m.atk > 0 ? 5 : 0); const ax = Math.cos(a + s * 0.4) * reach, ay = Math.sin(a + s * 0.4) * reach * 0.6 + bob; ctx.beginPath(); ctx.moveTo(s * 8, bob); ctx.lineTo(ax, ay); ctx.stroke(); }
+      S().circle(ctx, 0, -11 + bob, 8, O); S().circle(ctx, 0, -11 + bob, 6.8, skin);
+      const ex = Math.cos(a) * 2.5;
+      S().circle(ctx, -2.5 + ex, -12 + bob, 1.7, '#e8f040'); S().circle(ctx, 2.5 + ex, -12 + bob, 1.7, '#e8f040');
+      ctx.fillStyle = '#2a1a10'; ctx.fillRect(-2 + ex, -8 + bob, 4, 1.6);
+    } else if (m.type === 'archer') {
+      const bone = hurt ? '#ffffff' : '#d5cdb4';
+      const bob = Math.sin(ph) * 1.2;
+      ctx.translate(x, y - 8);
+      ctx.strokeStyle = O; ctx.lineWidth = 5; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(0, -6 + bob); ctx.lineTo(0, 8); ctx.stroke();
+      ctx.strokeStyle = bone; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(0, -6 + bob); ctx.lineTo(0, 8); ctx.stroke();
+      ctx.strokeStyle = O; ctx.lineWidth = 4;
+      for (const s of [-1, 1]) { const sw = Math.sin(ph + (s > 0 ? Math.PI : 0)) * 2.5; ctx.beginPath(); ctx.moveTo(s * 2.5, 8); ctx.lineTo(s * 2.5 + sw, 17); ctx.stroke(); }
+      ctx.save(); ctx.rotate(a);
+      ctx.strokeStyle = O; ctx.lineWidth = 3.5; ctx.beginPath(); ctx.arc(12, 0, 9, -1.2, 1.2); ctx.stroke();
+      ctx.strokeStyle = '#6b4a2e'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(12, 0, 9, -1.2, 1.2); ctx.stroke();
+      const drawn = m.atk > 0 ? 4 : 0;
+      ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(12 + Math.cos(-1.2) * 9, Math.sin(-1.2) * 9); ctx.lineTo(12 - drawn, 0); ctx.lineTo(12 + Math.cos(1.2) * 9, Math.sin(1.2) * 9); ctx.stroke();
+      ctx.restore();
+      S().circle(ctx, 0, -11 + bob, 6, O); S().circle(ctx, 0, -11 + bob, 5, bone);
+      const ex = Math.cos(a) * 2;
+      S().circle(ctx, -2 + ex, -12 + bob, 1.5, '#7ae0ff'); S().circle(ctx, 2 + ex, -12 + bob, 1.5, '#7ae0ff');
+    } else if (m.type === 'lich') {
+      const robe = hurt ? '#ffffff' : '#2a1a3e', trim = '#9b6ad8';
+      const bob = Math.sin(ph * 0.9) * 1.5, sc = m.r / 15;
+      ctx.translate(x, y - 10); ctx.scale(sc, sc);
+      const g = ctx.createRadialGradient(0, -4, 2, 0, -4, 20);
+      g.addColorStop(0, 'rgba(155,106,216,0.5)'); g.addColorStop(1, 'rgba(155,106,216,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, -4, 20, 0, TAU); ctx.fill();
+      S().ell(ctx, 0, bob + 4, 11, 13, O); S().ell(ctx, 0, bob + 4, 9.5, 11.5, robe);
+      ctx.fillStyle = trim; ctx.fillRect(-9, bob + 8, 18, 2);
+      const sx = Math.cos(a) * 14, sy = Math.sin(a) * 14 - 6 + bob;
+      ctx.strokeStyle = O; ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(6, bob + 6); ctx.lineTo(sx, sy); ctx.stroke();
+      ctx.strokeStyle = '#4a3520'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(6, bob + 6); ctx.lineTo(sx, sy); ctx.stroke();
+      S().circle(ctx, sx, sy, 4, O); S().circle(ctx, sx, sy, 3, trim); S().circle(ctx, sx, sy, 1.5, '#e8d8ff');
+      S().circle(ctx, 0, -12 + bob, 7, O); S().circle(ctx, 0, -12 + bob, 5.8, hurt ? '#fff' : '#cfc4ae');
+      ctx.fillStyle = trim;
+      for (let i = -1; i <= 1; i++) { ctx.beginPath(); ctx.moveTo(i * 4 - 1.5, -17 + bob); ctx.lineTo(i * 4, -22 + bob); ctx.lineTo(i * 4 + 1.5, -17 + bob); ctx.fill(); }
+      const ex = Math.cos(a) * 2;
+      S().circle(ctx, -2 + ex, -13 + bob, 1.7, '#c86aff'); S().circle(ctx, 2 + ex, -13 + bob, 1.7, '#c86aff');
     }
     ctx.restore();
     // статусы
