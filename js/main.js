@@ -358,9 +358,12 @@
       const pc = cfg.PROFESSIONS[def.prof].color, col = o.lv >= 4 ? '#dfe8ee' : o.lv > 1 ? '#6ac8ff' : pc;
       const S1 = AB.Sim.abStats(G, me, def, o.lv), S0 = cur ? AB.Sim.abStats(G, me, def, cur.lv) : null;
       const lines = [];
-      if (def.kind !== 'shield') lines.push(`Урон: ${S0 ? Math.round(S0.dmg) + ' → ' : ''}${Math.round(S1.dmg)}${def.kind === 'aura' ? '/с' : ''}`);
-      else lines.push(`Щит: ${Math.round(def.amount * (1 + cfg.ABILITY_LEVEL.dmg * (o.lv - 1)))}`);
+      const r1 = (v) => v < 10 ? v.toFixed(1) : Math.round(v);
+      if (def.kind !== 'shield') lines.push(`Урон${def.kind === 'shot' && S1.n > 1 ? ' снаряда' : ''}: ${S0 ? r1(S0.dmg) + ' → ' : ''}${r1(S1.dmg)}${def.kind === 'aura' ? '/с' : ''}`);
+      else lines.push(`Щит: ${cur ? Math.round(def.amount * (1 + 0.5 * (cur.lv - 1))) + ' → ' : ''}${Math.round(def.amount * (1 + 0.5 * (o.lv - 1)))}`);
       if (def.kind !== 'aura' && def.kind !== 'orbit') lines.push(`Перезарядка: ${S0 ? S0.cd.toFixed(2) + ' → ' : ''}${S1.cd.toFixed(2)} с`);
+      if (def.kind !== 'shield') { const d1 = AB.Sim.abDps(G, me, def, S1), d0 = S0 ? AB.Sim.abDps(G, me, def, S0) : 0; lines.push(`≈ урон/с по цели: ${S0 ? d0.toFixed(1) + ' → ' : ''}<b>${d1.toFixed(1)}</b>`); }
+      if (S1.radius && ['nova', 'aura', 'strike', 'mine'].includes(def.kind) && (!S0 || Math.round(S1.radius) > Math.round(S0.radius))) lines.push(`Радиус: ${S0 ? Math.round(S0.radius) + ' → ' : ''}${Math.round(S1.radius)}`);
       if (['shot', 'drone', 'orbit', 'strike', 'chain', 'turret', 'mine'].includes(def.kind) && (!S0 || S1.n > S0.n)) lines.push(`${({ shot: 'Снарядов', drone: 'Помощников', orbit: 'Предметов', strike: 'Ударов', chain: 'Перескоков', turret: 'Турелей', mine: 'Мин' })[def.kind]}: ${S0 ? S0.n + ' → ' : ''}${S1.n}`);
       const poor = o.iron > iron;
       const el = document.createElement('div');

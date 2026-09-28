@@ -1132,6 +1132,16 @@
     for (const p of G.players) vis.push({ y: p.y, k: 8, o: p });
     vis.sort((a, b) => a.y - b.y);
     const sp = S();
+    // Кого может закрыть препятствие: живые игроки и монстры в кадре
+    const occ = [];
+    for (const p of G.players) if (!p.dead) occ.push(p);
+    for (const m of G.monsters) if (!m.dying && m.x > x0 && m.x < x1 && m.y > y0 && m.y < y1) occ.push(m);
+    // Есть ли кто-то ЗА объектом: выше точки опоры (y < base), но в пределах его высоты и ширины
+    const markAll = (x, base, hw, h) => { let any = false; for (const e of occ) if (e.y < base - 2 && e.y > base - h && Math.abs(e.x - x) < hw + (e.r || 10)) { any = true; if (e.type) e._occ = 1; } return any; };
+    for (const m of G.monsters) m._occ = 0;
+    const SEE = 0.45; // прозрачность препятствия, за которым кто-то стоит
+    const OCC_BOX = { townhall: [66, 112], workshop: [52, 100], exchange: [50, 100], shop: [50, 86], tower: [26, 128], wall: [20, 44], turret: [14, 38] };
+    const see = (on) => { if (on) ctx.globalAlpha = SEE; };
     for (const v of vis) {
       const o = v.o;
       switch (v.k) {
@@ -1141,8 +1151,7 @@
             else drawSprite(ctx, sp.stump, o.x, o.y + 4, o.s * 0.9);
             break;
           }
-          let alpha;
-          for (const p of G.players) if (p.y < o.y - 4 && p.y > o.y - 115 * o.s && Math.abs(p.x - o.x) < 40 * o.s) alpha = 0.42;
+          const alpha = markAll(o.x, o.y - 2, 30 * o.s, 115 * o.s) ? 0.42 : undefined;
           const tree = sp.trees[o.v];
           if (o.shake > 0) {
             ctx.save(); ctx.translate(o.x, o.y); ctx.rotate(Math.sin(t * 50) * o.shake * 0.12); ctx.translate(-o.x, -o.y);
@@ -1151,6 +1160,7 @@
           break;
         }
         case 1:
+          see(markAll(o.x, o.y + 4, 22, o.kind === 'ore' ? (o.ore === 'iron' && !o.dead ? 44 : 20) : 30));
           if (o.kind === 'ore') {
             const osp = o.dead ? sp.oresDead[o.ore] : sp.ores[o.ore][o.v];
             if (o.shake > 0) { ctx.save(); ctx.translate(Math.sin(t * 60) * o.shake * 4, 0); drawSprite(ctx, osp, o.x, o.y + 6, 1); ctx.restore(); }
@@ -1158,21 +1168,29 @@
             if (!o.dead && o.hp < C().ORE_HITS) hpBar(ctx, o.x, o.y + 12, 26, o.hp / C().ORE_HITS, o.ore === 'iron' ? '#d08060' : '#c8c0b0');
             if (!o.dead && me && AB.dist2(me.x, me.y, o.x, o.y) < 70 * 70) label(ctx, `${C().ORES[o.ore].name}${me.pick ? '' : ' · нужна кирка'}`, o.x, o.y - 46, o.ore === 'iron' ? '#e0a080' : '#d8d0c0');
           } else drawSprite(ctx, o.kind === 'ruin' ? sp.ruins[o.v] : sp.rocks[o.v], o.x, o.y + 10 * o.s, o.s);
+          ctx.globalAlpha = 1;
           break;
         case 2: drawSprite(ctx, o.berries ? sp.bushBerries : sp.bush, o.x, o.y + 6); break;
         case 3: drawSprite(ctx, o.opened ? sp.chestOpen : sp.chest, o.x, o.y + 8);
           if (!o.opened && Math.sin(t * 2 + o.id) > 0.9) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; S().circle(ctx, o.x + 6, o.y - 12, 3, '#fff6c0'); ctx.restore(); }
           break;
-        case 4: drawDecor(ctx, o, t); break;
+        case 4: see(o.kind === 'tent' && markAll(o.x, o.y, 34, 52)); drawDecor(ctx, o, t); ctx.globalAlpha = 1; break;
         case 5: drawFire(ctx, o, t, o.main || (me && AB.dist2(me.x, me.y, o.x, o.y) < 140 * 140)); break;
         case 6: drawDrop(ctx, o, t); break;
         case 7: drawMonster(ctx, o, t); break;
         case 8: drawPlayer(ctx, o, t); break;
-        case 9: drawStruct(ctx, o, t, me && AB.dist2(me.x, me.y, o.x, o.y) < 120 * 120); break;
-        case 10: drawKitchen(ctx, o, t, G); break;
-        case 11: drawStore(ctx, o, t); break;
-        case 12: drawMerchant(ctx, o, t); break;
+        case 9: { const bx = OCC_BOX[o.kind] || [30, 60]; see(markAll(o.x, o.y, bx[0], bx[1])); drawStruct(ctx, o, t, me && AB.dist2(me.x, me.y, o.x, o.y) < 120 * 120); ctx.globalAlpha = 1; break; }
+        case 10: see(markAll(o.x, o.y, 54, 84)); drawKitchen(ctx, o, t, G); ctx.globalAlpha = 1; break;
+        case 11: see(markAll(o.x, o.y, 56, 88)); drawStore(ctx, o, t); ctx.globalAlpha = 1; break;
+        case 12: see(markAll(o.x + 22, o.y, 46, 70)); drawMerchant(ctx, o, t); ctx.globalAlpha = 1; break;
       }
+    }
+    // монстры за препятствиями: красный контур поверх
+    for (const m of G.monsters) if (m._occ && !m.dying) {
+      const pulse = 0.55 + Math.sin(t * 6 + m.id) * 0.2, rr = m.r + 5;
+      ctx.save(); ctx.strokeStyle = `rgba(255,70,50,${pulse})`; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.ellipse(m.x, m.y - m.r * 0.6, rr, rr * 1.05, 0, 0, TAU); ctx.stroke();
+      ctx.fillStyle = 'rgba(255,60,40,0.12)'; ctx.fill(); ctx.restore();
     }
     for (const p of G.projs) drawProjectile(ctx, p);
     for (const e of G.eprojs) { S().circle(ctx, e.x, e.y - 8, 5.5, '#1a2a08'); S().circle(ctx, e.x, e.y - 8, 4.2, '#8fd14a'); S().circle(ctx, e.x - 1.2, e.y - 9.2, 1.4, '#e0ffa0'); }
@@ -1187,7 +1205,7 @@
         const def = AB.Sim.abDef(a.id);
         if (!def) continue;
         if (def.kind === 'orbit') { const n = AB.abCount(def, a.lv); for (let i = 0; i < n; i++) drawOrbit(ctx, AB.orbitPos(p, i, n, G.clock, def), def, t); }
-        if (def.kind === 'aura') { ctx.save(); ctx.globalCompositeOperation = 'lighter'; for (let i = 0; i < 14; i++) { const an = t * 1.3 + i * 2.4, rr = def.radius * (0.35 + ((i * 37) % 10) / 16); S().circle(ctx, p.x + Math.cos(an) * rr, p.y + Math.sin(an) * rr * 0.6 - 4, 1.6, 'rgba(140,255,200,0.7)'); } ctx.strokeStyle = 'rgba(120,255,190,0.18)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(p.x, p.y + 2, def.radius, def.radius * 0.6, 0, 0, TAU); ctx.stroke(); ctx.restore(); }
+        if (def.kind === 'aura') { const ar = AB.Sim.abStats(G, p, def, a.lv).radius; ctx.save(); ctx.globalCompositeOperation = 'lighter'; for (let i = 0; i < 14; i++) { const an = t * 1.3 + i * 2.4, rr = ar * (0.35 + ((i * 37) % 10) / 16); S().circle(ctx, p.x + Math.cos(an) * rr, p.y + Math.sin(an) * rr * 0.6 - 4, 1.6, 'rgba(140,255,200,0.7)'); } ctx.strokeStyle = 'rgba(120,255,190,0.18)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(p.x, p.y + 2, ar, ar * 0.6, 0, 0, TAU); ctx.stroke(); ctx.restore(); }
       }
       if (p.st.aura > 0) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.strokeStyle = `rgba(255,140,40,${0.25 + Math.sin(t * 5) * 0.1})`; ctx.lineWidth = 3; ctx.beginPath(); ctx.ellipse(p.x, p.y + 2, C().AURA_RADIUS, C().AURA_RADIUS * 0.55, 0, 0, TAU); ctx.stroke(); ctx.restore(); }
     }
@@ -1609,7 +1627,7 @@
       }
       // подсказки
       const st = me.st || {}, bc = (v) => Math.max(1, Math.round(v * (1 - Math.min(80, st.buildCost || 0) / 100)));
-      const hints = [['E', 'Съесть'], ['R', 'Посадить'], ['G', `Грядка (${bc(cfg.GARDEN_BED_COST)})`], ['B', `Костёр (${bc(cfg.CAMPFIRE_COST)})`]];
+      const hints = [['E', 'Съесть'], ['R', 'Посадить'], ['G', `Грядка (${bc(cfg.GARDEN_BED_COST)})`], ['B', `Костёр (${AB.Sim.fireCost(me)})`]];
       if (st.structBuild > 0) { hints.push(['T', `Частокол (${bc(cfg.STRUCTURES.wall.cost)})`]); hints.push(['Y', `Вышка (${bc(cfg.STRUCTURES.tower.cost)})`]); }
       else if (st.turretBuild > 0) hints.push(['T', `Турель/пушка (${bc(cfg.STRUCTURES.turret.cost)})`]);
       else if (st.moduleBuild > 0) hints.push(['T', `Модуль (${cfg.MODULE_COST})`]);

@@ -380,7 +380,7 @@
     const cfg = C(), T = G.team;
     let b = cfg.MARK_BONUS + (T.markBonus || 0) + (T.syn_thermal || 0);
     if (src === 'turret' || src === 'cannon' || src === 'mine') b += T.syn_bait || 0;
-    if (src === 'drone' || src === 'laser') b += T.syn_scope || 0;
+    if (src === 'drone' || src === 'laser' || src === 'scope') b += T.syn_scope || 0;
     return 1 + b / 100;
   }
 
@@ -389,7 +389,7 @@
     if (m.dying || m.dead) return;
     const cfg = C();
     o = o || {};
-    dmg *= markMult(G, m, o.src);
+    dmg *= markMult(G, m, o.mk || o.src);
     m.hp -= dmg; m.hurt = 0.12;
     if (!m.hunter && m.st !== 'return') m.st = 'chase';
     const p = o.p;
@@ -402,7 +402,7 @@
     if (p && o.src === 'weapon' && !o.noProc) {
       if (st.mark > 0) { m.mark = cfg.MARK_TIME; }
       if (st.lifesteal > 0 && !p.dead) p.hp = Math.min(p.mhp, p.hp + dmg * st.lifesteal / 100);
-      if (st.elem > 0) m.burn = { dps: st.elem, t: cfg.BURN_TIME, p: p.id, tick: 0.5 };
+      if (st.elem > 0) applyBurn(m, st.elem * (1 + dmgPctOf(G, p) / 100), p.id);
       if (st.slow > 0) { m.slowT = cfg.SLOW_TIME; m.slowPct = Math.min(70, Math.max(m.slowPct || 0, st.slow)); }
       if (st.explode > 0 && rnd() * 100 < st.explode) explode(G, m.x, m.y, cfg.EXPLODE_RADIUS, dmg * cfg.EXPLODE_DMG, p, m);
       if (st.chain > 0 && rnd() * 100 < st.chain) chain(G, m, dmg * cfg.CHAIN_DMG, p);
@@ -410,6 +410,13 @@
     if (m.hp <= 0) killMonster(G, m, p);
   }
   Sim.damageMonster = damageMonster;
+  // Поджог/яд: не затирает более сильный, только обновляет время
+  function applyBurn(m, dps, pid) {
+    const T = C().BURN_TIME;
+    if (!m.burn || !(m.burn.t > 0) || (m.burn.dps || 0) <= dps) m.burn = { dps, t: T, p: pid, tick: m.burn && m.burn.tick > 0 ? m.burn.tick : 0.5 };
+    else m.burn.t = T;
+  }
+  Sim.applyBurn = applyBurn;
 
   function explode(G, x, y, r, dmg, p, skip, src) {
     Sim.fx(G, { k: 'boom', x, y, r });
@@ -705,14 +712,14 @@
         if (p.droneCd[i] > 0) continue;
         const pos = AB.dronePos(p, i, dl.length, G.clock);
         const dr = dl[i];
-        let range = D.range, dmg = D.damage + st.eng * D.engScale, cd = D.cooldown, abId;
-        if (dr.ab) { const def = Sim.abDef(dr.ab), S2 = Sim.abStats(G, p, def, dr.lv); range = S2.range; dmg = S2.dmg; cd = S2.cd; abId = dr.ab; }
+        let range = D.range, dmg = (D.damage + st.eng * D.engScale) * (1 + dmgPctOf(G, p) / 100), cd = D.cooldown, abId, S2 = null, def = null;
+        if (dr.ab) { def = Sim.abDef(dr.ab); S2 = Sim.abStats(G, p, def, dr.lv); range = S2.range; dmg = S2.dmg; cd = S2.cd; abId = dr.ab; }
         range *= 1 + (T.syn_targeting || 0) / 100;
         const t = nearestMonster(G, pos.x, pos.y, range, T.syn_scope > 0);
         if (!t) { p.droneCd[i] = 0.2; continue; }
         p.droneCd[i] = cd / (1 + st.droneSpd / 100);
-        if (dr.look === 'bird') { damageMonster(G, t, dmg, { p, src: 'weapon', ang: Math.atan2(t.y - pos.y, t.x - pos.x) }); Sim.fx(G, { k: 'dive', x: pos.x, y: pos.y, tx: t.x, ty: t.y }); }
-        else shoot(G, pos.x, pos.y + 10, t, D.projSpeed, dmg, 'drone', abId ? 'weapon' : 'drone', abId ? { owner: p.id, crit: st.crit, cm: cfg.CRIT_MULT + st.critMult, ab: abId } : null);
+        if (dr.look === 'bird' && S2) { hitAb(G, t, dmg, p, def, S2, Math.atan2(t.y - pos.y, t.x - pos.x)); Sim.fx(G, { k: 'dive', x: pos.x, y: pos.y, tx: t.x, ty: t.y }); }
+        else shoot(G, pos.x, pos.y + 10, t, D.projSpeed, dmg, 'drone', abId ? 'weapon' : 'drone', abId ? { owner: p.id, crit: S2.crit, cm: S2.critMult, ab: abId, bm: S2.mult } : null);
       }
     }
     // мины
@@ -721,7 +728,7 @@
       const M = cfg.MINE;
       if (p.mineT >= M.interval / st.mines) {
         p.mineT = 0;
-        G.mines.push({ id: G.nextId++, x: p.x, y: p.y + 6, owner: p.id, dmg: M.damage + st.eng * M.engScale, arm: 0.8 });
+        G.mines.push({ id: G.nextId++, x: p.x, y: p.y + 6, owner: p.id, dmg: (M.damage + st.eng * M.engScale) * (1 + dmgPctOf(G, p) / 100), arm: 0.8 });
         const mine = G.mines.filter(m => m.owner === p.id);
         if (mine.length > M.maxPerStack * st.mines) G.mines.splice(G.mines.indexOf(mine[0]), 1);
       }
@@ -731,7 +738,7 @@
       p.auraT -= dt;
       if (p.auraT <= 0) {
         p.auraT = 0.5;
-        for (const m of G.monsters.slice()) if (!m.dying && AB.dist2(p.x, p.y, m.x, m.y) < (cfg.AURA_RADIUS + m.r) ** 2) damageMonster(G, m, st.aura * 0.5, { p, src: 'aura', noProc: true });
+        for (const m of G.monsters.slice()) if (!m.dying && AB.dist2(p.x, p.y, m.x, m.y) < (cfg.AURA_RADIUS + m.r) ** 2) damageMonster(G, m, st.aura * 0.5 * (1 + dmgPctOf(G, p) / 100), { p, src: 'aura', noProc: true });
       }
     }
     // клинки
@@ -799,31 +806,73 @@
   // Характеристики навыка с учётом уровня и умений игрока
   Sim.abStats = function (G, p, def, lv) {
     const cfg = C(), st = p.st, L = cfg.ABILITY_LEVEL;
+    lv = lv || 1;
     const melee = !!def.melee || def.kind === 'melee';
     const ws = G.structs.filter(s => s.kind === 'workshop');
     const wsK = ws.length ? 1 + cfg.BUILD_UPGRADES.workshop.abDmg * (Math.max(...ws.map(Sim.bl)) - 1) : 1;
     const whet = Sim.anyStructMod(G, 'workshop', 'whet') ? 1.1 : 1;
-    const flat = def.kind === 'aura' || def.kind === 'shield' ? 0 : (melee ? st.melee : st.ranged);
-    const dmg = Math.max(def.start ? 0.5 : 1, (def.dmg + flat) * (1 + dmgPctOf(G, p) / 100) * (1 + (def.grow !== undefined ? def.grow : L.dmg) * (lv - 1)) * wsK * whet);
-    const cd = (def.cd || 1) * Math.pow(1 - L.cd, lv - 1) / (def.kind === 'turret' || def.kind === 'shield' ? 1 : atkSpdOf(p));
-    const range = def.range ? def.range + (melee ? st.range * 0.4 : st.range) : 0;
+    const spd = def.kind === 'turret' || def.kind === 'shield' ? 1 : atkSpdOf(p);
+    const cdK = Math.pow(1 - L.cd, lv - 1);
+    const cd = (def.cd || 1) * cdK / spd;
+    // Сколько «Меткости»/«Мощи клинка» получает один удар: так, чтобы +1 характеристики ≈ +1 урона в секунду навыку
+    let fk = def.fk;
+    if (fk === undefined) {
+      if (def.kind === 'turret') fk = def.fireCd || 1;
+      else if (def.kind === 'aura') fk = 1;
+      else fk = (def.cd || 1) / (def.kind === 'shot' || def.kind === 'strike' ? (def.n || 1) : 1);
+      if (def.ret) fk /= 2; // бумеранг бьёт дважды
+      fk = AB.clamp(fk, 0.1, 3);
+    }
+    const flat = def.kind === 'shield' ? 0 : (melee ? st.melee : st.ranged) * fk;
+    // Рост с уровнем одинаков для всех навыков: общая сила ×(1 + dmg·(ур−1)). Часть роста дают скорость
+    // и число снарядов/дронов, остальное — урон удара (поэтому у навыков с доп. снарядами урон растёт меньше).
+    const n1 = def.n || 1, nl = AB.abCount(def, lv);
+    let countK = 1;
+    if (def.kind === 'shot') countK = def.spread ? (n1 + 0.6 * (nl - n1)) / n1 : nl / n1;
+    else if (def.kind === 'drone') countK = nl / n1;
+    else if (def.kind === 'turret') countK = Math.min(nl, def.life / (def.cd * cdK)) / Math.min(n1, def.life / def.cd);
+    const rateK = def.kind === 'aura' ? 1 : 1 / cdK;
+    const growth = 1 + (def.grow !== undefined ? def.grow : L.dmg) * (lv - 1);
+    const lvK = Math.max(1, growth / (rateK * countK));
+    const mult = (1 + dmgPctOf(G, p) / 100) * lvK * wsK * whet;
+    const dmg = Math.max(0.5, (def.dmg + flat) * mult);
+    let range = def.range ? def.range + (melee ? st.range * 0.4 : st.range) : 0;
+    let crit = st.crit + (def.crit || 0);
+    // синергия «Бойницы»: охотник рядом с постройками бьёт дальше и чаще критует
+    if (p.prof === 'hunter' && G.team.syn_loophole > 0 && range && nearStruct(G, p.x, p.y, 110)) { range *= 1 + G.team.syn_loophole / 100; crit += G.team.syn_loophole / 2; }
+    const radius = def.radius ? def.radius * (1 + (L.radius || 0) * (lv - 1)) + (def.kind === 'orbit' || def.kind === 'shield' ? 0 : st.range * 0.25) : 0;
     let n = AB.abCount(def, lv);
     if (def.kind === 'shot') n += st.proj || 0;
-    return { dmg, cd, range, n, melee, pierce: (def.pierce || 1) + (def.kind === 'shot' ? st.pierce : 0), crit: st.crit + (def.crit || 0), critMult: cfg.CRIT_MULT + st.critMult, lv };
+    const fireCd = def.fireCd ? def.fireCd * cdK / atkSpdOf(p) : 0;
+    // mult — множитель для яда/огня навыка: весь рост уровня (поджог не складывается от числа снарядов и скорости)
+    return { dmg, cd, range, radius, n, melee, mult: (1 + dmgPctOf(G, p) / 100) * growth * wsK * whet, fireCd, pierce: (def.pierce || 1) + (def.kind === 'shot' ? st.pierce : 0), crit, critMult: cfg.CRIT_MULT + st.critMult, lv };
+  };
+  // Примерный урон в секунду по одной цели (для карточек навыков)
+  Sim.abDps = function (G, p, def, S) {
+    const k = def.kind, burn = (def.burn || 0) * S.mult * (1 + (p.st.elem || 0) / 5);
+    const critK = 1 + Math.min(100, S.crit) / 100 * (S.critMult - 1);
+    let v;
+    if (k === 'shot') v = S.dmg * (def.spread ? Math.max(1, S.n * 0.6) : S.n) * (def.ret ? 2 : 1) / S.cd;
+    else if (k === 'drone') v = S.dmg * S.n / (S.cd / (1 + (p.st.droneSpd || 0) / 100));
+    else if (k === 'turret') v = S.dmg / S.fireCd * Math.min(S.n, def.life / S.cd);
+    else if (k === 'aura') v = S.dmg;
+    else if (k === 'shield') v = 0;
+    else v = S.dmg / S.cd;
+    return (v * critK + burn) * (k === 'aura' ? 1 : 1);
   };
   // Эффекты навыка при попадании
-  function abHitFx(G, m, def, dmg, p) {
+  function abHitFx(G, m, def, dmg, p, mult) {
     if (!def || m.dead || m.dying) return;
     const cfg = C();
-    if (def.burn) m.burn = { dps: def.burn * (1 + (p ? (p.st.elem || 0) / 5 : 0)), t: cfg.BURN_TIME, p: p ? p.id : undefined, tick: 0.5 };
+    if (def.burn) applyBurn(m, def.burn * (mult || 1) * (1 + (p ? (p.st.elem || 0) / 5 : 0)), p ? p.id : undefined);
     if (def.slow) { m.slowT = Math.max(m.slowT || 0, def.slowT || 1.5); m.slowPct = Math.min(90, Math.max(m.slowT > 0 ? (m.slowPct || 0) : 0, def.slow)); }
     if (def.mark) m.mark = cfg.MARK_TIME;
   }
   Sim.abHitFx = abHitFx;
   function hitAb(G, m, dmg, p, def, S, ang) {
     const c = rnd() * 100 < S.crit;
-    damageMonster(G, m, dmg * (c ? S.critMult : 1), { p, src: 'weapon', ang, crit: c, kb: def.knock || 0 });
-    abHitFx(G, m, def, dmg, p);
+    damageMonster(G, m, dmg * (c ? S.critMult : 1), { p, src: 'weapon', ang, crit: c, kb: def.knock || 0, mk: def.kind === 'drone' || def.kind === 'beam' ? 'scope' : null });
+    abHitFx(G, m, def, dmg, p, S.mult);
   }
   // Сколько навыков взято (начальное оружие не считается)
   Sim.abLearned = (p) => (p.ab || []).filter(a => { const d = Sim.abDef(a.id); return !(d && d.start); }).length;
@@ -887,7 +936,7 @@
         p.abT[a.id] = (p.abT[a.id] || 0) - dt;
         if (p.abT[a.id] > 0) continue;
         p.abT[a.id] = 0.5;
-        for (const m of G.monsters.slice()) if (!m.dying && AB.dist2(p.x, p.y, m.x, m.y) < (def.radius + m.r) ** 2) { damageMonster(G, m, S.dmg * 0.5, { p, src: 'aura', noProc: true }); abHitFx(G, m, def, 0, p); }
+        for (const m of G.monsters.slice()) if (!m.dying && AB.dist2(p.x, p.y, m.x, m.y) < (S.radius + m.r) ** 2) { damageMonster(G, m, S.dmg * 0.5, { p, src: 'aura', noProc: true }); abHitFx(G, m, def, 0, p, S.mult); }
         continue;
       }
       let t = (p.abT[a.id] || 0) - dt;
@@ -903,7 +952,7 @@
       let any = false;
       for (const q of G.players) {
         if (q.dead || AB.dist2(q.x, q.y, p.x, p.y) > def.radius ** 2) continue;
-        const amt = def.amount * (1 + cfg.ABILITY_LEVEL.dmg * (S.lv - 1)) * (1 + (p.st.structHp || 0) / 200);
+        const amt = def.amount * (1 + 0.5 * (S.lv - 1)) * (1 + (p.st.structHp || 0) / 200);
         if ((q.sh || 0) < amt * 0.5) any = true;
         q.sh = Math.min(amt * 1.5, (q.sh || 0) + amt);
       }
@@ -912,7 +961,7 @@
     }
     if (k === 'mine') {
       if (!nearestMonster(G, p.x, p.y, 380, false)) return false;
-      G.mines.push({ id: G.nextId++, x: p.x + (rnd() - 0.5) * 20, y: p.y + 8, owner: p.id, dmg: S.dmg, arm: 0.6, r: def.radius, ab: def.id, look: def.look || 'mine' });
+      G.mines.push({ id: G.nextId++, x: p.x + (rnd() - 0.5) * 20, y: p.y + 8, owner: p.id, dmg: S.dmg, arm: 0.6, r: S.radius, ab: def.id, look: def.look || 'mine', bm: S.mult });
       const mine = G.mines.filter(m => m.owner === p.id && m.ab === def.id);
       if (mine.length > S.n) G.mines.splice(G.mines.indexOf(mine[0]), 1);
       return true;
@@ -927,7 +976,7 @@
       Sim.fx(G, { k: 'build', x: bx, y: by });
       return true;
     }
-    const target = nearestMonster(G, p.x, p.y, k === 'nova' ? def.radius + 20 : k === 'melee' ? S.range + 25 : S.range, false);
+    const target = nearestMonster(G, p.x, p.y, k === 'nova' ? S.radius + 20 : k === 'melee' ? S.range + 25 : S.range, false);
     if (!target) return false;
     const ang = Math.atan2(target.y - p.y, target.x - p.x);
     p.sa = ang;
@@ -939,7 +988,7 @@
         const a2 = a0 + (i - (S.n - 1) / 2) * (def.spread || 0.13);
         const life = (S.range * (def.ret ? 1 : 1.3)) / speed;
         G.projs.push({ id: G.nextId++, k: def.pk || 'arrow', x: p.x + Math.cos(a2) * 14, y: p.y + Math.sin(a2) * 14, vx: Math.cos(a2) * speed, vy: Math.sin(a2) * speed,
-          dmg: S.dmg, life, life0: life, pierce: S.pierce, hit: [], owner: p.id, src: 'weapon', crit: S.crit, cm: S.critMult, ab: def.id });
+          dmg: S.dmg, life, life0: life, pierce: S.pierce, hit: [], owner: p.id, src: 'weapon', crit: S.crit, cm: S.critMult, ab: def.id, bm: S.mult });
       }
       Sim.fx(G, { k: 'shoot', x: p.x, y: p.y, a: a0, w: def.pk });
       return true;
@@ -957,19 +1006,19 @@
       return true;
     }
     if (k === 'nova') {
-      for (const m of G.monsters.slice()) if (!m.dying && AB.dist2(p.x, p.y, m.x, m.y) < (def.radius + m.r) ** 2) hitAb(G, m, S.dmg, p, def, S, Math.atan2(m.y - p.y, m.x - p.x));
-      Sim.fx(G, { k: 'nova', x: p.x, y: p.y, r: def.radius, id: def.id });
+      for (const m of G.monsters.slice()) if (!m.dying && AB.dist2(p.x, p.y, m.x, m.y) < (S.radius + m.r) ** 2) hitAb(G, m, S.dmg, p, def, S, Math.atan2(m.y - p.y, m.x - p.x));
+      Sim.fx(G, { k: 'nova', x: p.x, y: p.y, r: S.radius, id: def.id });
       return true;
     }
     if (k === 'strike') {
       const dur = def.windup || 0.7;
       if (def.line) {
-        for (let i = 1; i <= S.n; i++) G.tele.push({ id: G.nextId++, sh: 'c', x: p.x + Math.cos(ang) * def.line * i, y: p.y + Math.sin(ang) * def.line * i, r: def.radius, t: 0, dur: dur + i * 0.08, dmg: S.dmg, fr: 1, pid: p.id, ab: def.id });
+        for (let i = 1; i <= S.n; i++) G.tele.push({ id: G.nextId++, sh: 'c', x: p.x + Math.cos(ang) * def.line * i, y: p.y + Math.sin(ang) * def.line * i, r: S.radius, t: 0, dur: dur + i * 0.08, dmg: S.dmg, fr: 1, pid: p.id, ab: def.id, crit: S.crit, cm: S.critMult, bm: S.mult });
       } else {
         const cands = G.monsters.filter(m => !m.dying && AB.dist2(p.x, p.y, m.x, m.y) < S.range * S.range);
         for (let i = 0; i < S.n && cands.length; i++) {
           const m = cands.splice(Math.floor(rnd() * cands.length), 1)[0];
-          G.tele.push({ id: G.nextId++, sh: 'c', x: m.x + m.vx * dur * 0.6, y: m.y + m.vy * dur * 0.6, r: def.radius, t: 0, dur: dur + i * 0.12, dmg: S.dmg, fr: 1, pid: p.id, ab: def.id });
+          G.tele.push({ id: G.nextId++, sh: 'c', x: m.x + m.vx * dur * 0.6, y: m.y + m.vy * dur * 0.6, r: S.radius, t: 0, dur: dur + i * 0.12, dmg: S.dmg, fr: 1, pid: p.id, ab: def.id, crit: S.crit, cm: S.critMult, bm: S.mult });
         }
       }
       return true;
@@ -1015,12 +1064,12 @@
       const def = Sim.abDef(b.ab), S = Sim.abStats(G, p, def, b.lv);
       const t = nearestMonster(G, b.x, b.y - 14, S.range, false);
       if (!t) { b.cd = 0.25; continue; }
-      b.cd = def.fireCd; b.a = Math.atan2(t.y - b.y, t.x - b.x);
+      b.cd = S.fireCd || def.fireCd; b.a = Math.atan2(t.y - b.y, t.x - b.x);
       if (def.look === 'bot') {
         hitAb(G, t, S.dmg, p, def, S, b.a);
         Sim.fx(G, { k: 'beam', x: b.x, y: b.y - 18, x2: t.x, y2: t.y - 10, w: 4, look: 'laser' });
       } else {
-        shoot(G, b.x, b.y - 14, t, def.look === 'ballista' ? 760 : 620, S.dmg, def.look === 'ballista' ? 'bolt' : 'turret', 'weapon', { owner: p.id, crit: S.crit, cm: S.critMult, ab: b.ab, pierce: def.pierce || 1 });
+        shoot(G, b.x, b.y - 14, t, def.look === 'ballista' ? 760 : 620, S.dmg, def.look === 'ballista' ? 'bolt' : 'turret', 'weapon', { owner: p.id, crit: S.crit, cm: S.critMult, ab: b.ab, pierce: def.pierce || 1, bm: S.mult });
         Sim.fx(G, { k: 'shoot', x: b.x, y: b.y, a: b.a, w: 'turret' });
       }
     }
@@ -1103,7 +1152,7 @@
         if (def && def.look === 'trap') {
           // капкан: урон и остановка одному врагу
           damageMonster(G, trig, mn.dmg, { p: own, src: 'weapon', noProc: false });
-          abHitFx(G, trig, def, mn.dmg, own);
+          abHitFx(G, trig, def, mn.dmg, own, mn.bm);
           Sim.fx(G, { k: 'trap', x: mn.x, y: mn.y });
         } else explode(G, mn.x, mn.y, mn.r || C().MINE.radius, mn.dmg, own, null, 'mine');
       }
@@ -1462,7 +1511,11 @@
       if (t.fr) {
         const p = G.players.find(q => q.id === t.pid);
         const def = t.ab ? Sim.abDef(t.ab) : null;
-        for (const m of G.monsters.slice()) if (!m.dying && inShape(t, m.x, m.y, m.r)) { damageMonster(G, m, t.dmg, { p, src: 'meteor', noProc: true, ang: Math.atan2(m.y - t.y, m.x - t.x) }); if (def) abHitFx(G, m, def, t.dmg, p); }
+        for (const m of G.monsters.slice()) if (!m.dying && inShape(t, m.x, m.y, m.r)) {
+          const c = t.crit > 0 && rnd() * 100 < t.crit;
+          damageMonster(G, m, t.dmg * (c ? t.cm : 1), { p, src: 'meteor', noProc: true, crit: c, ang: Math.atan2(m.y - t.y, m.x - t.x) });
+          if (def) abHitFx(G, m, def, t.dmg, p, t.bm);
+        }
       } else {
         const src = G.monsters.find(m => m.id === t.owner);
         for (const p of G.players) if (!p.dead && inShape(t, p.x, p.y, C().PLAYER_RADIUS * 0.6)) {
@@ -1501,30 +1554,34 @@
           }
         }
       }
+      const px0 = pr.x, py0 = pr.y;
       pr.x += pr.vx * dt; pr.y += pr.vy * dt; pr.life -= dt;
       let dead = pr.life <= 0;
+      // попадание по отрезку полёта за кадр (быстрые снаряды не пролетают сквозь мелких монстров)
+      const sdx = pr.x - px0, sdy = pr.y - py0, sl2 = sdx * sdx + sdy * sdy || 1;
+      const segD2 = (mx, my) => { const k = AB.clamp(((mx - px0) * sdx + (my - py0) * sdy) / sl2, 0, 1), qx = px0 + sdx * k - mx, qy = py0 + sdy * k - my; return qx * qx + qy * qy; };
       const tx = Math.floor(pr.x / W.T), ty = Math.floor(pr.y / W.T);
       const s = pr.back || (pr.ab && Sim.abDef(pr.ab).ret) ? 0 : AB.tileSolid(W, tx, ty);
       if (s === AB.S_TREE) { const t = W.trees[W.treeAt[ty * W.N + tx]]; if (t && !t.dead && AB.dist2(pr.x, pr.y, t.x, t.y) < 100) { dead = true; Sim.fx(G, { k: 'thud', x: pr.x, y: pr.y }); } }
       else if (s === AB.S_ROCK) { dead = true; Sim.fx(G, { k: 'thud', x: pr.x, y: pr.y }); }
       if (!dead) for (const m of G.monsters.slice()) {
         if (m.dying || pr.hit.includes(m.id)) continue;
-        if (AB.dist2(pr.x, pr.y, m.x, m.y) < (m.r + 5) ** 2) {
+        if (segD2(m.x, m.y) < (m.r + 5) ** 2) {
           pr.hit.push(m.id);
           const p = pr.owner !== undefined ? G.players.find(q => q.id === pr.owner) : null;
           const ang = Math.atan2(pr.vy, pr.vx);
           if (pr.src === 'weapon') {
             const c = rnd() * 100 < pr.crit;
             const def = pr.ab ? Sim.abDef(pr.ab) : null;
-            damageMonster(G, m, pr.dmg * (c ? pr.cm : 1), { p, src: 'weapon', ang, crit: c, kb: def ? def.knock || 0 : 0 });
+            damageMonster(G, m, pr.dmg * (c ? pr.cm : 1), { p, src: 'weapon', ang, crit: c, kb: def ? def.knock || 0 : 0, mk: def && def.kind === 'drone' ? 'scope' : null });
             if (def) {
-              abHitFx(G, m, def, pr.dmg, p);
+              abHitFx(G, m, def, pr.dmg, p, pr.bm);
               if (def.explode) {
                 Sim.fx(G, { k: 'boom', x: pr.x, y: pr.y, r: def.explode, look: def.pk });
                 for (const o of G.monsters.slice()) {
                   if (o === m || o.dying || AB.dist2(pr.x, pr.y, o.x, o.y) > (def.explode + o.r) ** 2) continue;
                   damageMonster(G, o, pr.dmg * 0.6, { p, src: 'boom', noProc: true, ang: Math.atan2(o.y - pr.y, o.x - pr.x) });
-                  abHitFx(G, o, def, pr.dmg, p);
+                  abHitFx(G, o, def, pr.dmg, p, pr.bm);
                 }
               }
             }
@@ -1860,6 +1917,8 @@
 
   /* ======================= КОМАНДЫ ======================= */
   Sim.buildCost = function (p, base) { return Math.max(1, Math.round(base * (1 - Math.min(80, p.st.buildCost || 0) / 100))); };
+  // Цена нового костра: общая скидка на постройки и отдельная скидка на костёр складываются
+  Sim.fireCost = function (p) { return Math.max(1, Math.round(C().CAMPFIRE_COST * (1 - Math.min(80, p.st.buildCost || 0) / 100) * (1 - Math.min(80, p.st.fireCost || 0) / 100))); };
   Sim.fireUpCost = function (G, p) {
     const c = null;
     return c === undefined ? null : Math.max(1, Math.round(c * (1 - Math.min(80, p.st.fireCost || 0) / 100)));
@@ -1971,7 +2030,7 @@
       best.crop = seedKey === 'seed_carrot' ? 'carrot' : 'pumpkin'; best.t = 0; best.ready = false;
       Sim.fx(G, { k: 'plant', x: best.x, y: best.y });
     } else if (c === 'bed' || c === 'fire') {
-      const cost = Sim.buildCost(p, c === 'bed' ? cfg.GARDEN_BED_COST : cfg.CAMPFIRE_COST);
+      const cost = c === 'bed' ? Sim.buildCost(p, cfg.GARDEN_BED_COST) : Sim.fireCost(p);
       if (Sim.woodOf(G, p) < cost) { pay(G, p, cost); return; }
       if (!placeOk(G, p, bx, by, 16)) return;
       pay(G, p, cost);
