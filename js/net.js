@@ -67,11 +67,12 @@
       ws.onmessage = (e) => {
         const m = JSON.parse(e.data);
         if (m.t === '_ok') { h.ready(Net.code); return; }
-        if (m.t === '_taken') { Net.code = genCode(); ws.send(JSON.stringify({ t: '_host', code: Net.code })); return; }
+        if (m.t === '_taken') { Net.code = genCode(); ws.send(JSON.stringify({ t: '_host', code: Net.code })); h.ready(Net.code); return; }
         if (m.t === '_open') { Net.open = true; h.guest(); return; }
         if (m.t === '_close') { Net.open = false; h.guestLeft(); return; }
         h.data(m);
       };
+      ws.onclose = () => { if (Net.ws !== ws) return; Net.ws = null; Net.open = false; h.error('Нет связи с локальным сервером игры. Хост: проверьте, что server.py запущен.'); };
       ws.onerror = () => h.error('Нет связи с локальным сервером игры. Он запущен (python3 server.py)?');
       return;
     }
@@ -103,10 +104,17 @@
     if (local) {
       const bc = new BroadcastChannel('avibro-' + code);
       Net.bc = bc;
-      bc.onmessage = (e) => { if (e.data.from === 'host') h.data(e.data.d); };
+      bc.onmessage = (e) => {
+        if (e.data.from !== 'host') return;
+        const d = e.data.d;
+        if (d && d.t === '_close') { Net.open = false; h.closed(); return; }
+        h.data(d);
+      };
       Net.conn = { send: (d) => bc.postMessage({ from: 'guest', d }) };
       Net.open = true;
-      window.addEventListener('beforeunload', () => bc.postMessage({ from: 'guest', d: { t: '_close' } }));
+      const onun = () => { try { bc.postMessage({ from: 'guest', d: { t: '_close' } }); } catch (e2) { /* */ } };
+      window.addEventListener('beforeunload', onun);
+      Net._onun = onun;
       setTimeout(() => { Net.conn.send({ t: '_open' }); h.open(); }, 50);
       return;
     }
@@ -124,7 +132,7 @@
         if (m.t === '_hostgone') { Net.open = false; h.closed(); return; }
         h.data(m);
       };
-      ws.onclose = () => { if (opened) { Net.open = false; h.closed(); } };
+      ws.onclose = () => { if (Net.ws !== ws) return; Net.ws = null; if (opened) { Net.open = false; h.closed(); } else h.error('Нет связи с локальным сервером игры.'); };
       ws.onerror = () => { if (!opened) h.error('Нет связи с локальным сервером игры.'); };
       return;
     }
@@ -138,7 +146,7 @@
       Net.conn = c;
       c.on('open', () => { opened = true; clearTimeout(to); Net.open = true; h.open(); });
       c.on('data', (d) => h.data(d));
-      c.on('close', () => { Net.open = false; h.closed(); });
+      c.on('close', () => { clearTimeout(to); Net.open = false; h.closed(); });
     });
     peer.on('error', (e) => { clearTimeout(to); h.error(errText(e)); });
   };
@@ -149,7 +157,8 @@
   };
 
   Net.close = function () {
-    if (Net.bc) { try { if (Net.role === 'guest') Net.bc.postMessage({ from: 'guest', d: { t: '_close' } }); Net.bc.close(); } catch (e) { /* */ } Net.bc = null; }
+    if (Net._onun) { window.removeEventListener('beforeunload', Net._onun); Net._onun = null; }
+    if (Net.bc) { try { if (Net.role === 'host') Net.bc.postMessage({ from: 'host', d: { t: '_close' } }); else if (Net.role === 'guest') Net.bc.postMessage({ from: 'guest', d: { t: '_close' } }); Net.bc.close(); } catch (e) { /* */ } Net.bc = null; }
     if (Net.conn && Net.conn.close) { try { Net.conn.close(); } catch (e) { /* */ } }
     Net.ws = null;
     if (Net.peer) { try { Net.peer.destroy(); } catch (e) { /* */ } }

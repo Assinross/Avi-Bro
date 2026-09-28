@@ -15,9 +15,9 @@
     document.body.classList.toggle('in-game', id === null);
   }
   function playerName() {
-    const n = ($('name').value || '').trim() || 'Игрок';
+    const n = ('' + (($('name').value || '').trim() || 'Игрок')).slice(0, 12);
     try { localStorage.setItem('avibro-name', n); } catch (e) { /* */ }
-    return n.slice(0, 12);
+    return n;
   }
 
   /* ========================== ЗАПУСК РЕЖИМОВ ========================== */
@@ -45,6 +45,10 @@
     App.pendingPlant = null;
     App.lvOpen = false; App.aoRef = null; App.aoWasOpen = false;
     App.buildMode = null;
+    // сброс переходного UI, чтобы прошлая игра не просвечивала в новую
+    App.pendingPick = null; App.selRef = null; App.abDefer = false; App.lvSig = null;
+    App.mcSig = null; App.exSig = null; App.wsSig = null; App.bpSig = null;
+    App.keys.clear(); App.mouse.down = false; App.clickMark = null;
     setAutoPick(App.autoPick, true);
   }
   // Автоподбор предметов (у каждого игрока свой, по умолчанию выключен)
@@ -118,7 +122,7 @@
           } else {
             let p = G.players.find(q => q.id === 1);
             if (!p) { p = AB.Sim.addPlayer(G, 1, (m.name || 'Друг').slice(0, 12), m.prof); }
-            else p.name = (m.name || p.name).slice(0, 12);
+            else { p.name = (m.name || p.name).slice(0, 12); p.left = false; }
             AB.Sim.msg(G, `${p.name} подключился!`, -1, '#8fe08a');
           }
           AB.Net.send({ t: 'init', seed: G.seed, id: 1 });
@@ -127,12 +131,15 @@
           const p = App.G.players.find(q => q.id === 1);
           if (!p) return;
           if (m.t === 'in') {
-            if (!p.dead && m.tp === p.tp) { p.x = m.x; p.y = m.y; }
+            // кламп против телепортов/лагов + игнор ушедшего
+            if (!p.dead && !p.left && m.tp === p.tp && AB.dist(p.x, p.y, m.x, m.y) < 80) { p.x = m.x; p.y = m.y; }
             p.a = m.a; p.moving = !!m.mv;
           } else if (m.t === 'cmd') AB.Sim.command(App.G, 1, m.c, m.x, m.y);
         }
       },
       guestLeft() {
+        const pl = App.G && App.G.players.find(q => q.id === 1);
+        if (pl) pl.left = true; // ушедший не считается в кооп-балансе, но может вернуться тем же кодом
         if (App.state === 'play' && App.mode === 'host') AB.Sim.msg(App.G, 'Второй игрок отключился. Он может вернуться по тому же коду.', -1, '#ff9d7a');
         else $('lobbyStatus').textContent = 'Игрок отключился. Ожидание…';
       },
@@ -625,7 +632,8 @@
   }
 
   function controlLocal(me, dt) {
-    if (!me || me.dead) return;
+    // смерть чистит очередь действий, иначе после возрождения уводит
+    if (!me || me.dead) { App.pendingDump = null; App.pendingPlant = null; App.pendingPick = null; App.moveTarget = null; return; }
     let dx = 0, dy = 0;
     const K = App.keys;
     if (K.has('ArrowLeft') || K.has('KeyA')) dx -= 1;
@@ -782,7 +790,8 @@
       ? `Вы пережили все ${C().NIGHTS_TO_WIN} ночей!`
       : `Пережито ночей: ${Math.max(0, ti.day - 1)}. Монстров побеждено: ${G.stats.kills}.`;
     $('btnRetry').classList.toggle('hidden', App.mode !== 'solo');
-    setTimeout(() => show('over'), 1200);
+    const overG = G;
+    setTimeout(() => { if (App.G === overG && overG.over) show('over'); }, 1200);
   }
 
   /* ============================ ИНИЦИАЛИЗАЦИЯ ============================ */
