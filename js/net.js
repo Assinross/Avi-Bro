@@ -1,4 +1,7 @@
-// Сеть для игры вдвоём. Основной транспорт — WebRTC через PeerJS (данные идут напрямую между ПК).
+// Сеть для игры вдвоём. Три транспорта:
+//  1) ЛОКАЛЬНЫЙ СЕРВЕР (server.py): если игра открыта с него (http://IP:8080) — сообщения идут через него по WebSocket.
+//     Интернет не нужен, работает в любой локальной сети.
+//  2) PeerJS (WebRTC) — если игра открыта с GitHub Pages; нужен доступ к облачному серверу PeerJS.
 // Для отладки на одном компьютере: добавьте к адресу ?local=1 — тогда вкладки общаются через BroadcastChannel.
 (function (AB) {
   const Net = AB.Net = { role: null, conn: null, peer: null, open: false };
@@ -17,7 +20,23 @@
     if (C().PEER_SERVER) Object.assign(o, C().PEER_SERVER);
     return o;
   }
-  Net.available = function () { return local || typeof window.Peer === 'function'; };
+  // Определяем, открыта ли игра с нашего локального сервера
+  Net.server = null;
+  Net.detect = function () {
+    const mode = C().NET_MODE || 'auto';
+    if (local || mode === 'peerjs' || location.protocol === 'file:' || location.hostname.endsWith('github.io')) return Promise.resolve(null);
+    return fetch('/info', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).then(j => {
+      if (j && j.server === 'avibro') Net.server = j;
+      return Net.server;
+    }).catch(() => null);
+  };
+  // Адрес страницы, который можно отправить второму игроку
+  Net.shareBase = function () {
+    if (Net.server && /^(localhost|127\.)/.test(location.hostname) && Net.server.ips.length) return `http://${Net.server.ips[0]}:${location.port || Net.server.port}${location.pathname}`;
+    return location.origin + location.pathname;
+  };
+  Net.available = function () { return local || !!Net.server || typeof window.Peer === 'function'; };
+  function wsUrl() { return (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws'; }
 
   // ---------- ХОСТ ----------
   // h: { ready(code), guest(), data(msg), guestLeft(), error(text) }
@@ -40,7 +59,23 @@
       setTimeout(() => h.ready(code), 50);
       return;
     }
-    if (!Net.available()) { h.error('Не загрузилась библиотека PeerJS. Проверьте интернет.'); return; }
+    if (Net.server) {
+      const ws = new WebSocket(wsUrl());
+      Net.ws = ws;
+      Net.conn = { send: (d) => { if (ws.readyState === 1) ws.send(JSON.stringify(d)); }, close: () => ws.close() };
+      ws.onopen = () => ws.send(JSON.stringify({ t: '_host', code: Net.code }));
+      ws.onmessage = (e) => {
+        const m = JSON.parse(e.data);
+        if (m.t === '_ok') { h.ready(Net.code); return; }
+        if (m.t === '_taken') { Net.code = genCode(); ws.send(JSON.stringify({ t: '_host', code: Net.code })); return; }
+        if (m.t === '_open') { Net.open = true; h.guest(); return; }
+        if (m.t === '_close') { Net.open = false; h.guestLeft(); return; }
+        h.data(m);
+      };
+      ws.onerror = () => h.error('Нет связи с локальным сервером игры. Он запущен (python3 server.py)?');
+      return;
+    }
+    if (!Net.available()) { h.error('Не загрузилась библиотека PeerJS. Проверьте интернет или запустите локальный сервер (python3 server.py).'); return; }
     const peer = new Peer(C().PEER_PREFIX + code, peerOpts());
     Net.peer = peer;
     peer.on('open', () => h.ready(code));
@@ -75,7 +110,25 @@
       setTimeout(() => { Net.conn.send({ t: '_open' }); h.open(); }, 50);
       return;
     }
-    if (!Net.available()) { h.error('Не загрузилась библиотека PeerJS. Проверьте интернет.'); return; }
+    if (Net.server) {
+      const ws = new WebSocket(wsUrl());
+      Net.ws = ws;
+      let opened = false;
+      Net.conn = { send: (d) => { if (ws.readyState === 1) ws.send(JSON.stringify(d)); }, close: () => ws.close() };
+      ws.onopen = () => ws.send(JSON.stringify({ t: '_join', code }));
+      ws.onmessage = (e) => {
+        const m = JSON.parse(e.data);
+        if (m.t === '_joined') { opened = true; Net.open = true; h.open(); return; }
+        if (m.t === '_nf') { h.error('Комната с таким кодом не найдена.'); return; }
+        if (m.t === '_full') { h.error('В комнате уже два игрока.'); return; }
+        if (m.t === '_hostgone') { Net.open = false; h.closed(); return; }
+        h.data(m);
+      };
+      ws.onclose = () => { if (opened) { Net.open = false; h.closed(); } };
+      ws.onerror = () => { if (!opened) h.error('Нет связи с локальным сервером игры.'); };
+      return;
+    }
+    if (!Net.available()) { h.error('Не загрузилась библиотека PeerJS. Проверьте интернет или откройте игру с локального сервера (python3 server.py).'); return; }
     const peer = new Peer(peerOpts());
     Net.peer = peer;
     let opened = false;
@@ -98,6 +151,7 @@
   Net.close = function () {
     if (Net.bc) { try { if (Net.role === 'guest') Net.bc.postMessage({ from: 'guest', d: { t: '_close' } }); Net.bc.close(); } catch (e) { /* */ } Net.bc = null; }
     if (Net.conn && Net.conn.close) { try { Net.conn.close(); } catch (e) { /* */ } }
+    Net.ws = null;
     if (Net.peer) { try { Net.peer.destroy(); } catch (e) { /* */ } }
     Net.conn = null; Net.peer = null; Net.open = false; Net.role = null;
   };
@@ -105,7 +159,7 @@
   function errText(e) {
     const t = e && e.type;
     if (t === 'peer-unavailable') return 'Комната с таким кодом не найдена.';
-    if (t === 'network' || t === 'server-error' || t === 'socket-error') return 'Нет связи с сервером соединения PeerJS. Проверьте интернет.';
+    if (t === 'network' || t === 'server-error' || t === 'socket-error') return 'Нет связи с облачным сервером PeerJS (его может блокировать провайдер, VPN или антивирус). Запустите локальный сервер: python3 server.py — см. README.';
     if (t === 'browser-incompatible') return 'Браузер не поддерживает WebRTC.';
     return 'Ошибка сети: ' + (t || e);
   }

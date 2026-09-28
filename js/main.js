@@ -83,7 +83,7 @@
     AB.Net.host({
       ready(code) {
         $('roomCode').textContent = code;
-        const url = location.origin + location.pathname + '?room=' + code + (AB.Net.isLocal ? '&local=1' : '');
+        const url = AB.Net.shareBase() + '?room=' + code + (AB.Net.isLocal ? '&local=1' : '');
         $('roomLink').value = url;
         $('lobbyStatus').textContent = 'Ожидание второго игрока… Сообщите ему код или ссылку.';
       },
@@ -643,6 +643,9 @@
 
   /* ============================ ИНИЦИАЛИЗАЦИЯ ============================ */
   function init() {
+    AB.Net.detect().then(sv => {
+      if (sv) { const el = $('netInfo'); el.textContent = `Локальный сервер: игра вдвоём по Wi-Fi без интернета. Адрес для второго ПК: http://${sv.ips[0] || location.hostname}:${location.port || sv.port}`; el.classList.remove('hidden'); }
+    });
     AB.Sprites.init();
     AB.Render.init($('game'));
     setupInput();

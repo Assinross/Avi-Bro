@@ -211,6 +211,22 @@
         }
       }
     }
+    // здания (постройки игроков, кухня, лесопилка, костры, торговец)
+    const G = W.G;
+    if (G) {
+      const OR = window.CONFIG.OBSTACLE_RADIUS;
+      const push = (ox, oy, orad) => {
+        const dx = x - ox, dy = y - oy, m = rad + orad;
+        if (Math.abs(dx) > m || Math.abs(dy) > m) return;
+        const d = Math.hypot(dx, dy);
+        if (d < m) { if (d > 0.001) { x = ox + (dx / d) * m; y = oy + (dy / d) * m; } else y = oy + m; }
+      };
+      for (const s of G.structs) push(s.x, s.y, s.r);
+      if (G.kitchen) push(G.kitchen.x - 5, G.kitchen.y - 4, OR.kitchen);
+      if (G.store) push(G.store.x, G.store.y - 2, OR.mill);
+      for (const f of G.fires) push(f.x, f.y, OR.fire);
+      if (G.merchant) push(G.merchant.x + 8, G.merchant.y - 4, OR.merchant);
+    }
     const lim = W.size;
     x = AB.clamp(x, rad, lim - rad); y = AB.clamp(y, rad, lim - rad);
     return [x, y];

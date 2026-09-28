@@ -148,3 +148,5 @@ input:focus { border-color: var(--gold); }
 .mod b { font-size: 13px; }
 .mod .an { font-size: 12px; color: var(--muted); }
 .bpanel { max-height: calc(100vh - 140px); overflow: auto; }
+
+.msg.ok { color: #8fe08a; }
