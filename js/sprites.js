@@ -335,6 +335,14 @@
         ctx.fillStyle = k === 'seed_carrot' ? '#3f8a2a' : '#4b6a24'; ctx.fillRect(15, 13, 2, 3);
         break;
       }
+      case 'iron': {
+        ctx.fillStyle = O; ctx.beginPath(); ctx.moveTo(4, 24); ctx.lineTo(9, 11); ctx.lineTo(25, 11); ctx.lineTo(29, 24); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#7d8892'; ctx.beginPath(); ctx.moveTo(6, 23); ctx.lineTo(10, 13); ctx.lineTo(24, 13); ctx.lineTo(27, 23); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#b9c4cc'; ctx.beginPath(); ctx.moveTo(10, 13); ctx.lineTo(24, 13); ctx.lineTo(22, 17); ctx.lineTo(12, 17); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#e8f0f4'; ctx.fillRect(13, 14, 6, 1.5);
+        ctx.fillStyle = '#5a646c'; ctx.fillRect(7, 21, 19, 2);
+        break;
+      }
       case 'axe': {
         ctx.strokeStyle = O; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(8, 27); ctx.lineTo(22, 6); ctx.stroke();
         ctx.strokeStyle = '#8a5a30'; ctx.lineWidth = 3; ctx.stroke();
@@ -418,6 +426,6 @@
     S.chest = makeChest(false); S.chestOpen = makeChest(true);
     S.tent = makeTent(); S.logs = makeLogs();
     S.icons = {};
-    ['wood', 'meat', 'berry', 'carrot', 'pumpkin', 'cooked_meat', 'cooked_carrot', 'cooked_pumpkin', 'plank', 'hide', 'coal', 'coin', 'seed_carrot', 'seed_pumpkin', 'axe', 'knife', 'spear', 'bow', 'crossbow', 'rifle'].forEach(k => S.icons[k] = makeIcon(k));
+    ['wood', 'meat', 'berry', 'carrot', 'pumpkin', 'cooked_meat', 'cooked_carrot', 'cooked_pumpkin', 'plank', 'hide', 'coal', 'coin', 'seed_carrot', 'seed_pumpkin', 'iron', 'axe'].forEach(k => S.icons[k] = makeIcon(k));
   };
 })(window.AB);

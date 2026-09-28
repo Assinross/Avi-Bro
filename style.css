@@ -150,3 +150,7 @@ input:focus { border-color: var(--gold); }
 .bpanel { max-height: calc(100vh - 140px); overflow: auto; }
 
 .msg.ok { color: #8fe08a; }
+
+.lvtitle.ab { color: #6ac8ff; text-shadow: 0 0 18px rgba(90,170,255,0.45); }
+.skill .iron { margin-top: 6px; font-size: 12px; font-weight: 800; color: #dfe8ee; }
+.skill .iron.bad { color: #ff8a6a; }

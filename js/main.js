@@ -39,7 +39,7 @@
     const me = App.me();
     App.cam.x = me ? me.x : G.W.camp.x; App.cam.y = me ? me.y : G.W.camp.y;
     show(null);
-    AB.FX.toast('Выживите 99 ночей! Ищите оружие в руинах, охраняемых монстрами', '#ffe7a8');
+    AB.FX.toast('Выживите 99 ночей! Собирайте голубые шарики опыта — они открывают боевые навыки', '#ffe7a8');
     AB.FX.toast('Движение: левый клик / стрелки. Атака и рубка — автоматически', '#cfe0ff');
   }
   App.me = function () { return App.G ? App.G.players.find(p => p.id === App.myId) : null; };
@@ -112,7 +112,6 @@
           if (m.t === 'in') {
             if (!p.dead && m.tp === p.tp) { p.x = m.x; p.y = m.y; }
             p.a = m.a; p.moving = !!m.mv;
-            if (p.ws.includes(m.w)) p.w = m.w;
           } else if (m.t === 'cmd') AB.Sim.command(App.G, 1, m.c, m.x, m.y);
         }
       },
@@ -178,8 +177,9 @@
       if (k.startsWith('Digit')) {
         const i = parseInt(k.slice(5), 10) - 1;
         if (me0 && me0.offers && i < me0.offers.length) { pickSkill(i); return; }
-        selectWeapon(i);
+        if (me0 && abShown(me0) && i < me0.ao.length) { pickAbility(i); return; }
       }
+      if (k === 'KeyK' && me0 && me0.ao) { App.abDefer = !App.abDefer; App.lvSig = null; }
       if (k === 'KeyT') command('build1');
       if (k === 'KeyY') command('build2');
       if (k === 'KeyU') command('upnear');
@@ -203,11 +203,14 @@
         return;
       }
       if (e.button !== 0 || App.state !== 'play' || App.paused) return;
-      const s = slotAt(e.clientX, e.clientY);
-      if (s >= 0) { selectWeapon(s); return; }
-      // клики по интерфейсу (рюкзак, еда)
+      if (slotAt(e.clientX, e.clientY) >= 0) return;
+      // клики по интерфейсу (рюкзак, еда, выбор навыка)
       for (const c of (AB.Render.clicks || [])) {
-        if (e.clientX >= c.x && e.clientX <= c.x + c.w && e.clientY >= c.y && e.clientY <= c.y + c.h) { AB.Sound.play('click', 1); sendCmd(c.c, c.v); return; }
+        if (e.clientX >= c.x && e.clientX <= c.x + c.w && e.clientY >= c.y && e.clientY <= c.y + c.h) {
+          AB.Sound.play('click', 1);
+          if (c.c === 'abopen') { App.abDefer = false; App.lvSig = null; } else sendCmd(c.c, c.v);
+          return;
+        }
       }
       // клик по предмету на земле
       const d = dropUnderMouse();
@@ -222,33 +225,19 @@
     });
     window.addEventListener('mouseup', (e) => { if (e.button === 0) App.mouse.down = false; });
     cv.addEventListener('contextmenu', (e) => e.preventDefault());
-    cv.addEventListener('wheel', (e) => {
-      if (App.state !== 'play') return;
-      const me = App.me(); if (!me) return;
-      const order = C().WEAPON_ORDER.filter(w => me.ws.includes(w));
-      let i = order.indexOf(me.w) + (e.deltaY > 0 ? 1 : -1);
-      i = (i + order.length) % order.length;
-      me.w = order[i];
-    }, { passive: true });
   }
+  // Ячейка панели навыков под курсором (для подсказки)
   function slotAt(mx, my) {
-    const R = AB.Render;
-    if (!R.w) return -1;
-    const k = AB.clamp(Math.min(R.w / 1400, R.h / 800), 0.7, 1.25);
-    const me = App.me();
-    const SW = R.w / k, SH = R.h / k, sz = 58, gap = 8, n = me ? C().WEAPON_ORDER.filter(w => me.ws.includes(w)).length : 0;
-    const tw = (n + 1) * (sz + gap) - gap, hx = SW / 2 - tw / 2, hy = SH - sz - 18;
+    const R = AB.Render, k = R.hudK || 1;
     const x = mx / k, y = my / k;
-    if (y < hy || y > hy + sz) return -1;
-    const i = Math.floor((x - hx) / (sz + gap));
-    if (i < 0 || i >= n) return -1;
-    if (x - hx - i * (sz + gap) > sz) return -1;
-    return i;
+    return (R.slots || []).findIndex(s => x >= s.x && x <= s.x + s.w && y >= s.y && y <= s.y + s.h);
   }
-  function selectWeapon(i) {
-    const me = App.me(); if (!me) return;
-    const w = C().WEAPON_ORDER.filter(x => me.ws.includes(x))[i];
-    if (w) { me.w = w; AB.Sound.play('click', 1); }
+  const abShown = (me) => me && me.ao && me.ao.length && !me.offers && !App.abDefer;
+  function pickAbility(i) {
+    AB.Sound.play('click', 1);
+    if (App.mode === 'guest') AB.Net.send({ t: 'cmd', c: 'apick', x: i, y: 0 });
+    else AB.Sim.command(App.G, App.myId, 'apick', i, 0);
+    App.lvSig = null;
   }
   function sendCmd(c, x) {
     if (App.mode === 'guest') AB.Net.send({ t: 'cmd', c, x, y: 0 });
@@ -285,6 +274,9 @@
     const cfg = C();
     const box = $('levelup');
     const offers = me && !me.dead && me.offers && App.state === 'play' ? me.offers : null;
+    if (!offers && me && !me.dead && App.state === 'play' && abShown(me)) { abilityUI(me, box); return; }
+    if (me && !(me.aq > 0)) App.abDefer = false;
+    $('btnLater').classList.add('hidden'); $('btnReroll').classList.remove('hidden');
     if (!offers) { box.classList.add('hidden'); App.lvSig = null; return; }
     const woodHave = AB.Sim.woodOf(App.G, me);
     const sig = JSON.stringify(offers) + '|' + me.rr + '|' + me.queue.length + '|' + woodHave;
@@ -320,6 +312,43 @@
     $('btnReroll').textContent = `Перебросить (${cost} дерева)`;
     $('btnReroll').disabled = woodHave < cost;
     $('btnReroll').style.opacity = woodHave < cost ? 0.5 : 1;
+  }
+  // Выбор боевого навыка (уровень опыта)
+  function abilityUI(me, box) {
+    const cfg = C(), G = App.G;
+    const iron = AB.Sim.ironOf(G, me);
+    const sig = 'ab' + JSON.stringify(me.ao) + me.aq + iron;
+    box.classList.remove('hidden');
+    $('btnLater').classList.remove('hidden'); $('btnReroll').classList.add('hidden');
+    if (sig === App.lvSig) return;
+    App.lvSig = sig;
+    $('lvTitle').textContent = `Уровень опыта ${me.xl}: боевой навык`;
+    $('lvTitle').className = 'lvtitle ab';
+    $('lvSub').textContent = `Навыков: ${me.ab.length} из ${cfg.ABILITY_MAX}. ` + (me.ab.length >= cfg.ABILITY_MAX ? 'Все слоты заняты — улучшайте взятые навыки. ' : 'Возьмите новый навык или улучшите взятый. ') + (me.aq > 1 ? `Ещё выборов: ${me.aq - 1}. ` : '') + (App.mode === 'solo' ? 'Игра на паузе.' : 'Игра не останавливается!');
+    const cards = $('lvCards'); cards.innerHTML = '';
+    me.ao.forEach((o, i) => {
+      const def = AB.Sim.abDef(o.id); if (!def) return;
+      const cur = me.ab.find(a => a.id === o.id);
+      const pc = cfg.PROFESSIONS[def.prof].color, col = o.lv >= 4 ? '#dfe8ee' : o.lv > 1 ? '#6ac8ff' : pc;
+      const S1 = AB.Sim.abStats(G, me, def, o.lv), S0 = cur ? AB.Sim.abStats(G, me, def, cur.lv) : null;
+      const lines = [];
+      if (def.kind !== 'shield') lines.push(`Урон: ${S0 ? Math.round(S0.dmg) + ' → ' : ''}${Math.round(S1.dmg)}${def.kind === 'aura' ? '/с' : ''}`);
+      else lines.push(`Щит: ${Math.round(def.amount * (1 + cfg.ABILITY_LEVEL.dmg * (o.lv - 1)))}`);
+      if (def.kind !== 'aura' && def.kind !== 'orbit') lines.push(`Перезарядка: ${S0 ? S0.cd.toFixed(2) + ' → ' : ''}${S1.cd.toFixed(2)} с`);
+      if (['shot', 'drone', 'orbit', 'strike', 'chain', 'turret', 'mine'].includes(def.kind) && (!S0 || S1.n > S0.n)) lines.push(`${({ shot: 'Снарядов', drone: 'Помощников', orbit: 'Предметов', strike: 'Ударов', chain: 'Перескоков', turret: 'Турелей', mine: 'Мин' })[def.kind]}: ${S0 ? S0.n + ' → ' : ''}${S1.n}`);
+      const poor = o.iron > iron;
+      const el = document.createElement('div');
+      el.className = 'skill' + (poor ? ' poor' : '');
+      el.style.borderColor = col; el.style.boxShadow = `0 0 ${6 + o.lv * 4}px ${col}44 inset`;
+      el.innerHTML = `<div class="key">${i + 1}</div><div class="sico" style="color:${pc}">${def.icon}</div>
+        <div class="sname">${def.name}</div>
+        <div class="stier" style="color:${col}">${cur ? `Улучшение: ур. ${cur.lv} → ${o.lv}` : 'Новый навык'}</div>
+        <div class="snote">${def.desc}</div>
+        ${lines.map(l => `<div class="sline">${l}</div>`).join('')}
+        ${o.iron ? `<div class="iron${poor ? ' bad' : ''}">Нужно железа: ${o.iron} (есть ${iron})</div>` : ''}`;
+      el.addEventListener('click', () => { if (!poor) pickAbility(i); });
+      cards.appendChild(el);
+    });
   }
   // Окно торговца
   function merchantCmd(c, x) {
@@ -374,8 +403,9 @@
       const def = AB.Skills.find(id), tr = best[id], price = AB.Sim.upgradePrice(tr);
       const b = document.createElement('button');
       b.className = 'upbtn'; b.style.borderColor = cfg.TIER_COLORS[tr];
-      b.innerHTML = `${def.icon || ''} ${def.name}: <span style="color:${cfg.TIER_COLORS[tr - 1]}">${cfg.TIER_NAMES[tr - 1]}</span> → <span style="color:${cfg.TIER_COLORS[tr]}">${cfg.TIER_NAMES[tr]}</span> · <b style="color:#ffd24a">${price} $</b>`;
-      if (coins < price) b.disabled = true;
+      const ir = tr === 3 ? (cfg.LEGEND_IRON || 0) : 0;
+      b.innerHTML = `${def.icon || ''} ${def.name}: <span style="color:${cfg.TIER_COLORS[tr - 1]}">${cfg.TIER_NAMES[tr - 1]}</span> → <span style="color:${cfg.TIER_COLORS[tr]}">${cfg.TIER_NAMES[tr]}</span> · <b style="color:#ffd24a">${price} $</b>${ir ? ` + <b style="color:#dfe8ee">${ir} железа</b>` : ''}`;
+      if (coins < price || AB.Sim.ironOf(G, me) < ir) b.disabled = true;
       b.addEventListener('click', () => merchantCmd('upgrade', id));
       up.appendChild(b);
     });
@@ -409,26 +439,21 @@
     const ws = ok && nearStructOf(me, 'workshop');
     $('workshop').classList.toggle('hidden', !ws);
     if (ws) {
-      const W = cfg.WORKSHOP, lv = (me.wl && me.wl[me.w]) || 0, wn = cfg.WEAPONS[me.w].name;
-      const sig = me.w + lv + G.coins + AB.Sim.woodOf(G, me) + '|' + (me.axe || 1);
+      const sig = G.coins + '|' + AB.Sim.woodOf(G, me) + '|' + AB.Sim.ironOf(G, me) + '|' + (me.axe || 1) + '|' + AB.Sim.bl(ws);
       if (sig !== App.wsSig) {
         App.wsSig = sig;
-        $('wsInfo').innerHTML = `Оружие в руках: <b>${wn}</b> · уровень ${lv}/${W.maxLevel} (урон +${Math.round(W.dmg * lv * 100)}%).<br>Смените оружие клавишами 1–5, чтобы улучшить другое.`;
-        const b = $('btnWup');
-        if (lv >= W.maxLevel) { b.textContent = 'Максимум'; b.disabled = true; }
-        else { b.textContent = `Улучшить: ${W.coins[lv]} $ + ${W.planks[lv]} досок`; b.disabled = G.coins < W.coins[lv] || AB.Sim.woodOf(G, me) < W.planks[lv]; }
-        b.style.opacity = b.disabled ? 0.5 : 1;
+        $('wsInfo').innerHTML = `Мастерская ур. ${AB.Sim.bl(ws)}: урон боевых навыков всех игроков <b>+${Math.round(cfg.BUILD_UPGRADES.workshop.abDmg * (AB.Sim.bl(ws) - 1) * 100)}%</b> (улучшение — правый клик по мастерской).<br>Топор ур. ${me.axe || 1}: сильнее бьёт монстров и быстрее рубит деревья.`;
         axeButton($('btnAxeWs'), me);
       }
     }
   }
   function axeButton(b, me) {
-    const cfg = C(), A = cfg.AXE_UPGRADE, lv = me.axe || 1, G = App.G;
+    const cfg = C(), lv = me.axe || 1, G = App.G;
     if (lv >= cfg.AXE_LEVELS.length) { b.textContent = `Топор: максимум (ур. ${lv})`; b.disabled = true; }
     else {
-      const hits = Math.ceil(cfg.TREE_HP / cfg.AXE_LEVELS[lv]);
-      b.textContent = `Топор ур.${lv}→${lv + 1} (дерево за ${hits} ударов): ${A.coins[lv]} $ + ${A.planks[lv]} досок`;
-      b.disabled = G.coins < A.coins[lv] || AB.Sim.woodOf(G, me) < A.planks[lv];
+      const hits = Math.ceil(cfg.TREE_HP / cfg.AXE_LEVELS[lv]), ac = AB.Sim.axeCost(G, lv);
+      b.textContent = `Топор ур.${lv}→${lv + 1} (дерево за ${hits} ударов, урон ×${cfg.AXE_COMBAT[lv]}): ${ac.coins} $ + ${ac.planks} досок${ac.iron ? ` + ${ac.iron} железа` : ''}`;
+      b.disabled = G.coins < ac.coins || AB.Sim.woodOf(G, me) < ac.planks || AB.Sim.ironOf(G, me) < ac.iron;
     }
     b.style.opacity = b.disabled ? 0.5 : 1;
   }
@@ -439,7 +464,8 @@
     if (!b) { box.classList.add('hidden'); App.bpSig = null; if (App.selRef && App.state === 'play' && !(me && me.offers)) App.selRef = null; return; }
     box.classList.remove('hidden');
     const planks = AB.Sim.woodOf(G, me);
-    const sig = JSON.stringify([b.title, b.now, b.asp, b.mods, planks, G.coins, me.prof]);
+    const ironH = AB.Sim.ironOf(G, me);
+    const sig = JSON.stringify([b.title, b.now, b.asp, b.mods, planks, G.coins, me.prof, ironH]);
     if (sig === App.bpSig) return;
     App.bpSig = sig;
     $('bpTitle').textContent = b.title;
@@ -454,10 +480,10 @@
       let body;
       if (max) body = '<div class="an">Максимальный уровень</div>';
       else if (a.by === 'feed') body = `<div class="an">Следующий уровень: ${a.next}</div><div class="bar"><div style="width:${Math.round(a.prog / a.cost * 100)}%"></div></div><div class="an">Топливо ${a.prog}/${a.cost} — заполните шкалу</div><div class="who">${pn.feed}</div>`;
-      else body = `<div class="an">Следующий уровень: ${a.next}</div>` + `<div class="an">Цена: ${a.cost} досок · на складе ${planks}</div>` + (can ? `<button class="btn small gold">Улучшить</button>` : `<div class="who">Улучшает: ${pn[a.by]}</div>`);
+      else body = `<div class="an">Следующий уровень: ${a.next}</div>` + `<div class="an">Цена: ${a.cost} досок${a.iron ? ` + <b style="color:#dfe8ee">${a.iron} железа</b>` : ''} · на складе ${planks}${a.iron ? `, железа ${ironH}` : ''}</div>` + (can ? `<button class="btn small gold">Улучшить</button>` : `<div class="who">Улучшает: ${pn[a.by]}</div>`);
       el.innerHTML = `<div class="ah"><span>${a.name}</span><span>ур. ${a.lvl}/${a.max}</span></div>` + body;
       const btn = el.querySelector('button');
-      if (btn) { if (planks < a.cost) { btn.disabled = true; btn.style.opacity = 0.5; } btn.addEventListener('click', () => { AB.Sound.play('click', 1); sendCmd2('bup', b.ref, a.key); }); }
+      if (btn) { if (planks < a.cost || ironH < (a.iron || 0)) { btn.disabled = true; btn.style.opacity = 0.5; } btn.addEventListener('click', () => { AB.Sound.play('click', 1); sendCmd2('bup', b.ref, a.key); }); }
       box2.appendChild(el);
     });
     const mb = $('bpMods'); mb.innerHTML = '';
@@ -563,7 +589,7 @@
       return;
     }
     const me = App.me();
-    const choosing = App.mode === 'solo' && me && me.offers && !me.dead;
+    const choosing = App.mode === 'solo' && me && !me.dead && (me.offers || abShown(me));
     const running = !(App.paused && App.mode === 'solo') && !choosing && !G.over;
     if (running) {
       controlLocal(me, dt);
@@ -578,7 +604,7 @@
         G.clock += dt;
         const ti = AB.Sim.timeInfo(G.clock); G.nightF = ti.nightF; G.isNight = ti.isNight; G.day = ti.day;
         App.inT -= dt;
-        if (App.inT <= 0 && me) { App.inT = 1 / C().NET_INPUT_HZ; AB.Net.send({ t: 'in', x: Math.round(me.x * 10) / 10, y: Math.round(me.y * 10) / 10, a: Math.round(me.a * 100) / 100, w: me.w, mv: me.moving ? 1 : 0, tp: me.tp }); }
+        if (App.inT <= 0 && me) { App.inT = 1 / C().NET_INPUT_HZ; AB.Net.send({ t: 'in', x: Math.round(me.x * 10) / 10, y: Math.round(me.y * 10) / 10, a: Math.round(me.a * 100) / 100, mv: me.moving ? 1 : 0, tp: me.tp }); }
         smoothRemote(G, dt);
       }
     }
@@ -657,7 +683,7 @@
     bind('btnSolo', () => chooseProf(startSolo, 'menu'));
     bind('btnReroll', reroll);
     bind('bpClose', () => { App.selRef = null; });
-    bind('btnWup', () => { sendCmd('wup', 0); App.wsSig = null; });
+    bind('btnLater', () => { App.abDefer = true; App.lvSig = null; });
     bind('btnAxeWs', () => { sendCmd('axeup', 0); App.wsSig = null; });
     bind('btnAxeMc', () => { sendCmd('axeup', 0); App.mcSig = null; });
     document.querySelectorAll('[data-ex]').forEach(b => b.addEventListener('click', () => { AB.Sound.play('click', 1); const [c, v] = b.dataset.ex.split(':'); sendCmd(c, v === 'all' ? 'all' : +v); App.exSig = null; }));

@@ -34,48 +34,56 @@
       else if (d < CR + 2) reserved[idx(x, y)] = 1;
     }
 
-    // ---- локации с сундуками
+    // ---- локации с сундуками (логова для разграбления)
     const siteList = [];
     let tries = 0;
-    while (siteList.length < cfg.LOOT_SITES && tries++ < 4000) {
+    const spacing = cfg.LOOT_SITE_SPACING || 14;
+    while (siteList.length < cfg.LOOT_SITES && tries++ < 6000) {
       const a = r() * Math.PI * 2;
       const d = r.range(cfg.LOOT_SITE_MIN_DIST, cfg.LOOT_SITE_MAX_DIST);
       const sx = Math.round(cx + Math.cos(a) * d), sy = Math.round(cy + Math.sin(a) * d);
-      const m = cfg.BORDER_TILES + cfg.LOOT_SITE_RADIUS + 2;
+      const m = cfg.BORDER_TILES + cfg.LOOT_SITE_RADIUS + (cfg.HIDDEN_RING || 0) + 2;
       if (sx < m || sy < m || sx >= N - m || sy >= N - m) continue;
-      if (siteList.some(s => Math.hypot(s.tx - sx, s.ty - sy) < 17)) continue;
+      if (siteList.some(s => Math.hypot(s.tx - sx, s.ty - sy) < spacing)) continue;
       siteList.push({ tx: sx, ty: sy, dist: Math.hypot(sx - cx, sy - cy) });
     }
     siteList.sort((a, b) => a.dist - b.dist);
     const n = siteList.length;
-    const weaponAt = {};
-    weaponAt[Math.round(n * 0.12)] = 'spear';
-    weaponAt[Math.round(n * 0.32)] = 'bow';
-    weaponAt[Math.round(n * 0.5)] = 'spear';
-    weaponAt[Math.round(n * 0.62)] = 'crossbow';
-    weaponAt[Math.round(n * 0.75)] = 'bow';
-    weaponAt[n - 1] = 'rifle';
+    // скрытые логова — из дальней половины, через одно
+    const hiddenSet = new Set();
+    for (let i = n - 1, k = 0; i >= Math.floor(n * 0.35) && k < (cfg.HIDDEN_SITES || 0); i -= 2, k++) hiddenSet.add(i);
+    const GUARDS = [
+      [['ghoul', 'wolf', 'wolf'], ['wolf', 'wolf', 'spider', 'spider']],
+      [['ghoul', 'ghoul', 'wolf', 'alpha'], ['alpha', 'wolf', 'wolf', 'spider']],
+      [['alpha', 'ghoul', 'ghoul', 'spitter'], ['brute', 'wolf', 'wolf', 'ghoul']],
+      [['brute', 'alpha', 'ghoul', 'spitter'], ['brute', 'brute', 'wolf', 'alpha']],
+    ];
+    const IR = cfg.IRON || {};
     siteList.forEach((s, i) => {
-      const weapon = weaponAt[i] || null;
+      const hidden = hiddenSet.has(i);
       const tier = Math.min(3, Math.floor((i / Math.max(1, n)) * 4));
-      let guards;
-      if (weapon === 'rifle') guards = ['brute', 'brute', 'alpha', 'wolf'];
-      else if (weapon === 'crossbow') guards = ['brute', 'ghoul', 'ghoul'];
-      else if (weapon === 'bow') guards = ['alpha', 'wolf', 'wolf'];
-      else if (weapon === 'spear') guards = ['ghoul', 'ghoul', 'wolf'];
-      else guards = [['ghoul', 'wolf'], ['ghoul', 'ghoul', 'wolf'], ['alpha', 'wolf', 'ghoul'], ['brute', 'wolf', 'wolf']][tier];
-      const seeds = {};
+      const pool = GUARDS[tier];
+      let guards = pool[r.int(0, pool.length - 1)].slice();
+      if (hidden) guards = ['brute', 'alpha', 'spitter', 'ghoul', 'alpha'];
+      const loot = {};
       const ns = r.int(cfg.CHEST_SEEDS[0], cfg.CHEST_SEEDS[1]);
       for (let k = 0; k < ns; k++) {
         const key = (tier >= 2 && r() < 0.6) || (tier === 1 && r() < 0.25) ? 'seed_pumpkin' : 'seed_carrot';
-        seeds[key] = (seeds[key] || 0) + 1;
+        loot[key] = (loot[key] || 0) + 1;
       }
-      { const cc = window.CONFIG.CHEST_COAL; seeds.coal = r.int(cc[0], cc[1]) + (tier >= 2 ? 1 : 0); }
-      if (!weapon) { seeds.meat = r.int(1, 2 + tier); seeds.bag = window.CONFIG.CHEST_BAG_BASE + tier; }
-      else if (r() < window.CONFIG.CHEST_BAG_WEAPON_CHANCE) seeds.bag = 2;
+      const cc = cfg.CHEST_COAL; loot.coal = r.int(cc[0], cc[1]) + (tier >= 2 ? 1 : 0);
+      loot.meat = r.int(0, 1 + (tier >> 1));
+      if (!loot.meat) delete loot.meat;
+      const cx2 = cfg.CHEST_XP; loot.xp = Math.round(r.int(cx2[0], cx2[1]) * (1 + 0.5 * tier) * (hidden ? 2 : 1));
+      const co = cfg.CHEST_COINS; loot.coin = r.int(co[0], co[1]) * (tier + 1);
+      if (r() < cfg.CHEST_BAG_CHANCE || hidden) loot.bag = cfg.CHEST_BAG_BASE + tier;
+      if (hidden && IR.hidden) loot.iron = r.int(IR.hidden[0], IR.hidden[1]);
+      else if (tier === 3 && IR.tier3) loot.iron = r.int(IR.tier3[0], IR.tier3[1]);
+      else if (tier === 2 && r() < (IR.tier2Chance || 0)) loot.iron = 1;
       W.sites.push({
-        id: i, tx: s.tx, ty: s.ty, x: s.tx * T + T / 2, y: s.ty * T + T / 2, tier, weapon, guards,
-        loot: seeds, opened: false,
+        id: i, tx: s.tx, ty: s.ty, x: s.tx * T + T / 2, y: s.ty * T + T / 2, tier, hidden, guards,
+        power: hidden ? cfg.HIDDEN_GUARD_POWER : cfg.GUARD_POWER[tier],
+        loot, opened: false,
       });
       const SR = cfg.LOOT_SITE_RADIUS;
       for (let y = s.ty - SR - 1; y <= s.ty + SR + 1; y++) for (let x = s.tx - SR - 1; x <= s.tx + SR + 1; x++) {
@@ -85,9 +93,21 @@
         else if (d < SR + 1.5) reserved[idx(x, y)] = 1;
       }
     });
+    // кольцо сплошного леса вокруг скрытых логов
+    const ring = new Uint8Array(N * N);
+    W.sites.forEach((s) => {
+      if (!s.hidden) return;
+      const R0 = cfg.LOOT_SITE_RADIUS + 1.5, R1 = R0 + cfg.HIDDEN_RING;
+      for (let y = Math.floor(s.ty - R1 - 1); y <= s.ty + R1 + 1; y++) for (let x = Math.floor(s.tx - R1 - 1); x <= s.tx + R1 + 1; x++) {
+        if (!inb(x, y)) continue;
+        const d = Math.hypot(x - s.tx, y - s.ty);
+        if (d >= R0 && d < R1 && !reserved[idx(x, y)]) ring[idx(x, y)] = 1;
+      }
+    });
 
     // ---- тропинки от лагеря к локациям
     W.sites.forEach((s, si) => {
+      if (s.hidden) return; // к скрытым логовам тропы нет
       const steps = Math.ceil(Math.hypot(s.tx - cx, s.ty - cy) * 2);
       const nx = -(s.ty - cy), ny = s.tx - cx, nl = Math.hypot(nx, ny) || 1;
       for (let k = 0; k <= steps; k++) {
@@ -110,7 +130,7 @@
       const i = idx(x, y);
       W.forest[i] = AB.fbm(x / 14, y / 14, seed + 101, 4);
       const edge = Math.min(x, y, N - 1 - x, N - 1 - y);
-      if (reserved[i] || edge < cfg.BORDER_TILES + 1) continue;
+      if (reserved[i] || ring[i] || edge < cfg.BORDER_TILES + 1) continue;
       const w = AB.fbm(x / 20, y / 20, seed + 202, 4);
       if (w > cfg.WATER_LEVEL) { W.ground[i] = AB.G_WATER; W.solid[i] = AB.S_WATER; }
     }
@@ -126,8 +146,12 @@
       if (edge < cfg.BORDER_TILES) {
         addTree(x, y, px, py, true); continue;
       }
+      if (ring[i]) { addTree(x, y, px, py, false); continue; }
       if (reserved[i]) continue;
-      const dens = cfg.TREE_DENSITY * (0.25 + 1.9 * Math.pow(W.forest[i], 1.6));
+      let dens = cfg.TREE_DENSITY * (0.25 + 1.9 * Math.pow(W.forest[i], 1.6));
+      // чаща: почти сплошной лес
+      const TH = cfg.THICKET;
+      if (TH && AB.fbm(x / TH.scale, y / TH.scale, seed + 303, 3) > TH.level) dens = Math.max(dens, TH.density);
       if (h < dens) addTree(x, y, px, py, false);
       else if (h < dens + cfg.ROCK_DENSITY) {
         W.rockAt[i] = W.rocks.length;
@@ -160,6 +184,8 @@
         } else W.decor.push({ x, y, kind: 'rubble', v: r() });
       }
       W.decor.push({ x: s.x + 30, y: s.y + 22, kind: 'bones', v: r() });
+      // ящики и тряпичные палатки — следы разграбленного лагеря
+      for (let k = 0; k < 2 + (s.tier >> 1); k++) { const a = r() * Math.PI * 2, d = 40 + r() * 40; W.decor.push({ x: s.x + Math.cos(a) * d, y: s.y + Math.sin(a) * d * 0.7, kind: 'crate', v: r() }); }
     });
 
     // ---- лагерь: костёр и грядки

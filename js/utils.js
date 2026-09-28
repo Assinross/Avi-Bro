@@ -63,7 +63,6 @@ window.AB = window.AB || {};
   AB.itemName = function (k) {
     const C = window.CONFIG;
     if (C.FOOD[k]) return C.FOOD[k].name;
-    if (C.WEAPONS[k]) return C.WEAPONS[k].name;
-    return ({ wood: 'Бревна', plank: 'Доски', coal: 'Уголь', seed_carrot: 'Семена моркови', seed_pumpkin: 'Семена тыквы', hide: 'Шкура', coin: 'Монеты' })[k] || k;
+    return ({ wood: 'Бревна', plank: 'Доски', coal: 'Уголь', seed_carrot: 'Семена моркови', seed_pumpkin: 'Семена тыквы', hide: 'Шкура', coin: 'Монеты', iron: 'Железо', xp: 'Опыт' })[k] || k;
   };
 })(window.AB);

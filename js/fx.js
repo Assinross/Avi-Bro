@@ -45,9 +45,37 @@
         FX.add({ t: 'smoke', x: ev.x, y: ev.y, z: 0, vx: 0, vy: 0, vz: 0, g: 0, life: 0.8, size: 26, c: 'rgba(150,130,100,' });
         Sound.play('fell', near); break;
       case 'swing': Sound.play('swing', near * 0.7); break;
-      case 'shoot': Sound.play(ev.w === 'rifle' ? 'gun' : 'bow', near);
-        if (ev.w === 'rifle') FX.add({ t: 'flash', x: ev.x + Math.cos(ev.a) * 30, y: ev.y + Math.sin(ev.a) * 30, z: 10, vx: 0, vy: 0, vz: 0, g: 0, life: 0.08, size: 18 });
+      case 'shoot': {
+        const gun = ['bullet', 'pellet', 'nail', 'rivet', 'rocket', 'turret', 'grenade'].includes(ev.w);
+        Sound.play(gun ? 'gun' : ['plasma', 'packet', 'laser', 'drone'].includes(ev.w) ? 'zap' : 'bow', near * (ev.w === 'nail' || ev.w === 'rivet' ? 0.45 : 1));
+        if (ev.w === 'bullet' || ev.w === 'pellet') FX.add({ t: 'flash', x: ev.x + Math.cos(ev.a) * 30, y: ev.y + Math.sin(ev.a) * 30, z: 10, vx: 0, vy: 0, vz: 0, g: 0, life: 0.08, size: 18 });
         break;
+      }
+      case 'slash': {
+        const col = ev.look === 'flame' ? 'rgba(255,140,40,0.75)' : 'rgba(255,245,220,0.55)';
+        FX.add({ t: 'arc', x: ev.x, y: ev.y, z: 0, vx: 0, vy: 0, vz: 0, g: 0, life: ev.look === 'flame' ? 0.22 : 0.18, a: ev.a, r: ev.r + 12, arc: ev.arc, c0: col });
+        if (ev.look === 'flame') burst(ev.x + Math.cos(ev.a) * 30, ev.y + Math.sin(ev.a) * 30, 4, ['#ff9a2a', '#ffd24a', '#ff5a2a'], 160, { type: 'spark', dir: ev.a, spread: 0.4, g: -40, life: 0.5 });
+        else Sound.play('swing', near * 0.7);
+        break;
+      }
+      case 'nova': {
+        const col = { p_shock: '#8fd0ff', p_emp: '#5aa8ff', a_quake: '#c8a06a', e_hammer: '#ffd24a' }[ev.id] || '#ffffff';
+        FX.add({ t: 'ring', x: ev.x, y: ev.y, z: 0, vx: 0, vy: 0, vz: 0, g: 0, life: 0.45, size: ev.r, c: col });
+        burst(ev.x, ev.y, 14, [col, '#ffffff'], ev.r * 2, { type: 'spark', g: 0, life: 0.4 });
+        if (ev.id === 'a_quake' || ev.id === 'e_hammer') { FX.shake = Math.min(10, FX.shake + 4 * near); Sound.play('boom', near * 0.7); } else Sound.play('zap', near);
+        break;
+      }
+      case 'beam': {
+        const c0 = { laser: 'rgba(255,70,60,0.55)', weld: 'rgba(255,190,80,0.6)' }[ev.look] || 'rgba(255,70,60,0.55)';
+        FX.add({ t: 'beam', x: ev.x, y: ev.y, x2: ev.x2, y2: ev.y2, z: 0, vx: 0, vy: 0, vz: 0, g: 0, life: 0.14, w: ev.w, c0 });
+        Sound.play('zap', near * 0.6); break;
+      }
+      case 'shield': FX.add({ t: 'ring', x: ev.x, y: ev.y, z: 0, vx: 0, vy: 0, vz: 0, g: 0, life: 0.6, size: ev.r, c: '#e0d0a0' }); Sound.play('build', near); break;
+      case 'block': FX.text(ev.x, ev.y - 30, 'Щит', '#e0d0a0'); break;
+      case 'trap': burst(ev.x, ev.y, 8, ['#c9d3da', '#8a9096'], 90); Sound.play('chop', near); break;
+      case 'dive': burst(ev.tx, ev.ty, 5, ['#8a6a44', '#d8c8a8'], 90); Sound.play('swing', near * 0.6); break;
+      case 'xplvl': if (ev.pid === FX.myId) { FX.toast('Новый уровень опыта! Выберите боевой навык', '#6ac8ff'); Sound.play('chest', 1); }
+        burst(ev.x, ev.y - 20, 24, ['#6ac8ff', '#ffffff', '#3aa8ff'], 150, { type: 'spark', g: -60, life: 1.2 }); break;
       case 'hit': {
         const minor = ev.s === 'burn' || ev.s === 'aura' || ev.s === 'fence' || ev.s === 'fire';
         burst(ev.x, ev.y, minor ? 2 : 8, ev.s === 'burn' || ev.s === 'aura' || ev.s === 'fire' ? ['#ff9a2a', '#ffd24a'] : (BLOOD[ev.t] || BLOOD.wolf), 160, { size: 1.1 });
@@ -61,7 +89,7 @@
         FX.add({ t: 'ring', x: ev.x, y: ev.y, z: 0, vx: 0, vy: 0, vz: 0, g: 0, life: 0.35, size: ev.r, c: '#ffb24a' });
         burst(ev.x, ev.y, 12, ['#ffd24a', '#ff8a2a', '#fff2a8'], 200, { type: 'spark', g: 60, life: 0.7 });
         Sound.play('boom', near); break;
-      case 'bolt': FX.add({ t: 'bolt', x: ev.pts[0][0], y: ev.pts[0][1], z: 0, vx: 0, vy: 0, vz: 0, g: 0, life: 0.25, pts: ev.pts }); Sound.play('zap', 0.8); break;
+      case 'bolt': FX.add({ t: 'bolt', x: ev.pts[0][0], y: ev.pts[0][1], z: 0, vx: 0, vy: 0, vz: 0, g: 0, life: 0.25, pts: ev.pts, c: ev.c || 0 }); Sound.play('zap', 0.8); break;
       case 'zap': burst(ev.x, ev.y, 3, ['#bfe8ff', '#5aa8ff'], 100, { type: 'spark', g: 0, life: 0.3 }); break;
       case 'strike':
         FX.add({ t: 'strike', x: ev.x, y: ev.y, z: 0, vx: 0, vy: 0, vz: 0, g: 0, life: 0.4, sh: ev.sh, r: ev.r, a: ev.a, len: ev.len, w: ev.w, fr: ev.fr });
@@ -89,6 +117,7 @@
         break;
       case 'pdie': burst(ev.x, ev.y, 30, ['#b3302a', '#8e1c1c', '#ddd'], 200); Sound.play('die', 1); break;
       case 'pick':
+        if (ev.it === 'xp') { if (ev.pid === FX.myId) Sound.play('xp', 0.5); break; }
         if (ev.pid === FX.myId) { Sound.play('pick', 0.8); FX.add({ t: 'icon', x: ev.x, y: ev.y, z: 10, vx: 0, vy: 0, vz: 50, g: 20, life: 0.7, it: ev.it }); }
         break;
       case 'eat': {
@@ -166,6 +195,7 @@
         case 'die': tone(220, 0.3, 'sawtooth', V * 0.25, 0.3); noise(0.25, V * 0.5, 400, 1); break;
         case 'hurt': tone(160, 0.18, 'square', V * 0.35, 0.6); break;
         case 'pick': tone(880, 0.06, 'sine', V * 0.35, 1.5); break;
+        case 'xp': tone(1320 + Math.random() * 200, 0.05, 'sine', V * 0.2, 1.3); break;
         case 'eat': noise(0.1, V * 0.5, 1200, 3); noise(0.1, V * 0.5, 1000, 3, 0.14); break;
         case 'plant': noise(0.15, V * 0.5, 600, 1); break;
         case 'build': noise(0.1, V * 0.7, 800, 2); noise(0.1, V * 0.7, 700, 2, 0.15); break;
