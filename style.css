@@ -154,3 +154,10 @@ input:focus { border-color: var(--gold); }
 .lvtitle.ab { color: #6ac8ff; text-shadow: 0 0 18px rgba(90,170,255,0.45); }
 .skill .iron { margin-top: 6px; font-size: 12px; font-weight: 800; color: #dfe8ee; }
 .skill .iron.bad { color: #ff8a6a; }
+
+/* Настройки в меню паузы */
+.settings { text-align: left; margin: 6px 0 12px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 12px; background: rgba(0,0,0,0.18); }
+.settings .mchead { margin-top: 0; }
+.opt { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; font-size: 14px; line-height: 1.35; }
+.opt input { width: 18px; height: 18px; margin-top: 2px; accent-color: #ffd24a; flex: none; }
+.opt small { color: var(--muted, #9aa89a); font-size: 12px; }

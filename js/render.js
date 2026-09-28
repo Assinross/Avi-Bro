@@ -30,6 +30,7 @@
     const cx = W.camp.x / CHUNK, cy = W.camp.y / CHUNK;
     bakeQueue.sort((a, b) => Math.hypot(b[0] - cx, b[1] - cy) - Math.hypot(a[0] - cx, a[1] - cy));
     buildMinimap(W);
+    if (AB.Bld) AB.Bld.warm();
   };
 
   /* ============================ ЗЕМЛЯ ============================ */
@@ -160,7 +161,7 @@
       else if (g === AB.G_SITE) c = [120, 116, 100];
       else c = [52, 92, 44];
       if (W.treeAt[i] >= 0) c = [24, 52, 30];
-      if (W.rockAt[i] >= 0) c = [110, 110, 110];
+      if (W.rockAt[i] >= 0) { const rk = W.rocks[W.rockAt[i]]; c = rk && rk.kind === 'ore' ? (rk.ore === 'iron' ? [196, 110, 70] : [200, 196, 184]) : [110, 110, 110]; }
       base[i * 4] = c[0]; base[i * 4 + 1] = c[1]; base[i * 4 + 2] = c[2]; base[i * 4 + 3] = 255;
     }
     const cv = AB.canvas(N, N), ctx = cv.getContext('2d');
@@ -230,7 +231,7 @@
     const hx = x + Math.cos(wa + 0.35) * 10, hy = by + Math.sin(wa + 0.35) * 7;
     const drawWeaponHand = () => {
       ctx.save(); ctx.translate(hx, hy); ctx.rotate(wa);
-      drawAxe(ctx);
+      if (p.sk === 'pick' && p.sw > 0) drawPickaxe(ctx); else drawAxe(ctx);
       ctx.restore();
       S().circle(ctx, hx, hy, 3.6, '#120c08'); S().circle(ctx, hx, hy, 2.7, o.skin);
     };
@@ -281,6 +282,13 @@
     ctx.strokeStyle = '#8a5a30'; ctx.lineWidth = 2.8; ctx.stroke();
     ctx.fillStyle = '#120a06'; ctx.beginPath(); ctx.moveTo(12, -2); ctx.lineTo(20, -9); ctx.lineTo(23, -2); ctx.lineTo(18, 2); ctx.closePath(); ctx.fill();
     ctx.fillStyle = '#c0c8cf'; ctx.beginPath(); ctx.moveTo(13.5, -2); ctx.lineTo(20, -7.5); ctx.lineTo(21.5, -2.5); ctx.lineTo(17.5, 0.5); ctx.closePath(); ctx.fill();
+  }
+  function drawPickaxe(ctx) {
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = '#120a06'; ctx.lineWidth = 4.5; ctx.beginPath(); ctx.moveTo(-2, 0); ctx.lineTo(19, 0); ctx.stroke();
+    ctx.strokeStyle = '#8a5a30'; ctx.lineWidth = 2.8; ctx.stroke();
+    ctx.strokeStyle = '#120a06'; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(14, -10); ctx.quadraticCurveTo(21, -1, 14, 10); ctx.stroke();
+    ctx.strokeStyle = '#a8b2ba'; ctx.lineWidth = 3; ctx.stroke();
   }
   function nameTag(ctx, x, y, s, col) {
     ctx.font = 'bold 10px "Nunito", system-ui, sans-serif';
@@ -528,110 +536,104 @@
     ctx.beginPath(); ctx.ellipse(x, y + 4, r, r * 0.5, 0, 0, TAU); ctx.stroke(); ctx.restore();
   }
   R.selRing = selRing;
+  const Bd = () => AB.Bld;
+  function label(ctx, s, x, y, col) {
+    ctx.font = 'bold 9px "Nunito", system-ui'; ctx.textAlign = 'center';
+    const w = ctx.measureText(s).width + 12;
+    ctx.fillStyle = 'rgba(10,16,12,0.82)'; roundRect(ctx, x - w / 2, y - 7, w, 14, 7); ctx.fill();
+    ctx.strokeStyle = col; ctx.lineWidth = 1; ctx.stroke();
+    ctx.fillStyle = col; ctx.textBaseline = 'middle'; ctx.fillText(s, x, y + 0.5); ctx.textBaseline = 'alphabetic';
+  }
+  R.label = label;
+  // тёплый отсвет окон ночью (поверх спрайта, до общей тьмы)
+  function windowGlow(ctx, pts, t) {
+    const nf = G_ref ? G_ref.nightF : 0;
+    if (nf < 0.05) return;
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    for (const q of pts) { const g = ctx.createRadialGradient(q[0], q[1], 0, q[0], q[1], q[2]); g.addColorStop(0, `rgba(255,190,80,${0.35 * nf * (0.9 + Math.sin(t * 3 + q[0]) * 0.1)})`); g.addColorStop(1, 'rgba(255,160,60,0)'); ctx.fillStyle = g; ctx.fillRect(q[0] - q[2], q[1] - q[2], q[2] * 2, q[2] * 2); }
+    ctx.restore();
+  }
   function drawStruct(ctx, s, t, near) {
     const x = s.x, y = s.y;
     if (s.kind === 'wall') {
-      S().ell(ctx, x, y + 4, 17, 6, 'rgba(0,0,0,0.3)');
-      for (let i = -1; i <= 1; i++) {
-        const lx = x + i * 9, h = 26 + (i === 0 ? 4 : 0);
-        ctx.fillStyle = '#1e140c'; ctx.fillRect(lx - 5, y - h, 10, h + 3);
-        ctx.fillStyle = i === 0 ? '#86603c' : '#6b4a2e'; ctx.fillRect(lx - 4, y - h + 1, 8, h + 1);
-        ctx.fillStyle = '#a07848'; ctx.fillRect(lx - 4, y - h + 1, 3, h);
-        ctx.fillStyle = '#1e140c'; ctx.beginPath(); ctx.moveTo(lx - 5, y - h); ctx.lineTo(lx, y - h - 7); ctx.lineTo(lx + 5, y - h); ctx.fill();
-        ctx.fillStyle = '#c8a06a'; ctx.beginPath(); ctx.moveTo(lx - 3.5, y - h); ctx.lineTo(lx, y - h - 5); ctx.lineTo(lx + 3.5, y - h); ctx.fill();
-      }
-      ctx.fillStyle = '#3a2616'; ctx.fillRect(x - 14, y - 14, 28, 3);
-      if (s.mod) { ctx.strokeStyle = `rgba(140,210,255,${0.5 + Math.sin(t * 20) * 0.4})`; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(x - 14, y - 20); for (let i = 1; i <= 4; i++) ctx.lineTo(x - 14 + i * 7, y - 20 + (i % 2 ? -3 : 3)); ctx.stroke(); drawModuleLight(ctx, x, y - 30, t); }
+      Bd().draw(ctx, 'wall' + Math.min(3, s.bl || 1), x, y);
+      if (s.bmod === 'spikes') { ctx.fillStyle = '#c8c0b0'; for (const dx of [-15, -5, 5, 15]) { ctx.beginPath(); ctx.moveTo(x + dx - 2, y + 2); ctx.lineTo(x + dx + 2, y + 2); ctx.lineTo(x + dx, y + 11); ctx.fill(); } }
+      if (s.bmod === 'wire') { ctx.strokeStyle = '#9aa4ac'; ctx.lineWidth = 1; for (let i = 0; i < 2; i++) { ctx.beginPath(); for (let k = 0; k <= 12; k++) { const px = x - 18 + k * 3, py = y - 22 + i * 8 + (k % 2 ? -1.5 : 1.5); k ? ctx.lineTo(px, py) : ctx.moveTo(px, py); } ctx.stroke(); } }
+      if (s.mod) { ctx.strokeStyle = `rgba(140,210,255,${0.5 + Math.sin(t * 20) * 0.4})`; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(x - 16, y - 26); for (let i = 1; i <= 4; i++) ctx.lineTo(x - 16 + i * 8, y - 26 + (i % 2 ? -3 : 3)); ctx.stroke(); drawModuleLight(ctx, x, y - 42, t); }
     } else if (s.kind === 'tower') {
-      S().ell(ctx, x, y + 5, 22, 8, 'rgba(0,0,0,0.35)');
-      ctx.strokeStyle = '#1e140c'; ctx.lineWidth = 5; ctx.lineCap = 'round';
-      [[-14, 0, -10, -44], [14, 0, 10, -44], [-12, -8, 12, -30], [12, -8, -12, -30]].forEach(l => { ctx.beginPath(); ctx.moveTo(x + l[0], y + l[1]); ctx.lineTo(x + l[2], y + l[3]); ctx.stroke(); });
-      ctx.strokeStyle = '#6b4a2e'; ctx.lineWidth = 3;
-      [[-14, 0, -10, -44], [14, 0, 10, -44], [-12, -8, 12, -30], [12, -8, -12, -30]].forEach(l => { ctx.beginPath(); ctx.moveTo(x + l[0], y + l[1]); ctx.lineTo(x + l[2], y + l[3]); ctx.stroke(); });
-      ctx.fillStyle = '#1e140c'; ctx.fillRect(x - 17, y - 52, 34, 12);
-      ctx.fillStyle = '#86603c'; ctx.fillRect(x - 16, y - 51, 32, 10);
-      ctx.fillStyle = '#a07848'; ctx.fillRect(x - 16, y - 51, 32, 3);
+      Bd().draw(ctx, 'tower' + Math.min(3, s.tl || 1), x, y);
+      // флаг на крыше
+      ctx.fillStyle = '#16100b'; ctx.fillRect(x - 1, y - 136, 2, 16);
+      ctx.fillStyle = '#c83a2a'; ctx.beginPath(); ctx.moveTo(x + 1, y - 136); ctx.lineTo(x + 14 + Math.sin(t * 4) * 2, y - 132 + Math.sin(t * 5) * 1); ctx.lineTo(x + 1, y - 127); ctx.fill();
       if (s.armed) {
-        ctx.save(); ctx.translate(x, y - 56); ctx.rotate(s.a || 0);
-        ctx.fillStyle = '#111'; ctx.fillRect(-2, -5, 22, 10); ctx.fillStyle = '#4a4f55'; ctx.fillRect(-1, -4, 20, 8); ctx.fillStyle = '#6a7078'; ctx.fillRect(-1, -4, 20, 2);
+        ctx.save(); ctx.translate(x, y - 80); ctx.rotate(s.a || 0);
+        ctx.fillStyle = '#111'; ctx.fillRect(-2, -5, 24, 10); ctx.fillStyle = '#4a4f55'; ctx.fillRect(-1, -4, 22, 8); ctx.fillStyle = '#6a7078'; ctx.fillRect(-1, -4, 22, 2); ctx.fillStyle = '#111'; ctx.fillRect(19, -5.5, 4, 11);
         ctx.restore();
-        S().circle(ctx, x, y - 56, 7, '#111'); S().circle(ctx, x, y - 56, 6, '#3a3f45');
-      } else {
-        ctx.fillStyle = '#1e140c'; ctx.fillRect(x - 1.5, y - 72, 3, 22);
-        ctx.fillStyle = '#c83a2a'; ctx.beginPath(); ctx.moveTo(x + 1.5, y - 72); ctx.lineTo(x + 15 + Math.sin(t * 4) * 2, y - 67); ctx.lineTo(x + 1.5, y - 62); ctx.fill();
+        S().circle(ctx, x, y - 80, 7.5, '#111'); S().circle(ctx, x, y - 80, 6.3, '#3a3f45'); S().circle(ctx, x - 2, y - 82, 2, '#8a9098');
       }
-      if (s.mod) drawModuleLight(ctx, x - 12, y - 56, t);
+      if (s.bmod === 'light') { ctx.save(); ctx.globalCompositeOperation = 'lighter'; S().circle(ctx, x + 18, y - 90, 4, 'rgba(255,240,180,0.9)'); S().circle(ctx, x + 18, y - 90, 9, 'rgba(255,240,180,0.25)'); ctx.restore(); }
+      if (s.mod) drawModuleLight(ctx, x - 16, y - 90, t);
     } else if (s.kind === 'shop') {
-      S().ell(ctx, x, y + 6, 26, 8, 'rgba(0,0,0,0.35)');
-      // прилавок
-      ctx.fillStyle = '#1e140c'; ctx.fillRect(x - 22, y - 16, 44, 22);
-      ctx.fillStyle = '#8a5a30'; ctx.fillRect(x - 21, y - 15, 42, 20);
-      ctx.fillStyle = '#a8743f'; ctx.fillRect(x - 21, y - 15, 42, 4);
-      ctx.fillStyle = '#5e3c20'; for (let i = -14; i <= 14; i += 7) ctx.fillRect(x + i, y - 10, 1.5, 14);
-      // товары на прилавке
+      Bd().draw(ctx, 'shop', x, y);
       const n = s.stockN !== undefined ? s.stockN : (s.stock ? s.stock.length : 0);
-      if (n > 0) ctx.drawImage(S().icons.hide, x - 18, y - 26, 14, 14);
-      if (n > 1) ctx.drawImage(S().icons.cooked_meat, x - 5, y - 26, 13, 13);
-      if (n > 2) ctx.drawImage(S().icons.cooked_pumpkin, x + 7, y - 26, 13, 13);
-      // столбы и полосатый навес
-      ctx.fillStyle = '#1e140c'; ctx.fillRect(x - 23, y - 46, 4, 32); ctx.fillRect(x + 19, y - 46, 4, 32);
-      for (let i = 0; i < 6; i++) {
-        ctx.fillStyle = i % 2 ? '#f2e8d0' : '#3f8a3a';
-        ctx.beginPath(); ctx.moveTo(x - 27 + i * 9, y - 50); ctx.lineTo(x - 18 + i * 9, y - 50); ctx.lineTo(x - 18 + i * 9, y - 40); ctx.quadraticCurveTo(x - 22.5 + i * 9, y - 35, x - 27 + i * 9, y - 40); ctx.fill();
-      }
-      ctx.fillStyle = '#1e140c'; ctx.fillRect(x - 28, y - 52, 56, 3);
-      // вывеска с монеткой
-      S().circle(ctx, x, y - 58, 7, '#1e140c'); S().circle(ctx, x, y - 58, 6, '#ffd24a'); ctx.fillStyle = '#b8862a'; ctx.font = 'bold 8px system-ui'; ctx.textAlign = 'center'; ctx.fillText('$', x, y - 55);
+      if (n > 0) ctx.drawImage(S().icons.hide, x - 26, y - 32, 16, 16);
+      if (n > 1) ctx.drawImage(S().icons.cooked_meat, x - 8, y - 31, 15, 15);
+      if (n > 2) ctx.drawImage(S().icons.cooked_pumpkin, x + 9, y - 31, 15, 15);
       if (n > 0) {
         const prog = s.sellP !== undefined ? s.sellP : (s.sellT || 0) / C().SHOP.sellTime;
         hpBar(ctx, x, y + 12, 36, prog, '#ffd24a');
-        ctx.font = 'bold 9px "Nunito", system-ui'; ctx.fillStyle = '#ffe7a8'; ctx.fillText(`товаров: ${n}`, x, y + 26);
+        ctx.font = 'bold 9px "Nunito", system-ui'; ctx.textAlign = 'center'; ctx.fillStyle = '#ffe7a8'; ctx.fillText(`товаров: ${n}`, x, y + 26);
       }
-      if (near) { ctx.font = 'bold 9px "Nunito", system-ui'; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(255,231,168,0.85)'; ctx.fillText('Лавка', x, y - 68); }
+      if (near) label(ctx, 'Лавка охотника', x, y - 94, '#8fe08a');
       return;
     } else if (s.kind === 'exchange') {
-      S().ell(ctx, x, y + 6, 24, 8, 'rgba(0,0,0,0.35)');
-      ctx.fillStyle = '#111'; ctx.fillRect(x - 20, y - 40, 40, 44);
-      ctx.fillStyle = '#2a3a4a'; ctx.fillRect(x - 18, y - 38, 36, 40);
-      for (let i = 0; i < 4; i++) { ctx.fillStyle = '#1a2430'; ctx.fillRect(x - 16, y - 20 + i * 5, 32, 3); S().circle(ctx, x + 12, y - 18.5 + i * 5, 1, Math.sin(t * 8 + i) > 0 ? '#5aff8a' : '#2a6a3a'); }
-      ctx.fillStyle = '#081018'; ctx.fillRect(x - 15, y - 35, 30, 13);
-      const h = G_ref && G_ref.crypto ? G_ref.crypto.hist : [];
-      if (h && h.length > 1) {
-        const mx = Math.max(...h), mn = Math.min(...h);
-        ctx.strokeStyle = h[h.length - 1] >= h[h.length - 2] ? '#5aff8a' : '#ff5a4a'; ctx.lineWidth = 1.2; ctx.beginPath();
-        h.forEach((v, i) => { const px = x - 14 + i / (h.length - 1) * 28, py = y - 24 - (mx > mn ? (v - mn) / (mx - mn) : 0.5) * 9; i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); });
-        ctx.stroke();
-      }
-      ctx.fillStyle = '#5aa8ff'; ctx.fillRect(x - 1, y - 52, 2, 12); S().circle(ctx, x, y - 53, 2.5, Math.sin(t * 5) > 0 ? '#9fdcff' : '#3a6a9a');
-      if (near) { ctx.font = 'bold 9px "Nunito", system-ui'; ctx.textAlign = 'center'; ctx.fillStyle = '#9fdcff'; ctx.fillText(`Биржа · AviCoin ${G_ref.crypto.price}$`, x, y - 62); }
+      Bd().draw(ctx, 'exchange', x, y);
+      // живые экраны
+      const scr = (sx, sy, w, h, main) => {
+        ctx.fillStyle = '#081828'; ctx.fillRect(sx, sy, w, h);
+        const h2 = G_ref && G_ref.crypto ? G_ref.crypto.hist : [];
+        if (main && h2 && h2.length > 1) {
+          const mx = Math.max(...h2), mn = Math.min(...h2);
+          ctx.strokeStyle = h2[h2.length - 1] >= h2[h2.length - 2] ? '#5aff8a' : '#ff5a4a'; ctx.lineWidth = 1; ctx.beginPath();
+          h2.forEach((v, i) => { const px = sx + 1 + i / (h2.length - 1) * (w - 2), py = sy + h - 2 - (mx > mn ? (v - mn) / (mx - mn) : 0.5) * (h - 4); i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); });
+          ctx.stroke();
+        } else { ctx.fillStyle = '#5aa8ff'; for (let i = 0; i < 4; i++) ctx.fillRect(sx + 1.5, sy + 1.5 + i * 2.2, ((Math.sin(t * 2 + i * 1.7) + 1.3) * 0.35) * (w - 3), 1); }
+        ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = 'rgba(90,168,255,0.18)'; ctx.fillRect(sx - 3, sy - 3, w + 6, h + 6); ctx.restore();
+      };
+      scr(x - 19, y - 28, 16, 10, true); scr(x + 3.5, y - 24.5, 11, 7, false);
+      for (let i = 0; i < 4; i++) S().circle(ctx, x + 28, y - 14.7 + i * 4, 0.9, Math.sin(t * 7 + i * 2) > 0 ? '#5aff8a' : '#2a6a3a');
+      // антенна
+      ctx.fillStyle = '#16100b'; ctx.fillRect(x + 21, y - 96, 2, 22); S().circle(ctx, x + 22, y - 97, 2.4, Math.sin(t * 5) > 0 ? '#9fdcff' : '#3a6a9a');
+      windowGlow(ctx, [[x + 25, y - 26, 16]], t);
+      if (near) label(ctx, `Крипто-биржа · AviCoin ${G_ref.crypto.price}$`, x, y - 110, '#9fdcff');
     } else if (s.kind === 'workshop') {
-      S().ell(ctx, x, y + 6, 26, 8, 'rgba(0,0,0,0.35)');
-      ctx.fillStyle = '#1e140c'; ctx.fillRect(x - 24, y - 14, 48, 18); ctx.fillStyle = '#6b4a2e'; ctx.fillRect(x - 23, y - 13, 46, 16); ctx.fillStyle = '#86603c'; ctx.fillRect(x - 23, y - 13, 46, 3);
-      ctx.fillStyle = '#111'; ctx.fillRect(x - 8, y - 24, 18, 8); ctx.fillStyle = '#4a4f55'; ctx.fillRect(x - 7, y - 23, 16, 6); ctx.fillRect(x - 12, y - 23, 5, 3);
-      ctx.fillStyle = '#4a4f55'; ctx.fillRect(x - 2, y - 17, 5, 5);
-      ctx.save(); ctx.translate(x + 16, y - 20); ctx.rotate(-0.6 + Math.sin(t * 3) * 0.1); ctx.fillStyle = '#6b4a2e'; ctx.fillRect(0, -1.5, 12, 3); ctx.fillStyle = '#888'; ctx.fillRect(10, -4, 5, 8); ctx.restore();
-      if (Math.random() < 0.05) AB.FX.add({ t: 'spark', x: x, y: y - 24, z: 4, vx: (Math.random() - 0.5) * 60, vy: 0, vz: 50, g: 150, life: 0.4, size: 1.5, c: '#ffd24a' });
-      if (near) { ctx.font = 'bold 9px "Nunito", system-ui'; ctx.textAlign = 'center'; ctx.fillStyle = '#ffb23a'; ctx.fillText('Мастерская', x, y - 32); }
+      Bd().draw(ctx, 'workshop', x, y);
+      // горн мерцает, из трубы дым, у наковальни искры
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      const fl = 0.35 + Math.sin(t * 9) * 0.08 + Math.sin(t * 23) * 0.05;
+      const g = ctx.createRadialGradient(x - 2, y - 12, 1, x - 2, y - 12, 18); g.addColorStop(0, `rgba(255,150,50,${fl})`); g.addColorStop(1, 'rgba(255,120,30,0)');
+      ctx.fillStyle = g; ctx.fillRect(x - 20, y - 30, 36, 28); ctx.restore();
+      if (Math.random() < 0.08) AB.FX.add({ t: 'smoke', x: x + 27, y: y - 96, z: 0, vx: 4 + Math.random() * 4, vy: -3, vz: 16, g: -4, life: 2.2, size: 6, c: 'rgba(120,120,120,' });
+      if (Math.random() < 0.05) AB.FX.add({ t: 'spark', x: x - 26, y: y - 8, z: 4, vx: (Math.random() - 0.5) * 60, vy: 0, vz: 50, g: 150, life: 0.4, size: 1.5, c: '#ffd24a' });
+      windowGlow(ctx, [[x - 31, y - 25, 16], [x + 29, y - 25, 16]], t);
+      if (near) label(ctx, 'Мастерская', x, y - 110, '#ffb23a');
     } else if (s.kind === 'townhall') {
-      S().ell(ctx, x, y + 6, 32, 9, 'rgba(0,0,0,0.35)');
-      ctx.fillStyle = '#1e140c'; ctx.fillRect(x - 28, y - 34, 56, 38);
-      ctx.fillStyle = '#b8a888'; ctx.fillRect(x - 27, y - 33, 54, 36); ctx.fillStyle = '#9a8a6a'; for (let i = -24; i < 26; i += 8) ctx.fillRect(x + i, y - 33, 1, 36);
-      ctx.fillStyle = '#1e140c'; ctx.beginPath(); ctx.moveTo(x - 32, y - 32); ctx.lineTo(x, y - 54); ctx.lineTo(x + 32, y - 32); ctx.fill();
-      ctx.fillStyle = '#7a4a9a'; ctx.beginPath(); ctx.moveTo(x - 29, y - 33); ctx.lineTo(x, y - 51); ctx.lineTo(x + 29, y - 33); ctx.fill();
-      ctx.fillStyle = '#3a2616'; ctx.fillRect(x - 6, y - 16, 12, 20);
-      ctx.fillStyle = '#ffd24a'; ctx.fillRect(x - 20, y - 24, 8, 8); ctx.fillRect(x + 12, y - 24, 8, 8);
-      ctx.fillStyle = '#1e140c'; ctx.fillRect(x - 1, y - 70, 2, 18); ctx.fillStyle = '#d08aff'; ctx.beginPath(); ctx.moveTo(x + 1, y - 70); ctx.lineTo(x + 14 + Math.sin(t * 4) * 2, y - 66); ctx.lineTo(x + 1, y - 62); ctx.fill();
-      if (near) { ctx.font = 'bold 9px "Nunito", system-ui'; ctx.textAlign = 'center'; ctx.fillStyle = '#d08aff'; ctx.fillText(`Ратуша · содержание −${C().TOWNHALL.upkeepDiscount}%`, x, y - 78); }
+      Bd().draw(ctx, 'townhall', x, y);
+      if (Math.random() < 0.06) AB.FX.add({ t: 'smoke', x: x - 45, y: y - 100, z: 0, vx: 4 + Math.random() * 4, vy: -3, vz: 16, g: -4, life: 2.2, size: 6, c: 'rgba(120,120,120,' });
+      ctx.fillStyle = '#16100b'; ctx.fillRect(x + 30, y - 116, 2, 16); ctx.fillStyle = '#d08aff'; ctx.beginPath(); ctx.moveTo(x + 32, y - 116); ctx.lineTo(x + 45 + Math.sin(t * 4) * 2, y - 112); ctx.lineTo(x + 32, y - 108); ctx.fill();
+      windowGlow(ctx, [[x - 46, y - 25, 16], [x - 24, y - 14, 14], [x + 31, y - 66, 12], [x + 53, y - 29, 12]], t);
+      if (near) label(ctx, `Ратуша · содержание −${AB.Sim.thDiscount(s)}%`, x, y - 124, '#d08aff');
     } else if (s.kind === 'turret') {
-      S().ell(ctx, x, y + 4, 15, 6, 'rgba(0,0,0,0.35)');
-      ctx.fillStyle = '#111'; ctx.beginPath(); ctx.moveTo(x - 12, y + 3); ctx.lineTo(x - 7, y - 10); ctx.lineTo(x + 7, y - 10); ctx.lineTo(x + 12, y + 3); ctx.fill();
-      ctx.fillStyle = '#5a5f66'; ctx.beginPath(); ctx.moveTo(x - 10, y + 2); ctx.lineTo(x - 6, y - 9); ctx.lineTo(x + 6, y - 9); ctx.lineTo(x + 10, y + 2); ctx.fill();
-      ctx.fillStyle = '#ffb23a'; ctx.fillRect(x - 10, y - 2, 20, 2);
-      ctx.save(); ctx.translate(x, y - 14); ctx.rotate(s.a || 0);
-      ctx.fillStyle = '#111'; ctx.fillRect(0, -3.5, 17, 7); ctx.fillStyle = '#7a8088'; ctx.fillRect(1, -2.5, 15, 5);
+      Bd().draw(ctx, 'turret', x, y);
+      ctx.save(); ctx.translate(x, y - 28); ctx.rotate(s.a || 0);
+      ctx.fillStyle = '#111'; ctx.fillRect(0, -4, 20, 8); ctx.fillStyle = '#5a6068'; ctx.fillRect(1, -3, 18, 6); ctx.fillStyle = '#8a9098'; ctx.fillRect(1, -3, 18, 1.5); ctx.fillStyle = '#111'; ctx.fillRect(17, -4.5, 4, 9);
       ctx.restore();
-      S().circle(ctx, x, y - 14, 7, '#111'); S().circle(ctx, x, y - 14, 6, '#8a9098'); S().circle(ctx, x - 2, y - 16, 2, '#c0c8d0');
-      if (s.mod) drawModuleLight(ctx, x, y - 22, t);
+      S().circle(ctx, x, y - 28, 8, '#111'); S().circle(ctx, x, y - 28, 6.8, '#3a3f45');
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      const pulse = 0.7 + Math.sin(t * 4 + s.id) * 0.2;
+      S().circle(ctx, x, y - 29, 3.6, `rgba(90,180,255,${pulse})`); S().circle(ctx, x, y - 29, 8, `rgba(90,168,255,${0.25 * pulse})`); S().circle(ctx, x - 1, y - 30, 1.4, 'rgba(230,245,255,0.9)');
+      ctx.restore();
+      if (s.mod) drawModuleLight(ctx, x + 10, y - 20, t);
     }
     if (s.hp < s.mhp || near) hpBar(ctx, x, y + 10, 30, s.hp / s.mhp, '#8fd45a');
     // уровни: А — вышка (архитектор), И — пушка/турель (инженер), П — модуль (программист)
@@ -641,106 +643,95 @@
     if (s.mod && (s.ml || 1) > 1) pips.push(['#5aa8ff', s.ml]);
     if ((s.bl || 1) > 1) pips.push(['#e0c08a', s.bl]);
     pips.forEach((pp, i) => { ctx.font = 'bold 9px "Nunito", system-ui'; ctx.textAlign = 'center'; const px = x - (pips.length - 1) * 9 + i * 18; S().circle(ctx, px, y + 22, 6.5, '#111'); S().circle(ctx, px, y + 22, 5.5, pp[0]); ctx.fillStyle = '#111'; ctx.fillText(pp[1], px, y + 25); });
-    if (G_ref && G_ref.debt > 0 && s.kind !== 'wall') { ctx.font = 'bold 12px system-ui'; ctx.textAlign = 'center'; ctx.fillStyle = '#ff5a4a'; ctx.fillText('$✕', x, y - 30 - (s.kind === 'tower' ? 44 : 0)); }
+    if (G_ref && G_ref.debt > 0 && s.kind !== 'wall') { ctx.font = 'bold 12px system-ui'; ctx.textAlign = 'center'; ctx.fillStyle = '#ff5a4a'; ctx.fillText('$✕', x, y - 30 - (s.kind === 'tower' ? 110 : s.kind === 'turret' ? 14 : s.kind === 'wall' ? 16 : 70)); }
   }
   let G_ref = null;
-  // Полевая кухня: навес, котёл на треноге, стол
+  // Полевая кухня: навес, очаг с котлом на треноге, стол
   function drawKitchen(ctx, K, t, G) {
     const x = K.x, y = K.y, cfg = C();
-    S().ell(ctx, x, y + 8, 40, 10, 'rgba(0,0,0,0.3)');
-    // стол
-    ctx.fillStyle = '#1e140c'; ctx.fillRect(x + 12, y - 12, 30, 20);
-    ctx.fillStyle = '#8a5a30'; ctx.fillRect(x + 13, y - 11, 28, 12); ctx.fillStyle = '#a8743f'; ctx.fillRect(x + 13, y - 11, 28, 3);
-    ctx.fillStyle = '#5e3c20'; ctx.fillRect(x + 14, y + 1, 3, 7); ctx.fillRect(x + 37, y + 1, 3, 7);
-    ctx.drawImage(S().icons.carrot, x + 16, y - 20, 12, 12); ctx.drawImage(S().icons.meat, x + 27, y - 19, 12, 12);
-    // тренога и котёл
-    ctx.strokeStyle = '#1e140c'; ctx.lineWidth = 4; ctx.lineCap = 'round';
-    [[-30, 6], [-8, 6], [-19, 10]].forEach(l => { ctx.beginPath(); ctx.moveTo(x + l[0], y + l[1]); ctx.lineTo(x - 19, y - 34); ctx.stroke(); });
-    ctx.strokeStyle = '#6b4a2e'; ctx.lineWidth = 2.2;
-    [[-30, 6], [-8, 6], [-19, 10]].forEach(l => { ctx.beginPath(); ctx.moveTo(x + l[0], y + l[1]); ctx.lineTo(x - 19, y - 34); ctx.stroke(); });
-    ctx.strokeStyle = '#222'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(x - 19, y - 34); ctx.lineTo(x - 19, y - 20); ctx.stroke();
+    Bd().draw(ctx, 'kitchen', x, y);
+    ctx.drawImage(S().icons.carrot, x + 13, y - 24, 12, 12); ctx.drawImage(S().icons.meat, x + 23, y - 23, 12, 12);
     const cooking = K.slots && K.slots.length;
     const fire = G.fires.find(f => f.main), lit = fire && fire.fuel > 0;
-    if (cooking && lit) { S().ell(ctx, x - 19, y - 1, 9, 4, '#ff7a1a'); S().ell(ctx, x - 19, y - 2, 5, 2.5, '#ffd24a'); }
-    S().ell(ctx, x - 19, y - 10, 13, 10, '#111'); S().ell(ctx, x - 19, y - 11, 11.5, 8.5, '#3a3f45');
-    S().ell(ctx, x - 19, y - 17, 11, 3.5, '#111'); S().ell(ctx, x - 19, y - 17, 9.5, 2.6, cooking ? '#b8702a' : '#2a2a2a');
-    if (cooking && Math.random() < 0.12) AB.FX.add({ t: 'smoke', x: x - 19 + (Math.random() - 0.5) * 8, y: y - 18, z: 8, vx: (Math.random() - 0.5) * 6, vy: -3, vz: 22, g: -4, life: 1.6, size: 4, c: 'rgba(230,230,230,' });
+    if (cooking && lit) {
+      const fl = Math.sin(t * 12) * 1.2;
+      S().ell(ctx, x - 19, y - 3, 9, 4, '#ff7a1a'); S().ell(ctx, x - 19, y - 4, 5 + fl * 0.3, 2.5, '#ffd24a');
+      ctx.save(); ctx.globalCompositeOperation = 'lighter'; S().circle(ctx, x - 19, y - 6, 14, 'rgba(255,140,40,0.18)'); ctx.restore();
+    }
+    S().ell(ctx, x - 19, y - 12, 13, 10, '#111'); S().ell(ctx, x - 19, y - 13, 11.5, 8.5, '#3a3f45'); S().ell(ctx, x - 22, y - 16, 4, 3, 'rgba(255,255,255,0.12)');
+    S().ell(ctx, x - 19, y - 19, 11, 3.5, '#111'); S().ell(ctx, x - 19, y - 19, 9.5, 2.6, cooking ? '#b8702a' : '#2a2a2a');
+    if (cooking && Math.random() < 0.12) AB.FX.add({ t: 'smoke', x: x - 19 + (Math.random() - 0.5) * 8, y: y - 20, z: 8, vx: (Math.random() - 0.5) * 6, vy: -3, vz: 22, g: -4, life: 1.6, size: 4, c: 'rgba(230,230,230,' });
     // очередь и прогресс
     if (K.slots) K.slots.forEach((sl, i) => {
       const prog = sl.prog !== undefined ? sl.prog : sl.t / cfg.COOKING[sl.k].time;
-      const bx = x - 34 + i * 26, by = y - 58;
+      const bx = x - 40 + (i % 5) * 26, by = y - 116 - Math.floor(i / 5) * 30;
       ctx.fillStyle = 'rgba(10,16,12,0.85)'; roundRect(ctx, bx, by, 22, 26, 5); ctx.fill();
       ctx.drawImage(S().icons[sl.k], bx + 3, by + 2, 16, 16);
       ctx.fillStyle = '#333'; ctx.fillRect(bx + 2, by + 20, 18, 3);
       ctx.fillStyle = '#ffae3a'; ctx.fillRect(bx + 2, by + 20, 18 * AB.clamp(prog, 0, 1), 3);
     });
     const qn = K.queue ? K.queue.length : 0;
-    if (qn) { ctx.font = 'bold 10px "Nunito", system-ui'; ctx.textAlign = 'left'; ctx.fillStyle = '#ffe7a8'; ctx.fillText('+' + qn, x - 34 + (K.slots ? K.slots.length : 0) * 26, y - 44); }
-    ctx.font = 'bold 9px "Nunito", system-ui'; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(255,231,168,0.8)'; ctx.fillText(`Кухня ур.${K.lvl || 1}`, x, y + 20);
+    if (qn) { ctx.font = 'bold 10px "Nunito", system-ui'; ctx.textAlign = 'left'; ctx.fillStyle = '#ffe7a8'; ctx.fillText('+' + qn, x - 40 + Math.min(5, K.slots ? K.slots.length : 0) * 26, y - 100); }
+    label(ctx, `Кухня ур.${K.lvl || 1}`, x, y + 18, '#ffc46b');
   }
-  // Лесопилка: козлы с пилой, куча бревен, стопка досок
+  // Лесопилка: навес, пильный стол с дисковой пилой, куча бревен и стопка досок
   function drawStore(ctx, Mo, t) {
     const x = Mo.x, y = Mo.y;
-    S_ell(ctx, x, y + 8, 42, 10, 'rgba(0,0,0,0.3)');
-    // бревна (вход)
-    const logs = Math.min(9, Mo.logs || 0);
+    Bd().draw(ctx, 'mill', x, y);
+    // бревна (вход) — пирамида слева
+    const logs = Math.min(10, Mo.logs || 0);
+    const pos = [[0, 0], [9, 0], [18, 0], [27, 0], [4.5, -7], [13.5, -7], [22.5, -7], [9, -14], [18, -14], [13.5, -21]];
     for (let i = 0; i < logs; i++) {
-      const row = Math.floor(i / 3), col = i % 3, lx = x - 34 + col * 8 + row * 4, ly = y + 4 - row * 7;
-      ctx.fillStyle = '#1e140c'; ctx.fillRect(lx - 1, ly - 4, 14, 8); ctx.fillStyle = '#6b4a2e'; ctx.fillRect(lx, ly - 3, 12, 6);
-      S_ell(ctx, lx + 12, ly, 3, 3.5, '#c8a06a');
+      const lx = x - 58 + pos[i][0], ly = y + 8 + pos[i][1];
+      ctx.fillStyle = '#16100b'; ctx.fillRect(lx - 1, ly - 4.5, 12, 9); ctx.fillStyle = '#6b4a2e'; ctx.fillRect(lx, ly - 3.5, 10, 7); ctx.fillStyle = '#8a5a32'; ctx.fillRect(lx, ly - 3.5, 10, 2);
+      S_ell(ctx, lx + 10, ly, 3.4, 4, '#16100b'); S_ell(ctx, lx + 10, ly, 2.6, 3.2, '#d8b07a'); S_ell(ctx, lx + 10, ly, 1, 1.2, '#9a7646');
     }
-    // козлы и бревно под пилой
-    ctx.fillStyle = '#1e140c'; ctx.fillRect(x - 12, y - 10, 26, 5); ctx.fillRect(x - 10, y - 6, 3, 12); ctx.fillRect(x + 8, y - 6, 3, 12);
-    ctx.fillStyle = '#8a5a30'; ctx.fillRect(x - 11, y - 9, 24, 3);
-    // дисковая пила
+    // бревно на столе и дисковая пила
     const sawing = (Mo.saws || []).length > 0;
-    ctx.save(); ctx.translate(x + 1, y - 18); ctx.rotate(sawing ? t * 20 : 0);
-    S().circle(ctx, 0, 0, 9, '#111'); S().circle(ctx, 0, 0, 7.5, '#b9c2c9');
-    ctx.fillStyle = '#111'; for (let i = 0; i < 10; i++) { ctx.rotate(Math.PI / 5); ctx.fillRect(7, -1, 3, 2); }
+    if (sawing) { ctx.fillStyle = '#16100b'; ctx.fillRect(x - 15, y - 17, 30, 6); ctx.fillStyle = '#7a5234'; ctx.fillRect(x - 14, y - 16, 28, 4); ctx.fillStyle = '#946a42'; ctx.fillRect(x - 14, y - 16, 28, 1.3); }
+    ctx.save(); ctx.translate(x - 1, y - 20); ctx.rotate(sawing ? t * 20 : 0);
+    S().circle(ctx, 0, 0, 10, '#111'); S().circle(ctx, 0, 0, 8.5, '#b9c2c9'); S().circle(ctx, 0, 0, 5, '#d8e0e6');
+    ctx.fillStyle = '#111'; for (let i = 0; i < 12; i++) { ctx.rotate(Math.PI / 6); ctx.fillRect(8, -1, 3, 2); }
     S().circle(ctx, 0, 0, 2, '#555');
     ctx.restore();
-    if (sawing && Math.random() < 0.3) AB.FX.add({ t: 'p', x: x + 1, y: y - 12, z: 4, vx: (Math.random() - 0.5) * 60, vy: 10, vz: 40, g: 200, life: 0.5, size: 2, c: '#e0c08a' });
-    // доски (выход)
-    const pl = Math.min(8, (Mo.saws || []).length * 3);
+    if (sawing && Math.random() < 0.35) AB.FX.add({ t: 'p', x: x - 1, y: y - 14, z: 4, vx: (Math.random() - 0.5) * 60, vy: 10, vz: 40, g: 200, life: 0.5, size: 2, c: '#e0c08a' });
+    // доски (выход) — стопка справа
+    const pl = Math.min(8, (Mo.saws || []).length * 3 + Math.min(5, Math.floor((Mo.planks || 0) / 10)));
     for (let i = 0; i < pl; i++) {
       const py = y + 4 - i * 3;
-      ctx.fillStyle = '#1e140c'; ctx.fillRect(x + 18, py - 2, 22, 4); ctx.fillStyle = i % 2 ? '#d8b078' : '#c8a06a'; ctx.fillRect(x + 19, py - 1.5, 20, 3);
+      ctx.fillStyle = '#16100b'; ctx.fillRect(x + 20, py - 2, 24, 4.4); ctx.fillStyle = i % 2 ? '#d8b078' : '#c8a06a'; ctx.fillRect(x + 21, py - 1.4, 22, 3); ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.fillRect(x + 21, py - 1.4, 22, 0.8);
     }
-    ctx.font = 'bold 10px "Nunito", system-ui'; ctx.textAlign = 'center';
     const sw = (Mo.saws || []);
     const prog = sw.length ? Math.max(...sw) / C().MILL.sawTime : 0;
-    const label = `Лесопилка ур.${Mo.lvl || 1} · очередь ${Mo.logs || 0}/${C().MILL.queueMax}`;
-    if (sw.length) hpBar(ctx, x, y - 34, 34, prog, '#e0c08a');
-    const w = ctx.measureText(label).width + 12;
-    ctx.fillStyle = 'rgba(10,16,12,0.8)'; roundRect(ctx, x - w / 2, y + 14, w, 14, 7); ctx.fill();
-    ctx.fillStyle = '#e0c08a'; ctx.fillText(label, x, y + 21.5);
+    if (sw.length) hpBar(ctx, x, y - 38, 34, prog, '#e0c08a');
+    label(ctx, `Лесопилка ур.${Mo.lvl || 1} · очередь ${Mo.logs || 0}/${C().MILL.queueMax}`, x, y + 22, '#e0c08a');
   }
   const S_ell = (c, x, y, rx, ry, col) => S().ell(c, x, y, rx, ry, col);
-  // Странствующий торговец с тележкой
+  // Странствующий торговец с фургоном
   function drawMerchant(ctx, M, t) {
     const x = M.x, y = M.y, bob = Math.sin(t * 2) * 1;
-    S_ell(ctx, x + 10, y + 8, 40, 9, 'rgba(0,0,0,0.35)');
-    // тележка
-    ctx.fillStyle = '#1e140c'; ctx.fillRect(x + 4, y - 22, 44, 22);
-    ctx.fillStyle = '#7a4a22'; ctx.fillRect(x + 5, y - 21, 42, 20);
-    ctx.fillStyle = '#c8a06a'; ctx.beginPath(); ctx.moveTo(x + 2, y - 22); ctx.quadraticCurveTo(x + 26, y - 48, x + 50, y - 22); ctx.fill();
-    ctx.strokeStyle = '#8a6a3a'; ctx.lineWidth = 1.5; ctx.stroke();
-    for (const wx of [x + 12, x + 40]) { S_ell(ctx, wx, y, 7, 7, '#1e140c'); S_ell(ctx, wx, y, 5.5, 5.5, '#6b4a2e'); S_ell(ctx, wx, y, 1.5, 1.5, '#1e140c'); }
-    ctx.drawImage(S().icons.seed_pumpkin, x + 10, y - 34, 12, 12); ctx.drawImage(S().icons.hide, x + 26, y - 33, 13, 13);
-    // сам торговец
+    Bd().draw(ctx, 'wagon', x, y);
+    ctx.drawImage(S().icons.seed_pumpkin, x + 18, y - 40, 11, 11); ctx.drawImage(S().icons.hide, x + 29, y - 40, 12, 12);
+    // фонарь светится
+    ctx.save(); ctx.globalCompositeOperation = 'lighter'; S().circle(ctx, x + 60.5, y - 37, 7 + Math.sin(t * 6) * 0.8, 'rgba(255,210,90,0.35)'); ctx.restore();
+    // сам торговец: плащ, широкополая шляпа, посох
     S_ell(ctx, x - 14, y + 7, 11, 4, 'rgba(0,0,0,0.3)');
-    S().circle(ctx, x - 14, y - 6 + bob, 10.5, '#120c08'); S().circle(ctx, x - 14, y - 6 + bob, 9.2, '#6a3a6a');
-    ctx.fillStyle = '#d8b050'; ctx.fillRect(x - 22, y - 4 + bob, 16, 2.5);
-    S().circle(ctx, x - 14, y - 18 + bob, 8, '#120c08'); S().circle(ctx, x - 14, y - 18 + bob, 7, '#e8b890');
-    ctx.fillStyle = '#4a2a4a'; ctx.beginPath(); ctx.ellipse(x - 14, y - 22 + bob, 12, 3.5, 0, 0, TAU); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(x - 14, y - 26 + bob, 6.5, 5, 0, Math.PI, TAU); ctx.fill();
-    ctx.fillStyle = '#1a120c'; ctx.fillRect(x - 17, y - 18 + bob, 2, 2); ctx.fillRect(x - 12, y - 18 + bob, 2, 2);
-    ctx.fillStyle = '#c8c0b0'; ctx.fillRect(x - 17, y - 14 + bob, 6, 2);
-    // табличка
-    ctx.font = 'bold 10px "Nunito", system-ui'; ctx.textAlign = 'center';
-    const w = 70; ctx.fillStyle = 'rgba(10,16,12,0.85)'; roundRect(ctx, x - w / 2 + 6, y - 64, w, 15, 7); ctx.fill();
-    ctx.strokeStyle = '#ffd24a'; ctx.lineWidth = 1; ctx.stroke(); ctx.fillStyle = '#ffd24a'; ctx.fillText('Торговец', x + 6, y - 56);
-    if (Math.sin(t * 3) > 0.95) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; S().circle(ctx, x + 30, y - 40, 3, '#fff6c0'); ctx.restore(); }
+    ctx.strokeStyle = '#16100b'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x - 25, y + 6); ctx.lineTo(x - 23, y - 30 + bob); ctx.stroke();
+    ctx.strokeStyle = '#8a5a32'; ctx.lineWidth = 1.6; ctx.stroke();
+    S().circle(ctx, x - 14, y - 6 + bob, 11, '#16100b'); S().circle(ctx, x - 14, y - 6 + bob, 9.7, '#5a2e5e');
+    ctx.fillStyle = '#7a4a7e'; ctx.beginPath(); ctx.arc(x - 17, y - 9 + bob, 5, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#d8b050'; ctx.fillRect(x - 23, y - 4 + bob, 18, 2.5);
+    S().circle(ctx, x - 24, y - 8 + bob, 3, '#16100b'); S().circle(ctx, x - 24, y - 8 + bob, 2.2, '#e8b890');
+    S().circle(ctx, x - 14, y - 19 + bob, 8, '#16100b'); S().circle(ctx, x - 14, y - 19 + bob, 7, '#e8b890');
+    ctx.fillStyle = '#1a120c'; ctx.fillRect(x - 17, y - 19 + bob, 2, 2); ctx.fillRect(x - 12, y - 19 + bob, 2, 2);
+    ctx.fillStyle = '#e8e0d0'; ctx.beginPath(); ctx.moveTo(x - 19, y - 15 + bob); ctx.quadraticCurveTo(x - 14, y - 6 + bob, x - 9, y - 15 + bob); ctx.fill();
+    ctx.fillStyle = '#16100b'; ctx.beginPath(); ctx.ellipse(x - 14, y - 23 + bob, 14, 4.5, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#4a2a4a'; ctx.beginPath(); ctx.ellipse(x - 14, y - 23 + bob, 12.6, 3.4, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#16100b'; ctx.beginPath(); ctx.ellipse(x - 14, y - 27 + bob, 7.5, 6, 0, Math.PI, TAU); ctx.fill();
+    ctx.fillStyle = '#5a345a'; ctx.beginPath(); ctx.ellipse(x - 14, y - 27 + bob, 6.4, 5, 0, Math.PI, TAU); ctx.fill();
+    ctx.fillStyle = '#d8b050'; ctx.fillRect(x - 20, y - 27 + bob, 12, 1.6);
+    label(ctx, 'Торговец', x + 20, y - 76, '#ffd24a');
+    if (Math.sin(t * 3) > 0.95) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; S().circle(ctx, x + 36, y - 48, 3, '#fff6c0'); ctx.restore(); }
   }
   function drawMine(ctx, mn, t) {
     if (mn.look === 'trap') {
@@ -810,28 +801,29 @@
 
   /* ============================ ОБЪЕКТЫ ============================ */
   function drawSprite(ctx, sp, x, y, s, alpha) {
-    s = s || 1;
+    s = (s || 1) / (sp.k || 1);
     if (alpha !== undefined) ctx.globalAlpha = alpha;
     ctx.drawImage(sp.c, x - sp.ox * s, y - sp.oy * s, sp.c.width * s, sp.c.height * s);
     if (alpha !== undefined) ctx.globalAlpha = 1;
   }
   function drawFire(ctx, f, t, near) {
     const x = f.x, y = f.y;
-    // камни
-    for (let i = 0; i < 10; i++) {
-      const an = (i / 10) * TAU;
-      const sx = x + Math.cos(an) * 17, sy = y + Math.sin(an) * 9;
-      S().ell(ctx, sx, sy, 5, 3.8, '#1b1d20'); S().ell(ctx, sx, sy - 0.8, 4, 2.8, i % 2 ? '#7d848b' : '#6a7076');
-    }
+    // кольцо из крупных камней (кэш)
+    Bd().draw(ctx, f.main ? 'fireMain' : 'fireSmall', x, y);
+    const big = f.main ? 1.25 : 1;
     // поленья
     ctx.lineCap = 'round';
     for (const [a1, c] of [[0.5, '#5a3a20'], [-0.5, '#6b4a2e'], [1.6, '#4a3018']]) {
-      ctx.strokeStyle = '#140c08'; ctx.lineWidth = 7; ctx.beginPath(); ctx.moveTo(x - Math.cos(a1) * 13, y - Math.sin(a1) * 6); ctx.lineTo(x + Math.cos(a1) * 13, y + Math.sin(a1) * 6); ctx.stroke();
+      ctx.strokeStyle = '#140c08'; ctx.lineWidth = 7; ctx.beginPath(); ctx.moveTo(x - Math.cos(a1) * 13 * big, y - Math.sin(a1) * 6 * big); ctx.lineTo(x + Math.cos(a1) * 13 * big, y + Math.sin(a1) * 6 * big); ctx.stroke();
       ctx.strokeStyle = c; ctx.lineWidth = 5; ctx.stroke();
+      if (f.fuel > 0) { ctx.strokeStyle = 'rgba(255,120,30,0.55)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(x - Math.cos(a1) * 6, y - Math.sin(a1) * 3 + 1.5); ctx.lineTo(x + Math.cos(a1) * 6, y + Math.sin(a1) * 3 + 1.5); ctx.stroke(); }
     }
     if (f.fuel > 0) {
-      const k = (0.45 + 0.55 * Math.min(1, f.fuel / ((f.cap || 20) * 0.5))) * (1 + 0.18 * ((f.lvl || 1) - 1));
-      S().ell(ctx, x, y, 10, 5, '#ff7a1a');
+      const k = (0.45 + 0.55 * Math.min(1, f.fuel / ((f.cap || 20) * 0.5))) * (1 + 0.18 * ((f.lvl || 1) - 1)) * big;
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      const gg = ctx.createRadialGradient(x, y - 8 * k, 1, x, y - 8 * k, 34 * k); gg.addColorStop(0, 'rgba(255,170,60,0.45)'); gg.addColorStop(1, 'rgba(255,120,30,0)');
+      ctx.fillStyle = gg; ctx.fillRect(x - 36 * k, y - 44 * k, 72 * k, 72 * k); ctx.restore();
+      S().ell(ctx, x, y, 10 * big, 5 * big, '#ff7a1a');
       for (let i = 0; i < 3; i++) {
         const fl = Math.sin(t * (9 + i * 3) + i * 2) * 0.12 + 1;
         const h = (26 - i * 7) * k * fl, w = (11 - i * 3) * k;
@@ -919,7 +911,7 @@
   }
   function drawDecor(ctx, d, t) {
     const sp = S();
-    if (d.kind === 'tent') drawSprite(ctx, sp.tent, d.x, d.y);
+    if (d.kind === 'tent') Bd().draw(ctx, 'tent', d.x, d.y);
     else if (d.kind === 'logs') drawSprite(ctx, sp.logs, d.x, d.y);
     else if (d.kind === 'stump_seat') drawSprite(ctx, sp.stump, d.x, d.y);
     else if (d.kind === 'torch') drawTorch(ctx, d.x, d.y, t);
@@ -1158,7 +1150,15 @@
           } else drawSprite(ctx, tree, o.x, o.y, o.s, alpha);
           break;
         }
-        case 1: drawSprite(ctx, o.kind === 'ruin' ? sp.ruins[o.v] : sp.rocks[o.v], o.x, o.y + 10 * o.s, o.s); break;
+        case 1:
+          if (o.kind === 'ore') {
+            const osp = o.dead ? sp.oresDead[o.ore] : sp.ores[o.ore][o.v];
+            if (o.shake > 0) { ctx.save(); ctx.translate(Math.sin(t * 60) * o.shake * 4, 0); drawSprite(ctx, osp, o.x, o.y + 6, 1); ctx.restore(); }
+            else drawSprite(ctx, osp, o.x, o.y + 6, 1);
+            if (!o.dead && o.hp < C().ORE_HITS) hpBar(ctx, o.x, o.y + 12, 26, o.hp / C().ORE_HITS, o.ore === 'iron' ? '#d08060' : '#c8c0b0');
+            if (!o.dead && me && AB.dist2(me.x, me.y, o.x, o.y) < 70 * 70) label(ctx, `${C().ORES[o.ore].name}${me.pick ? '' : ' · нужна кирка'}`, o.x, o.y - 46, o.ore === 'iron' ? '#e0a080' : '#d8d0c0');
+          } else drawSprite(ctx, o.kind === 'ruin' ? sp.ruins[o.v] : sp.rocks[o.v], o.x, o.y + 10 * o.s, o.s);
+          break;
         case 2: drawSprite(ctx, o.berries ? sp.bushBerries : sp.bush, o.x, o.y + 6); break;
         case 3: drawSprite(ctx, o.opened ? sp.chestOpen : sp.chest, o.x, o.y + 8);
           if (!o.opened && Math.sin(t * 2 + o.id) > 0.9) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; S().circle(ctx, o.x + 6, o.y - 12, 3, '#fff6c0'); ctx.restore(); }
@@ -1244,6 +1244,12 @@
     const lights = [];
     for (const f of G.fires) if (f.fuel > 0) lights.push([f.x, f.y, AB.fireLight(f) * (1 + Math.sin(t * 9 + f.x) * 0.03), 1]);
     for (const d of W.decor) if (d.kind === 'torch') lights.push([d.x, d.y - 30, 120 * (1 + Math.sin(t * 13 + d.x) * 0.05), 0.8]);
+    // окна и фонари зданий
+    const LB = { townhall: [-10, -30, 95], workshop: [0, -24, 85], exchange: [0, -22, 80], shop: [0, -30, 60] };
+    for (const st of G.structs) { const l = LB[st.kind]; if (l) lights.push([st.x + l[0], st.y + l[1], l[2], 0.45]); }
+    if (G.kitchen) lights.push([G.kitchen.x - 10, G.kitchen.y - 20, 70, 0.4]);
+    if (G.store) lights.push([G.store.x, G.store.y - 20, 60, 0.3]);
+    if (G.merchant) lights.push([G.merchant.x + 60, G.merchant.y - 36, 75, 0.55]);
     // --- тьма ночи
     const dctx = R.darkC.getContext('2d');
     dctx.globalCompositeOperation = 'source-over';
@@ -1457,7 +1463,7 @@
       const K = R.hudK || 1;
       const click = (x, y, w, h, c, v) => R.clicks.push({ x: x * K, y: y * K, w: w * K, h: h * K, c, v });
       const items = AB.ITEM_KEYS.filter(k => !AB.Sim.bagItem(k) && k !== 'coin' && (me.inv[k] || 0) > 0);
-      const w = items.length * 64 + 175 + 150 + 16;
+      const w = items.length * 64 + 175 + 150 + 16 + 64;
       panel(ctx, SW - w - 14, 14, w, 46);
       // склад (общий)
       {
@@ -1471,6 +1477,10 @@
         ctx.drawImage(S().icons.iron, sx + 88, 20, 26, 26);
         ctx.font = 'bold 15px "Nunito", system-ui'; ctx.fillStyle = ir ? '#dfe8ee' : '#7d8892'; ctx.fillText(`${ir}`, sx + 116, 31);
         ctx.font = '600 10px "Nunito", system-ui'; ctx.fillStyle = '#aab4bb'; ctx.fillText('железо', sx + 112, 45);
+        const stn = AB.Sim.stoneOf(G, me);
+        ctx.drawImage(S().icons.stone, sx - 64, 20, 26, 26);
+        ctx.font = 'bold 15px "Nunito", system-ui'; ctx.fillStyle = stn ? '#e8e0d0' : '#7d8892'; ctx.fillText(`${stn}`, sx - 36, 31);
+        ctx.font = '600 10px "Nunito", system-ui'; ctx.fillStyle = '#b8b0a0'; ctx.fillText('камень', sx - 38, 45);
       }
       // казна
       {
@@ -1492,7 +1502,7 @@
       {
         const cap = AB.Sim.bagCap(me), used = AB.Sim.bagUsed(me);
         const cells = [];
-        ['wood', 'hide', 'coal', 'iron'].forEach(k => { for (let i = 0; i < (me.inv[k] || 0); i++) cells.push(k); });
+        ['wood', 'hide', 'coal', 'iron', 'stone'].forEach(k => { for (let i = 0; i < (me.inv[k] || 0); i++) cells.push(k); });
         const per = 7, cs = 34, rows = Math.ceil(cap / per);
         const px = 14, pw = per * (cs + 4) + 16, ph = 46 + rows * (cs + 4) + 20;
         const py = SH - ph - 14;
@@ -1518,7 +1528,7 @@
       const lines = [
         [`Выжить ${cfg.NIGHTS_TO_WIN} ночей`, null, true],
         [`Пережито ночей: ${Math.max(0, ti.day - 1)}`, ti.day > 1],
-        [`Боевые навыки: ${(me.ab || []).length} / ${cfg.ABILITY_MAX}`, (me.ab || []).length >= cfg.ABILITY_MAX],
+        [`Боевые навыки: ${AB.Sim.abLearned(me)} / ${cfg.ABILITY_MAX}`, AB.Sim.abLearned(me) >= cfg.ABILITY_MAX],
         [`Сундуки: ${opened} / ${G.W.sites.length}`, opened >= G.W.sites.length],
         [`Грядок засажено: ${G.plots.filter(p => p.crop).length}`, G.plots.some(p => p.crop)],
         [`Монстров убито: ${G.stats.kills}`, null],
@@ -1535,30 +1545,44 @@
         }
         ctx.fillStyle = l[1] ? '#b8e8b0' : '#cfd8cc'; ctx.fillText(l[0], SW - 210, y);
       });
-      // --- панель: топор + боевые навыки + шкала опыта
-      const sz = 58, gap = 8, nslot = 1 + cfg.ABILITY_MAX;
-      const tw = nslot * (sz + gap) - gap;
+      // --- панель: инструменты (топор, кирка) + начальное оружие + боевые навыки + шкала опыта
+      const sz = 58, gap = 8, tools = me.pick ? 2 : 1;
+      const abList = (me.ab || []).slice();
+      const startAb = abList.find(a => { const d = AB.Sim.abDef(a.id); return d && d.start; });
+      const learnedAb = abList.filter(a => a !== startAb);
+      const nslot = tools + 1 + cfg.ABILITY_MAX;
+      const tw = nslot * (sz + gap) - gap + 10;
       const hx = SW / 2 - tw / 2, hy = SH - sz - 18;
       R.slots = [];
-      const slot = (i, sel) => { const x = hx + i * (sz + gap); ctx.fillStyle = sel ? 'rgba(20,40,60,0.9)' : 'rgba(10,18,15,0.8)'; roundRect(ctx, x, hy, sz, sz, 8); ctx.fill(); ctx.strokeStyle = sel ? '#6ac8ff' : 'rgba(160,190,150,0.25)'; ctx.lineWidth = sel ? 2 : 1; ctx.stroke(); return x; };
+      let sx0 = hx;
+      const slot = (sel, tool) => { const x = sx0; sx0 += sz + gap + (tool === 'last' ? 10 : 0); ctx.fillStyle = tool ? 'rgba(30,24,16,0.85)' : sel ? 'rgba(20,40,60,0.9)' : 'rgba(10,18,15,0.8)'; roundRect(ctx, x, hy, sz, sz, 8); ctx.fill(); ctx.strokeStyle = tool ? 'rgba(224,192,138,0.45)' : sel ? '#6ac8ff' : 'rgba(160,190,150,0.25)'; ctx.lineWidth = sel ? 2 : 1; ctx.stroke(); return x; };
       {
-        const x = slot(0, false);
+        const x = slot(false, tools === 1 ? 'last' : true);
         ctx.drawImage(S().icons.axe, x + 7, hy + 5, sz - 14, sz - 14);
-        ctx.font = '600 10px "Nunito", system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#cfd8cc'; ctx.fillText(`топор ${me.axe || 1}`, x + sz / 2, hy + sz - 7);
-        R.slots.push({ x, y: hy, w: sz, h: sz, name: `Топор ур. ${me.axe || 1}`, desc: 'Бьёт монстров рядом, иначе рубит деревья' });
+        ctx.font = '600 10px "Nunito", system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#e0c08a'; ctx.fillText(`топор ${me.axe || 1}`, x + sz / 2, hy + sz - 7);
+        R.slots.push({ x, y: hy, w: sz, h: sz, name: `Топор ур. ${me.axe || 1}`, desc: 'Инструмент: сам рубит деревья рядом. Монстров не бьёт' });
       }
-      for (let i = 0; i < cfg.ABILITY_MAX; i++) {
-        const a = (me.ab || [])[i], def = a ? AB.Sim.abDef(a.id) : null;
-        const x = slot(i + 1, !!def);
-        if (!def) { ctx.font = 'bold 22px system-ui'; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(160,190,150,0.25)'; ctx.fillText('+', x + sz / 2, hy + sz / 2); R.slots.push({ x, y: hy, w: sz, h: sz, name: 'Свободный слот', desc: 'Наберите опыт (голубые шарики), чтобы выбрать навык' }); continue; }
+      if (me.pick) {
+        const x = slot(false, 'last');
+        ctx.drawImage(S().icons.pickaxe, x + 7, hy + 5, sz - 14, sz - 14);
+        ctx.font = '600 10px "Nunito", system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#e0c08a'; ctx.fillText('кирка', x + sz / 2, hy + sz - 7);
+        R.slots.push({ x, y: hy, w: sz, h: sz, name: 'Кирка', desc: `Сама бьёт кучи камней и железные скалы (${cfg.ORE_HITS} ударов)` });
+      }
+      const abSlot = (a, emptyDesc) => {
+        const def = a ? AB.Sim.abDef(a.id) : null;
+        const x = slot(!!def, false);
+        if (!def) { ctx.font = 'bold 22px system-ui'; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(160,190,150,0.25)'; ctx.fillText('+', x + sz / 2, hy + sz / 2); R.slots.push({ x, y: hy, w: sz, h: sz, name: 'Свободный слот', desc: emptyDesc }); return; }
         const pc = cfg.PROFESSIONS[def.prof].color;
+        if (def.start) { ctx.strokeStyle = pc; ctx.lineWidth = 1.5; roundRect(ctx, x + 3, hy + 3, sz - 6, sz - 6, 6); ctx.stroke(); }
         ctx.font = 'bold 26px "DejaVu Sans", system-ui'; ctx.textAlign = 'center'; ctx.fillStyle = pc; ctx.fillText(def.icon, x + sz / 2, hy + sz / 2 - 3);
         // перезарядка
         const cdLeft = me.abT ? me.abT[a.id] || 0 : 0, S0 = AB.Sim.abStats(G, me, def, a.lv);
         if (cdLeft > 0.05 && S0.cd > 0.5 && def.kind !== 'orbit' && def.kind !== 'aura' && def.kind !== 'drone') { ctx.fillStyle = 'rgba(0,0,0,0.5)'; const k2 = Math.min(1, cdLeft / S0.cd); roundRect(ctx, x, hy + sz * (1 - k2), sz, sz * k2, 6); ctx.fill(); }
         for (let l = 0; l < cfg.ABILITY_MAX_LEVEL; l++) { ctx.fillStyle = l < a.lv ? (l >= 3 ? '#dfe8ee' : '#6ac8ff') : 'rgba(255,255,255,0.15)'; ctx.fillRect(x + 7 + l * 9.5, hy + sz - 8, 7, 4); }
-        R.slots.push({ x, y: hy, w: sz, h: sz, name: `${def.name} · ур. ${a.lv}`, desc: def.desc });
-      }
+        R.slots.push({ x, y: hy, w: sz, h: sz, name: `${def.name} · ур. ${a.lv}${def.start ? ' (начальное оружие)' : ''}`, desc: `${def.desc} · урон ${Math.round(S0.dmg * 10) / 10}` });
+      };
+      abSlot(startAb, 'Начальное оружие');
+      for (let i = 0; i < cfg.ABILITY_MAX; i++) abSlot(learnedAb[i], 'Наберите опыт (голубые шарики), чтобы выбрать навык');
       if (ui && ui.hoverSlot >= 0 && R.slots[ui.hoverSlot]) {
         const sl = R.slots[ui.hoverSlot];
         ctx.font = 'bold 12px "Nunito", system-ui'; const t1 = sl.name; ctx.font = '600 11px "Nunito", system-ui'; const tw1 = Math.max(ctx.measureText(sl.desc).width, 90) + 20;

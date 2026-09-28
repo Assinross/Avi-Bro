@@ -39,6 +39,14 @@
         burst(ev.x, ev.y + 8, 6, ['#c8a06a', '#8a5a30', '#e0c08a'], 110, { size: 1.1 });
         burst(ev.x, ev.y - 30, 3, ['#4f8a3a', '#6fa84a', '#2e5e2a'], 60, { type: 'leaf', g: 40, life: 2.2, up: 0.2 });
         Sound.play('chop', near); break;
+      case 'mine':
+        burst(ev.x, ev.y, 7, ev.o === 'iron' ? ['#5a5f66', '#8a9098', '#c86a3a', '#e0e6ea'] : ['#8a8478', '#b8b0a0', '#d8d0c0'], 120, { size: 1.1 });
+        burst(ev.x, ev.y - 4, 3, ['#fff2c0', '#ffd24a'], 140, { type: 'spark', g: 200, life: 0.35 });
+        Sound.play('mine', near); break;
+      case 'orebreak':
+        burst(ev.x, ev.y - 6, 26, ev.o === 'iron' ? ['#4a4f55', '#7a8088', '#c86a3a', '#a04a2a'] : ['#7a7468', '#a8a090', '#d0c8b8'], 190, { size: 1.5 });
+        FX.add({ t: 'smoke', x: ev.x, y: ev.y, z: 0, vx: 0, vy: 0, vz: 0, g: 0, life: 0.8, size: 28, c: 'rgba(170,160,140,' });
+        Sound.play('fell', near); FX.shake = Math.min(14, FX.shake + 3 * near); break;
       case 'fell':
         burst(ev.x, ev.y - 40, 26, ['#4f8a3a', '#6fa84a', '#2e5e2a', '#8fae45'], 150, { type: 'leaf', g: 50, life: 2.5, up: 0.4, z: 40 });
         burst(ev.x, ev.y, 10, ['#c8a06a', '#8a5a30'], 140);
@@ -187,6 +195,7 @@
     try {
       switch (k) {
         case 'chop': noise(0.12, V * 0.9, 900, 2); tone(140, 0.08, 'triangle', V * 0.5, 0.6); break;
+        case 'mine': noise(0.08, V * 0.8, 2600, 3); tone(1100 + Math.random() * 300, 0.07, 'square', V * 0.12, 0.3); tone(320, 0.06, 'triangle', V * 0.3, 0.6); break;
         case 'fell': noise(0.5, V, 300, 0.8); tone(90, 0.4, 'sine', V * 0.6, 0.5); break;
         case 'swing': noise(0.12, V * 0.4, 2400, 1.5); break;
         case 'bow': tone(420, 0.1, 'triangle', V * 0.4, 0.5); noise(0.08, V * 0.3, 3000, 2); break;

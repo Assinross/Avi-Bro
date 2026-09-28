@@ -4,7 +4,7 @@
   const TAU = Math.PI * 2;
   const MON_TYPES = ['wolf', 'ghoul', 'shade', 'brute', 'alpha', 'spider', 'spitter', 'giant', 'packlord', 'witch', 'golem'];
   AB.MON_TYPES = MON_TYPES;
-  const ITEM_KEYS = ['wood', 'meat', 'berry', 'carrot', 'pumpkin', 'cooked_meat', 'cooked_carrot', 'cooked_pumpkin', 'plank', 'hide', 'coal', 'seed_carrot', 'seed_pumpkin', 'iron', 'coin'];
+  const ITEM_KEYS = ['wood', 'meat', 'berry', 'carrot', 'pumpkin', 'cooked_meat', 'cooked_carrot', 'cooked_pumpkin', 'plank', 'hide', 'coal', 'seed_carrot', 'seed_pumpkin', 'iron', 'stone', 'coin'];
   AB.ITEM_KEYS = ITEM_KEYS;
   AB.monDef = (t) => C().MONSTERS[t] || C().BOSSES[t];
   AB.isBoss = (t) => !!C().BOSSES[t];
@@ -22,7 +22,7 @@
       fires: W.fires.map((f, i) => ({ id: i, x: f.x, y: f.y, fuel: cfg.FIRE_FUEL_START, main: f.main, lvl: 1, mod: false, lm: 1 })),
       nextId: 1, spawnT: 2, fxOut: [], treeDirty: new Set(), bushDirty: new Set(),
       over: null, stats: { kills: 0 }, fireLevel: 1, nextBoss: cfg.BOSS_FIRST_NIGHT, bossCount: 0, team: {},
-      store: { x: W.fires[0].x + cfg.STORAGE_OFFSET[0], y: W.fires[0].y + cfg.STORAGE_OFFSET[1], logs: 0, planks: cfg.MILL.startPlanks, coal: 0, iron: 0, lvl: 1, up: 0, saws: [], coalCnt: 0, feedT: 0, bmod: null },
+      store: { x: W.fires[0].x + cfg.STORAGE_OFFSET[0], y: W.fires[0].y + cfg.STORAGE_OFFSET[1], logs: 0, planks: cfg.MILL.startPlanks, coal: 0, iron: 0, stone: 0, lvl: 1, up: 0, saws: [], coalCnt: 0, feedT: 0, bmod: null },
       coins: cfg.START_COINS, fireUp: 0, debt: 0, upkeepLast: 0,
       crypto: { price: cfg.EXCHANGE.startPrice, hist: [cfg.EXCHANGE.startPrice], held: 0, t: 0 },
       merchant: null,
@@ -52,8 +52,12 @@
       atkCd: 0, chopCd: 0, feedCd: 0, sw: 0, sk: 'axe', sa: 0, tp: 0, hurt: 0,
       level: 1, queue: [], offers: null, skills: [], rr: 0, st: {}, swl: 0, wl: {}, axe: 1,
       adrenT: 0, mineT: 0, meteorT: 0, lightT: 0, auraT: 0, droneCd: [], repT: 0,
+      pick: 0, pickCd: 0, ap: !!cfg.AUTO_PICKUP,
     };
     ITEM_KEYS.forEach(k => p.inv[k] = cfg.START_ITEMS[k] || 0);
+    // начальное оружие профессии — уже полученный боевой навык 1-го уровня
+    const start = cfg.ABILITIES.find(d => d.start && d.prof === prof);
+    if (start) p.ab.push({ id: start.id, lv: 1 });
     AB.Skills.recalc(p);
     p.hp = p.mhp; p.swl = p.st.secondWind;
     G.players.push(p);
@@ -248,7 +252,7 @@
     return true;
   }
   // Рюкзак: дерево и еда занимают место, семена — нет
-  Sim.bagItem = (k) => k === 'wood' || k === 'hide' || k === 'coal' || k === 'iron';
+  Sim.bagItem = (k) => k === 'wood' || k === 'hide' || k === 'coal' || k === 'iron' || k === 'stone';
   Sim.bagUsed = (p) => { let n = 0; for (const k in p.inv) if (Sim.bagItem(k)) n += p.inv[k] || 0; return n; };
   Sim.bagCap = (p) => C().BACKPACK_START + ((p.st && p.st.bag) || 0) + (p.bagUp || 0);
   // Доски: из рюкзака + с лесопилки
@@ -268,6 +272,45 @@
     const U = C().IRON_UPGRADE; if (!U || U[key] === undefined) return 0;
     return Math.max(0, lvl - U[key] + 1) * (U.perLevel || 1);
   };
+  // Камень: из рюкзака + со склада
+  Sim.stoneOf = (G, p) => ((p && p.inv.stone) || 0) + ((G.store && G.store.stone) || 0);
+  Sim.spendStone = function (G, p, n) {
+    const a = Math.min(p.inv.stone || 0, n);
+    p.inv.stone -= a; G.store.stone -= n - a;
+  };
+  Sim.stoneFor = function (key, lvl) {
+    const U = C().STONE_UPGRADE; if (!U || U[key] === undefined) return 0;
+    return Math.max(0, lvl - U[key] + 1) * (U.perLevel || 1);
+  };
+  // Отдать в костёр все бревна из рюкзака разом (правый клик по костру)
+  function dumpFire(G, p, ref) {
+    const cfg = C();
+    const id = typeof ref === 'string' && ref[0] === 'f' ? +ref.slice(1) : -1;
+    const f = G.fires.find(q => q.id === id);
+    if (!f || p.dead) return;
+    if (AB.dist(p.x, p.y, f.x, f.y) > (cfg.FIRE_DUMP_RANGE || 110) + 30) { Sim.msg(G, 'Подойдите к костру', p.id, '#ff9d7a'); return; }
+    const have = p.inv.wood || 0;
+    if (!have) { Sim.msg(G, 'В рюкзаке нет бревен', p.id, '#ffb36b'); return; }
+    let n = 0; const lv0 = G.fireLevel;
+    while (n < have && Sim.feedFire(G, f, cfg.FUEL_VALUES.wood)) n++;
+    if (!n) { Sim.msg(G, 'Костёр полон', p.id, '#ffb36b'); return; }
+    p.inv.wood -= n;
+    for (let i = 0; i < Math.min(4, n); i++) Sim.fx(G, { k: 'feed', x: f.x + (rnd() - 0.5) * 16, y: f.y });
+    const cap = Sim.fireCap(G, f);
+    Sim.msg(G, `В костёр: бревна ×${n} · шкала ${Math.floor(f.fuel)}/${cap}${G.fireLevel > lv0 ? '' : f.main && G.fireLevel < Sim.fireMaxLevel() ? ` (до ур. ${G.fireLevel + 1}: ещё ${Math.ceil(cap - f.fuel)})` : ''}`, p.id, '#ffc46b');
+  }
+  // Кирка: мастерская максимального уровня
+  function craftPick(G, p) {
+    const cfg = C(), PC = cfg.PICKAXE_CRAFT;
+    if (p.pick) { Sim.msg(G, 'Кирка уже есть', p.id); return; }
+    const ws = G.structs.find(s => s.kind === 'workshop' && AB.dist2(p.x, p.y, s.x, s.y) < 90 * 90);
+    if (!ws) { Sim.msg(G, 'Кирку делают в мастерской инженера', p.id, '#ff9d7a'); return; }
+    if (Sim.bl(ws) < PC.workshopLevel) { Sim.msg(G, `Кирка: нужна мастерская ур. ${PC.workshopLevel}`, p.id, '#ff9d7a'); return; }
+    if (G.coins < PC.coins || Sim.woodOf(G, p) < PC.planks || Sim.ironOf(G, p) < PC.iron) { Sim.msg(G, `Кирка: нужно ${PC.coins} $, ${PC.planks} досок и ${PC.iron} железа`, p.id, '#ff9d7a'); return; }
+    G.coins -= PC.coins; Sim.spendWood(G, p, PC.planks); Sim.spendIron(G, p, PC.iron);
+    p.pick = 1;
+    Sim.fx(G, { k: 'skill', x: p.x, y: p.y, pid: p.id, s: 'Кирка! Добывайте камень и железо в глубине леса', t: 3 });
+  }
   // Шкала костра: сумма ступеней до текущего уровня
   Sim.fireCap = (G, f) => {
     const cfg = C();
@@ -534,47 +577,44 @@
     return dmgPct;
   }
   const atkSpdOf = (p) => Math.max(0.5, 1 + (p.st.atkSpd + (p.adrenT > 0 ? p.st.adren : 0)) / 100);
-  // Топор как оружие (у всех профессий)
-  Sim.weaponStats = function (G, p) {
-    const cfg = C(), st = p.st, A = cfg.AXE_WEAPON;
-    const lv = Math.min(cfg.AXE_COMBAT.length, p.axe || 1);
-    const whet = Sim.anyStructMod(G, 'workshop', 'whet') ? 1.1 : 1;
-    const dmg = Math.max(1, (A.damage + st.melee) * cfg.AXE_COMBAT[lv - 1] * (1 + dmgPctOf(G, p) / 100) * whet);
-    return { melee: true, dmg, cd: A.cooldown / atkSpdOf(p), range: A.range + st.range * 0.3, arc: A.arc, crit: st.crit, critMult: cfg.CRIT_MULT + st.critMult };
-  };
-
-  function rollCrit(ws) { return rnd() * 100 < ws.crit; }
 
   function autoActions(G, p, dt) {
     const cfg = C(), W = G.W;
-    p.atkCd -= dt; p.chopCd -= dt;
-    const ws = Sim.weaponStats(G, p);
-    let target = null, td = Infinity;
-    for (const m of G.monsters) {
-      if (m.dying) continue;
-      const d = AB.dist(p.x, p.y, m.x, m.y) - m.r;
-      if (d < ws.range && d < td) { td = d; target = m; }
-    }
-    if (target) {
-      if (p.atkCd <= 0) {
-        p.atkCd = ws.cd;
-        const ang = Math.atan2(target.y - p.y, target.x - p.x);
-        p.sw = 0.25; p.sk = 'axe'; p.sa = ang;
-        const half = (ws.arc * Math.PI / 180) / 2;
-        for (const m of G.monsters.slice()) {
-          if (m.dying) continue;
-          const d = AB.dist(p.x, p.y, m.x, m.y) - m.r;
-          if (d > ws.range) continue;
-          const am = Math.atan2(m.y - p.y, m.x - p.x);
-          if (m === target || Math.abs(AB.angDiff(ang, am)) < half) {
-            const c = rollCrit(ws);
-            damageMonster(G, m, ws.dmg * (c ? ws.critMult : 1), { p, src: 'weapon', ang: am, crit: c });
-          }
-        }
-        Sim.fx(G, { k: 'swing', x: p.x, y: p.y, a: ang, w: 'axe' });
+    p.chopCd -= dt; p.pickCd = (p.pickCd || 0) - dt;
+    const T = W.T, tx = Math.floor(p.x / T), ty = Math.floor(p.y / T);
+    // КИРКА: сама бьёт залежь камня или железа рядом (если кирка есть)
+    let mined = false;
+    if (p.pick && p.pickCd <= 0) {
+      let ore = null, bd = Infinity;
+      for (let y = ty - 2; y <= ty + 2; y++) for (let x = tx - 2; x <= tx + 2; x++) {
+        if (x < 0 || y < 0 || x >= W.N || y >= W.N) continue;
+        const ri = W.rockAt[y * W.N + x];
+        if (ri < 0) continue;
+        const o = W.rocks[ri];
+        if (o.kind !== 'ore' || o.dead) continue;
+        const d = AB.dist(p.x, p.y, o.x, o.y) - cfg.PLAYER_RADIUS - 14;
+        if (d < cfg.PICK_RANGE && d < bd) { bd = d; ore = o; }
       }
-    } else if (p.chopCd <= 0) {
-      const T = W.T, tx = Math.floor(p.x / T), ty = Math.floor(p.y / T);
+      if (ore) {
+        mined = true;
+        p.pickCd = cfg.PICK_COOLDOWN;
+        p.sw = 0.3; p.sk = 'pick'; p.sa = Math.atan2(ore.y - p.y, ore.x - p.x);
+        ore.hp -= 1; ore.shake = 0.3;
+        (G.oreDirty || (G.oreDirty = new Set())).add(ore.id);
+        Sim.fx(G, { k: 'mine', x: ore.x, y: ore.y - 10, o: ore.ore });
+        if (ore.hp <= 0) {
+          const O = cfg.ORES[ore.ore];
+          ore.dead = true; ore.hp = 0; ore.regrow = (cfg.ORE_REGROW_DAYS || 3) * (cfg.DAY_LENGTH + cfg.NIGHT_LENGTH);
+          W.solid[ore.ty * W.N + ore.tx] = AB.S_NONE;
+          const n = O.drop[0] + Math.floor(rnd() * (O.drop[1] - O.drop[0] + 1));
+          Sim.dropItem(G, ore.ore, n, ore.x, ore.y, 20);
+          Sim.fx(G, { k: 'orebreak', x: ore.x, y: ore.y, o: ore.ore });
+          Sim.msg(G, `${O.name} разбита: ${AB.itemName(ore.ore).toLowerCase()} ×${n}`, p.id, ore.ore === 'iron' ? '#c8d4e0' : '#d8d0c0');
+        }
+      }
+    }
+    // ТОПОР: только рубит деревья (монстров не бьёт)
+    if (!mined && p.chopCd <= 0) {
       let tree = null, bd = Infinity;
       for (let y = ty - 2; y <= ty + 2; y++) for (let x = tx - 2; x <= tx + 2; x++) {
         if (x < 0 || y < 0 || x >= W.N || y >= W.N) continue;
@@ -764,7 +804,7 @@
     const wsK = ws.length ? 1 + cfg.BUILD_UPGRADES.workshop.abDmg * (Math.max(...ws.map(Sim.bl)) - 1) : 1;
     const whet = Sim.anyStructMod(G, 'workshop', 'whet') ? 1.1 : 1;
     const flat = def.kind === 'aura' || def.kind === 'shield' ? 0 : (melee ? st.melee : st.ranged);
-    const dmg = Math.max(1, (def.dmg + flat) * (1 + dmgPctOf(G, p) / 100) * (1 + L.dmg * (lv - 1)) * wsK * whet);
+    const dmg = Math.max(def.start ? 0.5 : 1, (def.dmg + flat) * (1 + dmgPctOf(G, p) / 100) * (1 + (def.grow !== undefined ? def.grow : L.dmg) * (lv - 1)) * wsK * whet);
     const cd = (def.cd || 1) * Math.pow(1 - L.cd, lv - 1) / (def.kind === 'turret' || def.kind === 'shield' ? 1 : atkSpdOf(p));
     const range = def.range ? def.range + (melee ? st.range * 0.4 : st.range) : 0;
     let n = AB.abCount(def, lv);
@@ -785,13 +825,15 @@
     damageMonster(G, m, dmg * (c ? S.critMult : 1), { p, src: 'weapon', ang, crit: c, kb: def.knock || 0 });
     abHitFx(G, m, def, dmg, p);
   }
-  Sim.abCanGrow = (p) => (p.ab || []).length < C().ABILITY_MAX ? C().ABILITIES.some(d => d.prof === p.prof && !(p.ab || []).some(a => a.id === d.id)) || (p.ab || []).some(a => a.lv < C().ABILITY_MAX_LEVEL) : (p.ab || []).some(a => a.lv < C().ABILITY_MAX_LEVEL);
+  // Сколько навыков взято (начальное оружие не считается)
+  Sim.abLearned = (p) => (p.ab || []).filter(a => { const d = Sim.abDef(a.id); return !(d && d.start); }).length;
+  Sim.abCanGrow = (p) => Sim.abLearned(p) < C().ABILITY_MAX ? C().ABILITIES.some(d => !d.start && d.prof === p.prof && !(p.ab || []).some(a => a.id === d.id)) || (p.ab || []).some(a => a.lv < C().ABILITY_MAX_LEVEL) : (p.ab || []).some(a => a.lv < C().ABILITY_MAX_LEVEL);
   Sim.abIron = (lv) => (C().ABILITY_IRON || [])[lv - 1] || 0;
   // Варианты при повышении уровня опыта: новые навыки (пока их меньше ABILITY_MAX) и улучшения взятых
   Sim.makeAbOffers = function (G, p) {
     const cfg = C(), out = [];
     const cand = [];
-    if (p.ab.length < cfg.ABILITY_MAX) cfg.ABILITIES.filter(d => d.prof === p.prof && !p.ab.some(a => a.id === d.id)).forEach(d => cand.push({ id: d.id, lv: 1, iron: 0, w: 1 }));
+    if (Sim.abLearned(p) < cfg.ABILITY_MAX) cfg.ABILITIES.filter(d => !d.start && d.prof === p.prof && !p.ab.some(a => a.id === d.id)).forEach(d => cand.push({ id: d.id, lv: 1, iron: 0, w: 1 }));
     p.ab.forEach(a => { if (a.lv < cfg.ABILITY_MAX_LEVEL) cand.push({ id: a.id, lv: a.lv + 1, iron: Sim.abIron(a.lv + 1), w: 2.2 }); });
     const pickW = (list) => { let r = rnd() * list.reduce((s2, c) => s2 + c.w, 0), k = 0; while (k < list.length - 1 && r > list[k].w) { r -= list[k].w; k++; } return list.splice(k, 1)[0]; };
     while (out.length < cfg.ABILITY_CHOICES && cand.length) out.push(pickW(cand));
@@ -811,7 +853,7 @@
     if (o.iron > Sim.ironOf(G, p)) { Sim.msg(G, `Нужно железа: ${o.iron} (у вас ${Sim.ironOf(G, p)}). Железо — в дальних и скрытых логовах`, p.id, '#ff9d7a'); return; }
     if (o.iron) Sim.spendIron(G, p, o.iron);
     const cur = p.ab.find(a => a.id === o.id);
-    if (cur) cur.lv = o.lv; else if (p.ab.length < C().ABILITY_MAX) p.ab.push({ id: o.id, lv: 1 });
+    if (cur) cur.lv = o.lv; else if (Sim.abLearned(p) < C().ABILITY_MAX) p.ab.push({ id: o.id, lv: 1 });
     p.aq = Math.max(0, p.aq - 1); p.ao = null;
     const def = Sim.abDef(o.id);
     Sim.fx(G, { k: 'skill', x: p.x, y: p.y, pid: p.id, s: `${def.name}${o.lv > 1 ? ' ур. ' + o.lv : ''}`, t: Math.min(4, o.lv) });
@@ -1524,11 +1566,11 @@
       const d = G.drops[i];
       d.age += dt;
       const auto = (cfg.AUTO_PICKUP_ITEMS || []).includes(d.k);
-      if (!cfg.AUTO_PICKUP && !auto) continue;
       if (d.age < 0.35) continue;
       let best = null, bd = Infinity, br = 0;
       for (const p of G.players) {
         if (p.dead || (d.o !== undefined && d.o !== p.id)) continue;
+        if (!auto && !p.ap) continue; // автоподбор выключен у этого игрока — только кликом
         const mr = (auto ? cfg.XP_MAGNET : cfg.MAGNET_RADIUS) * (1 + p.st.pickup / 100);
         const dd = AB.dist(d.x, d.y, p.x, p.y);
         if (dd < mr && dd < bd) { bd = dd; best = p; br = mr; }
@@ -1536,7 +1578,7 @@
       if (!best) continue;
       if (Sim.bagItem(d.k) && Sim.bagUsed(best) >= Sim.bagCap(best)) {
         best._fullT = (best._fullT || 0) - dt;
-        if (best._fullT <= 0 && bd < cfg.PICKUP_RADIUS * 2) { best._fullT = cfg.BACKPACK_FULL_MSG; Sim.msg(G, `Рюкзак полон (${Sim.bagCap(best)})! Отнесите дерево на склад, а еду — на кухню или съешьте`, best.id, '#ffb36b'); }
+        if (best._fullT <= 0 && bd < cfg.PICKUP_RADIUS * 2) { best._fullT = cfg.BACKPACK_FULL_MSG; Sim.msg(G, `Рюкзак полон (${Sim.bagCap(best)})! Бревна — на лесопилку или в костёр, камень и железо — на склад`, best.id, '#ffb36b'); }
         continue;
       }
       if (bd < cfg.PICKUP_RADIUS) {
@@ -1568,6 +1610,16 @@
       }
     }
     spawnSaplings(G, dt);
+    // залежи камня и железа появляются снова
+    for (const o of (W.ores || [])) {
+      if (o.shake > 0) o.shake = Math.max(0, o.shake - dt);
+      if (!o.dead) continue;
+      o.regrow -= dt;
+      if (o.regrow > 0) continue;
+      if (G.players.some(p => AB.dist2(p.x, p.y, o.x, o.y) < 50 * 50) || G.monsters.some(m => AB.dist2(m.x, m.y, o.x, o.y) < 40 * 40)) { o.regrow = 5; continue; }
+      o.dead = false; o.hp = cfg.ORE_HITS; W.solid[o.ty * W.N + o.tx] = AB.S_ROCK;
+      (G.oreDirty || (G.oreDirty = new Set())).add(o.id);
+    }
     for (const b of W.bushes) if (b.berries === 0) { b.t -= dt; if (b.t <= 0) { b.berries = 1; G.bushDirty.add(b.id); } }
     for (const pl of G.plots) {
       if (pl.crop && !pl.ready) {
@@ -1609,6 +1661,11 @@
         S.iron = (S.iron || 0) + p.inv.iron;
         Sim.msg(G, `На склад: железо ×${p.inv.iron} (всего ${S.iron})`, p.id, '#c8d4e0');
         p.inv.iron = 0;
+      }
+      if (!p.dead && p.inv.stone > 0 && AB.dist2(p.x, p.y, S.x, S.y) < M.radius ** 2) {
+        S.stone = (S.stone || 0) + p.inv.stone;
+        Sim.msg(G, `На склад: камень ×${p.inv.stone} (всего ${S.stone})`, p.id, '#d8d0c0');
+        p.inv.stone = 0;
       }
     }
     for (const p of G.players) {
@@ -1834,15 +1891,19 @@
     if (c === 'goods') {
       const M = cfg.MERCHANT, g = cfg.MERCHANT_GOODS.find(q => q.id === x);
       if (!g || !G.merchant || AB.dist(p.x, p.y, G.merchant.x, G.merchant.y) > M.radius * 1.6) return;
+      if (g.id === 'pickaxe' && p.pick) { Sim.msg(G, 'Кирка уже есть', p.id, '#ff9d7a'); return; }
       if (g.once && p.mgBought && p.mgBought[g.id]) { Sim.msg(G, 'Этот товар уже куплен в этот визит', p.id, '#ff9d7a'); return; }
       if (G.coins < g.price) { Sim.msg(G, `Нужно монет: ${g.price}`, p.id, '#ff9d7a'); return; }
       G.coins -= g.price;
-      if (g.id === 'bag') { p.bagUp = (p.bagUp || 0) + 2; } else p.inv[g.id] = (p.inv[g.id] || 0) + 1;
+      if (g.id === 'bag') { p.bagUp = (p.bagUp || 0) + 2; } else if (g.id === 'pickaxe') { p.pick = 1; } else p.inv[g.id] = (p.inv[g.id] || 0) + 1;
       p.mgBought = p.mgBought || {}; p.mgBought[g.id] = 1;
       Sim.fx(G, { k: 'skill', x: p.x, y: p.y, pid: p.id, s: g.name, t: 1 });
       return;
     }
     if (c === 'pickup') { pickupDrop(G, p, x); return; }
+    if (c === 'autopick') { p.ap = !!x; return; }
+    if (c === 'dumpfire') { dumpFire(G, p, x); return; }
+    if (c === 'pickcraft') { craftPick(G, p); return; }
     if (c === 'dropk') {
       if (!(p.inv[x] > 0) || x === 'coin') return;
       p.inv[x]--;
@@ -1986,12 +2047,12 @@
   Sim.buildingInfo = function (G, o, kind) {
     const cfg = C(), BU = cfg.BUILD_UPGRADES, asp = [];
     let title = '', desc = '', now = [];
-    const push = (key, name, lvl, max, cost, prog, by, next) => asp.push({ key, name, lvl, max, cost, prog: prog || 0, by, next, iron: by === 'feed' ? 0 : Sim.ironFor(key === 'kitchen' || key === 'mill' ? key : key, lvl + 1) });
+    const push = (key, name, lvl, max, cost, prog, by, next) => asp.push({ key, name, lvl, max, cost, prog: prog || 0, by, next, iron: by === 'feed' ? 0 : Sim.ironFor(key, lvl + 1), stone: by === 'feed' || lvl >= max ? 0 : Sim.stoneFor(key, lvl + 1) });
     if (kind === 'fire' && !o.main) {
       title = 'Костёр'; desc = 'Небольшой костёр: светит, лечит и отпугивает теней. Подбрасывайте бревна, стоя рядом.';
       now = [`Топливо: ${Math.floor(o.fuel)}/${Sim.fireCap(G, o)}`];
     } else if (kind === 'fire') {
-      title = 'Главный костёр'; desc = 'Лечит игроков, жжёт монстров, отпугивает теней. Уровень определяет территорию лагеря и редкость умений.';
+      title = 'Главный костёр'; desc = 'Лечит игроков, жжёт монстров, отпугивает теней. Уровень определяет территорию лагеря и редкость умений. Правый клик по костру с бревнами в рюкзаке — сразу отдать их все в огонь.';
       now = [`Территория: ${Sim.territory(G)}`, `Редкость умений: ${cfg.TIER_NAMES[G.fireLevel - 1]}`];
       const tr = cfg.TERRITORY_RADIUS[Math.min(3, G.fireLevel)];
       const cap = Sim.fireCap(G, o);
@@ -2004,7 +2065,7 @@
       push('kitchen', 'Кухня', o.lvl, cfg.KITCHEN_MAX_LEVEL, lvlCost(o.lvl), o.up, 'any', `${o.lvl + 1} блюд одновременно`);
     } else if (kind === 'mill') {
       title = 'Лесопилка'; desc = 'Подойдите — бревна из рюкзака выгрузятся. Пилит бревна в доски, подкидывает бревна в главный костёр.';
-      now = [`На складе: доски ${o.planks}, уголь ${o.coal || 0}, железо ${o.iron || 0}`, `Бревна в очереди: ${o.logs}/${cfg.MILL.queueMax}`];
+      now = [`На складе: доски ${o.planks}, уголь ${o.coal || 0}, железо ${o.iron || 0}, камень ${o.stone || 0}`, `Бревна в очереди: ${o.logs}/${cfg.MILL.queueMax}`];
       push('mill', 'Лесопилка', o.lvl, cfg.MILL.maxLevel, lvlCost(o.lvl), o.up, 'any', `${Sim.millLines({ lvl: o.lvl + 1 })} бревен пилится одновременно`);
     } else {
       const S = cfg.STRUCTURES[o.kind], up = o.up || {}, bl = Sim.bl(o);
@@ -2014,7 +2075,7 @@
       if (o.kind === 'turret') { desc = 'Автоматически стреляет по монстрам. Урон растёт с инженерией владельца и с каждой ночью.'; now = [`Прочность: ${Math.round(o.hp)}/${Math.round(o.mhp)}`, o.mod ? 'Модуль «Наведение»' : 'Без модуля']; }
       if (o.kind === 'shop') { desc = 'Подойдите со шкурами, готовой едой или досками — товары сдаются и медленно продаются, рядом появляются монеты.'; now = [`Товаров: ${o.stockN !== undefined ? o.stockN : (o.stock || []).length}`, `Продажа: ${Math.round(Sim.shopSellTime(o) * 10) / 10} с/товар`]; }
       if (o.kind === 'exchange') { desc = 'Майнит монеты. Подойдите, чтобы покупать и продавать AviCoin.'; now = [`Майнинг: ${Sim.exMine(G, o)} $ раз в ${Math.round(Sim.exRate(o))} с`, `Курс: ${G.crypto.price} $`]; }
-      if (o.kind === 'workshop') { desc = 'Подойдите, чтобы улучшить топор. Каждый уровень мастерской усиливает боевые навыки всех игроков.'; now = [`Урон навыков: +${Math.round(cfg.BUILD_UPGRADES.workshop.abDmg * (bl - 1) * 100)}%`]; }
+      if (o.kind === 'workshop') { desc = `Подойдите, чтобы улучшить топор. На ур. ${cfg.PICKAXE_CRAFT.workshopLevel} здесь делают кирку. Каждый уровень мастерской усиливает боевые навыки всех игроков.`; now = [`Урон навыков: +${Math.round(cfg.BUILD_UPGRADES.workshop.abDmg * (bl - 1) * 100)}%`]; }
       if (o.kind === 'townhall') { desc = 'Снижает содержание всех построек и каждый рассвет собирает налог.'; now = [`Скидка на содержание: ${Sim.thDiscount(o)}%`, `Налог: ~${Sim.thTax(G, o)} $/день`]; }
       if (o.kind === 'tower') push('tl', 'Вышка', o.tl || 1, cfg.TOWER_LEVELS.max, cfg.TOWER_LEVELS.cost[(o.tl || 1) - 1], up.tl, 'architect', `+${cfg.TOWER_LEVELS.hp * 100}% прочности, +${cfg.TOWER_LEVELS.range * 100}% дальности`);
       if ((o.kind === 'tower' && o.armed) || o.kind === 'turret') push('cl', o.kind === 'turret' ? 'Турель' : 'Пушка', o.cl || 1, cfg.CANNON_LEVELS.max, cfg.CANNON_LEVELS.cost[(o.cl || 1) - 1], up.cl, 'engineer', `+${cfg.CANNON_LEVELS.dmg * 100}% урона`);
@@ -2093,8 +2154,10 @@
     const have = Sim.woodOf(G, p);
     if (have < info.cost) { Sim.msg(G, `${info.name}: нужно ${info.cost} досок, на складе ${have}`, p.id, '#ff9d7a'); return; }
     if (info.iron && Sim.ironOf(G, p) < info.iron) { Sim.msg(G, `${info.name}: для ур. ${info.lvl + 1} нужно железо ×${info.iron} (есть ${Sim.ironOf(G, p)})`, p.id, '#ff9d7a'); return; }
+    if (info.stone && Sim.stoneOf(G, p) < info.stone) { Sim.msg(G, `${info.name}: для ур. ${info.lvl + 1} нужен камень ×${info.stone} (есть ${Sim.stoneOf(G, p)}). Камень добывают киркой`, p.id, '#ff9d7a'); return; }
     Sim.spendWood(G, p, info.cost);
     if (info.iron) Sim.spendIron(G, p, info.iron);
+    if (info.stone) Sim.spendStone(G, p, info.stone);
     const o = b.o;
     const set = () => {};
     set(0);
@@ -2217,7 +2280,7 @@
         id: p.id, n: p.name, pr: p.prof, x: r1(p.x), y: r1(p.y), a: r1(p.a), hp: r1(p.hp), mh: r1(p.mhp), f: r1(p.food), d: p.dead ? 1 : 0, rs: r1(p.rs),
         inv: p.inv, sw: r1(p.sw), sk: p.sk, sa: r1(p.sa), tp: p.tp, h: r1(p.hurt), mv: p.moving ? 1 : 0,
         ab: p.ab.map(a => [a.id, a.lv]), abt: p.ab.map(a => r1(Math.max(0, (p.abT && p.abT[a.id]) || 0))), xp: r1(p.xp), xl: p.xl, aq: p.aq, ao: p.ao, sh: Math.round(p.sh || 0),
-        sl: p.slowT > 0 ? p.slowPct : 0, mo: p.mo || [], ax: p.axe || 1, bu: p.bagUp || 0, mg: p.mgBought || {}, lv: p.level, q: p.queue, of: p.offers, sks: p.skills.map(q => q.id + ':' + q.tier + ':' + (q.sup || 0)), st: stCompact(p.st), rr: p.rr, swl: p.swl,
+        sl: p.slowT > 0 ? p.slowPct : 0, mo: p.mo || [], ax: p.axe || 1, pk: p.pick || 0, bu: p.bagUp || 0, mg: p.mgBought || {}, lv: p.level, q: p.queue, of: p.offers, sks: p.skills.map(q => q.id + ':' + q.tier + ':' + (q.sup || 0)), st: stCompact(p.st), rr: p.rr, swl: p.swl,
       })),
       m: G.monsters.map(m => [m.id, MON_TYPES.indexOf(m.type), r1(m.x), r1(m.y), r1(m.a), Math.round(m.hp), Math.round(m.maxHp), m.hurt > 0 ? 1 : 0,
         (m.guard ? 1 : 0) | (m.hunter ? 2 : 0) | (m.st === 'chase' ? 4 : 0) | ((m.atk || 0) > 0 ? 8 : 0) | (m.burn ? 16 : 0) | (m.slowT > 0 ? 32 : 0) | (m.act ? 64 : 0) | (m.mark > 0 ? 128 : 0),
@@ -2233,7 +2296,7 @@
       pl: G.plots.map(p => [r1(p.x), r1(p.y), p.crop, Math.round(p.t), p.ready ? 1 : 0, p.mod ? 1 : 0]),
       f: G.fires.map(f => [r1(f.x), r1(f.y), r1(f.fuel), f.main ? 1 : 0, f.lvl, f.mod ? 1 : 0, f.lm, f.cap || Sim.fireCap(G, f), f.bmod || 0]),
       ch: W.sites.filter(s2 => s2.opened).map(s2 => s2.id),
-      so: [G.store.x, G.store.y, G.store.logs, G.store.planks, G.store.lvl, G.store.up, (G.store.saws || []).map(v => Math.round(v)), G.store.coal || 0, G.store.bmod || 0, G.store.iron || 0],
+      so: [G.store.x, G.store.y, G.store.logs, G.store.planks, G.store.lvl, G.store.up, (G.store.saws || []).map(v => Math.round(v)), G.store.coal || 0, G.store.bmod || 0, G.store.iron || 0, G.store.stone || 0],
       eco: [G.coins, G.fireUp, G.debt, G.upkeepLast, Math.round(G.crypto.price * 10) / 10, G.crypto.held, G.crypto.hist],
       bag: G.players.map(p => p.bagUp || 0),
       kl: [G.kitchen.lvl, G.kitchen.up, G.kitchen.bmod || 0],
@@ -2241,6 +2304,12 @@
       fx: G.fxOut,
     };
     const trees = [], bushes = [];
+    // залежи: [id, прочность, разбита]
+    const ores = [];
+    if (full) (W.ores || []).forEach(o => { if (o.dead || o.hp < C().ORE_HITS) ores.push([o.id, o.hp, o.dead ? 1 : 0]); });
+    else if (G.oreDirty) G.oreDirty.forEach(id => { const o = W.ores[id]; ores.push([o.id, o.hp, o.dead ? 1 : 0]); });
+    if (G.oreDirty) G.oreDirty.clear();
+    s.or = ores;
     if (full) {
       W.trees.forEach(t => { if (t.dead || t.hp < C().TREE_HP) trees.push(treeRec(t)); });
       W.bushes.forEach(b => { if (b.berries === 0) bushes.push([b.id, 0]); });
@@ -2268,7 +2337,7 @@
       p.name = sp.n; p.prof = sp.pr; p.hp = sp.hp; p.mhp = sp.mh; p.food = sp.f; p.dead = !!sp.d; p.rs = sp.rs;
       p.inv = sp.inv; p.sw = sp.sw; p.sk = sp.sk; p.sa = sp.sa; p.tp = sp.tp; p.hurt = sp.h;
       p.ab = sp.ab.map(a => ({ id: a[0], lv: a[1] })); p.abT = {}; p.ab.forEach((a, i) => p.abT[a.id] = sp.abt[i]); p.xp = sp.xp; p.xl = sp.xl; p.aq = sp.aq; p.ao = sp.ao; p.sh = sp.sh;
-      p.mo = sp.mo; p.axe = sp.ax; p.bagUp = sp.bu; p.mgBought = sp.mg; p.slowT = sp.sl ? 1 : 0; p.slowPct = sp.sl || 0; p.level = sp.lv; p.queue = sp.q; p.offers = sp.of; p.rr = sp.rr; p.swl = sp.swl;
+      p.mo = sp.mo; p.axe = sp.ax; p.pick = sp.pk || 0; p.bagUp = sp.bu; p.mgBought = sp.mg; p.slowT = sp.sl ? 1 : 0; p.slowPct = sp.sl || 0; p.level = sp.lv; p.queue = sp.q; p.offers = sp.of; p.rr = sp.rr; p.swl = sp.swl;
       p.skills = sp.sks.map(x => { const a = x.split(':'); return { id: a[0], tier: +a[1], sup: +a[2] }; });
       const st = {}; AB.Skills.statKeys().forEach(k => st[k] = sp.st[k] || 0); p.st = st;
     });
@@ -2296,7 +2365,7 @@
     G.plots = s.pl.map((a, i) => ({ id: i, x: a[0], y: a[1], crop: a[2], t: a[3], ready: !!a[4], mod: !!a[5] }));
     G.fires = s.f.map((a, i) => ({ id: i, x: a[0], y: a[1], fuel: a[2], main: !!a[3], lvl: a[4], mod: !!a[5], lm: a[6], cap: a[7], bmod: a[8] || null }));
     s.ch.forEach(id => { if (W.sites[id]) W.sites[id].opened = true; });
-    if (s.so) G.store = { x: s.so[0], y: s.so[1], logs: s.so[2], planks: s.so[3], lvl: s.so[4], up: s.so[5], saws: s.so[6], coal: s.so[7], bmod: s.so[8] || null, iron: s.so[9] || 0 };
+    if (s.so) G.store = { x: s.so[0], y: s.so[1], logs: s.so[2], planks: s.so[3], lvl: s.so[4], up: s.so[5], saws: s.so[6], coal: s.so[7], bmod: s.so[8] || null, iron: s.so[9] || 0, stone: s.so[10] || 0 };
     if (s.eco) { G.coins = s.eco[0]; G.fireUp = s.eco[1]; G.debt = s.eco[2]; G.upkeepLast = s.eco[3]; G.crypto = { price: s.eco[4], held: s.eco[5], hist: s.eco[6] }; }
     if (s.bag) G.players.forEach((p, i) => { p.bagUp = s.bag[i] || 0; });
     if (s.kc) G.kitchen = { x: s.kc[0], y: s.kc[1], slots: s.kc[2].map(a => ({ k: a[0], prog: a[1] })), queue: new Array(s.kc[3]), lvl: s.kl ? s.kl[0] : 1, up: s.kl ? s.kl[1] : 0, bmod: s.kl && s.kl[2] || null };
@@ -2310,6 +2379,12 @@
       t.hp = a[1]; t.dead = !!a[2]; t.sap = a[3] === 1 ? 0 : a[3] === -1 ? -1 : undefined; t.sg = a[4];
     });
     s.bu.forEach(a => { const b = W.bushes[a[0]]; if (b) b.berries = a[1]; });
+    (s.or || []).forEach(a => {
+      const o = W.ores && W.ores[a[0]]; if (!o) return;
+      if (a[1] < o.hp && !a[2]) o.shake = 0.3;
+      o.hp = a[1]; o.dead = !!a[2];
+      W.solid[o.ty * W.N + o.tx] = o.dead ? AB.S_NONE : AB.S_ROCK;
+    });
     if (AB.FX) s.fx.forEach(ev => AB.FX.play(ev));
   };
 

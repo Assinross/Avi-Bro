@@ -40,8 +40,22 @@
     App.cam.x = me ? me.x : G.W.camp.x; App.cam.y = me ? me.y : G.W.camp.y;
     show(null);
     AB.FX.toast('Выживите 99 ночей! Собирайте голубые шарики опыта — они открывают боевые навыки', '#ffe7a8');
-    AB.FX.toast('Движение: левый клик / стрелки. Атака и рубка — автоматически', '#cfe0ff');
+    AB.FX.toast('Движение: левый клик / стрелки. Оружие бьёт само, топор сам рубит деревья', '#cfe0ff');
+    App.pendingDump = null;
+    setAutoPick(App.autoPick, true);
   }
+  // Автоподбор предметов (у каждого игрока свой, по умолчанию выключен)
+  function setAutoPick(on, silent) {
+    App.autoPick = !!on;
+    try { localStorage.setItem('avibro-autopick', App.autoPick ? '1' : '0'); } catch (e) { /* */ }
+    const cb = $('optAutoPick'); if (cb) cb.checked = App.autoPick;
+    if (App.state === 'play' && App.G) {
+      if (App.mode === 'guest') AB.Net.send({ t: 'cmd', c: 'autopick', x: App.autoPick ? 1 : 0, y: 0 });
+      else if (App.mode === 'solo' || App.mode === 'host') AB.Sim.command(App.G, App.myId, 'autopick', App.autoPick ? 1 : 0, 0);
+      if (!silent) AB.FX.toast(App.autoPick ? 'Автоподбор включён: предметы поднимаются сами' : 'Автоподбор выключен: поднимайте предметы кликом', '#cfe0ff');
+    }
+  }
+  App.setAutoPick = setAutoPick;
   App.me = function () { return App.G ? App.G.players.find(p => p.id === App.myId) : null; };
 
   function startSolo() {
@@ -188,6 +202,7 @@
       if (k === 'KeyR') command('plant');
       if (k === 'KeyG') command('bed');
       if (k === 'KeyB') command('fire');
+      if (k === 'KeyF') setAutoPick(!App.autoPick);
     });
     window.addEventListener('keyup', (e) => App.keys.delete(e.code));
     window.addEventListener('blur', () => { App.keys.clear(); App.mouse.down = false; });
@@ -197,7 +212,17 @@
       AB.Sound.unlock();
       if (e.button === 2 && App.state === 'play' && App.G) {
         const mw = mouseWorld();
-        App.selRef = AB.Sim.buildingAt(App.G, mw.x, mw.y);
+        const ref = AB.Sim.buildingAt(App.G, mw.x, mw.y);
+        const me = App.me();
+        // правый клик по костру с бревнами в рюкзаке — отдать все бревна в огонь (если далеко — сначала подойти)
+        if (ref && ref[0] === 'f' && me && !me.dead && (me.inv.wood || 0) > 0 && !App.paused) {
+          const f = App.G.fires.find(q => 'f' + q.id === ref);
+          AB.Sound.play('click', 1);
+          if (f && AB.dist(me.x, me.y, f.x, f.y) <= C().FIRE_DUMP_RANGE) { sendCmd('dumpfire', ref); App.pendingDump = null; }
+          else if (f) { App.pendingDump = ref; App.pendingPick = null; App.moveTarget = { x: f.x, y: f.y + 24 }; App.clickMark = { x: f.x, y: f.y, t: 1 }; }
+          return;
+        }
+        App.selRef = ref;
         App.bpSig = null;
         if (App.selRef) AB.Sound.play('click', 1);
         return;
@@ -220,7 +245,7 @@
         else { App.pendingPick = d.id; App.moveTarget = { x: d.x, y: d.y }; App.clickMark = { x: d.x, y: d.y, t: 1 }; }
         return;
       }
-      App.pendingPick = null;
+      App.pendingPick = null; App.pendingDump = null;
       App.mouse.down = true;
     });
     window.addEventListener('mouseup', (e) => { if (e.button === 0) App.mouse.down = false; });
@@ -324,7 +349,8 @@
     App.lvSig = sig;
     $('lvTitle').textContent = `Уровень опыта ${me.xl}: боевой навык`;
     $('lvTitle').className = 'lvtitle ab';
-    $('lvSub').textContent = `Навыков: ${me.ab.length} из ${cfg.ABILITY_MAX}. ` + (me.ab.length >= cfg.ABILITY_MAX ? 'Все слоты заняты — улучшайте взятые навыки. ' : 'Возьмите новый навык или улучшите взятый. ') + (me.aq > 1 ? `Ещё выборов: ${me.aq - 1}. ` : '') + (App.mode === 'solo' ? 'Игра на паузе.' : 'Игра не останавливается!');
+    const learned = AB.Sim.abLearned(me);
+    $('lvSub').textContent = `Навыков: ${learned} из ${cfg.ABILITY_MAX} (плюс начальное оружие). ` + (learned >= cfg.ABILITY_MAX ? 'Все слоты заняты — улучшайте взятые навыки. ' : 'Возьмите новый навык или улучшите взятый. ') + (me.aq > 1 ? `Ещё выборов: ${me.aq - 1}. ` : '') + (App.mode === 'solo' ? 'Игра на паузе.' : 'Игра не останавливается!');
     const cards = $('lvCards'); cards.innerHTML = '';
     me.ao.forEach((o, i) => {
       const def = AB.Sim.abDef(o.id); if (!def) return;
@@ -342,7 +368,7 @@
       el.style.borderColor = col; el.style.boxShadow = `0 0 ${6 + o.lv * 4}px ${col}44 inset`;
       el.innerHTML = `<div class="key">${i + 1}</div><div class="sico" style="color:${pc}">${def.icon}</div>
         <div class="sname">${def.name}</div>
-        <div class="stier" style="color:${col}">${cur ? `Улучшение: ур. ${cur.lv} → ${o.lv}` : 'Новый навык'}</div>
+        <div class="stier" style="color:${col}">${cur ? `${def.start ? 'Начальное оружие: ' : 'Улучшение: '}ур. ${cur.lv} → ${o.lv}` : 'Новый навык'}</div>
         <div class="snote">${def.desc}</div>
         ${lines.map(l => `<div class="sline">${l}</div>`).join('')}
         ${o.iron ? `<div class="iron${poor ? ' bad' : ''}">Нужно железа: ${o.iron} (есть ${iron})</div>` : ''}`;
@@ -364,7 +390,7 @@
     if (!near) { box.classList.add('hidden'); App.mcSig = null; return; }
     box.classList.remove('hidden');
     const coins = G.coins || 0;
-    const sig = JSON.stringify(me.mo) + coins + JSON.stringify(me.skills) + JSON.stringify(me.mgBought || {}) + (me.axe || 1) + AB.Sim.woodOf(G, me);
+    const sig = JSON.stringify(me.mo) + coins + JSON.stringify(me.skills) + JSON.stringify(me.mgBought || {}) + (me.axe || 1) + AB.Sim.woodOf(G, me) + (me.pick || 0);
     axeButton($('btnAxeMc'), me);
     if (sig === App.mcSig) return;
     App.mcSig = sig;
@@ -373,8 +399,8 @@
     cfg.MERCHANT_GOODS.forEach(g => {
       const b = document.createElement('button');
       b.className = 'upbtn'; b.style.borderColor = '#ffd24a';
-      const done = g.once && me.mgBought && me.mgBought[g.id];
-      b.innerHTML = `${g.name} · <b style="color:#ffd24a">${g.price} $</b>${done ? ' (куплено)' : ''}`;
+      const done = (g.once && me.mgBought && me.mgBought[g.id]) || (g.id === 'pickaxe' && me.pick);
+      b.innerHTML = `${g.name}${g.id === 'pickaxe' ? ' (камень и железо)' : ''} · <b style="color:#ffd24a">${g.price} $</b>${done ? (g.id === 'pickaxe' ? ' (есть)' : ' (куплено)') : ''}`;
       if (coins < g.price || done) b.disabled = true;
       b.addEventListener('click', () => merchantCmd('goods', g.id));
       gb.appendChild(b);
@@ -439,20 +465,31 @@
     const ws = ok && nearStructOf(me, 'workshop');
     $('workshop').classList.toggle('hidden', !ws);
     if (ws) {
-      const sig = G.coins + '|' + AB.Sim.woodOf(G, me) + '|' + AB.Sim.ironOf(G, me) + '|' + (me.axe || 1) + '|' + AB.Sim.bl(ws);
+      const sig = G.coins + '|' + AB.Sim.woodOf(G, me) + '|' + AB.Sim.ironOf(G, me) + '|' + (me.axe || 1) + '|' + AB.Sim.bl(ws) + '|' + (me.pick || 0);
       if (sig !== App.wsSig) {
         App.wsSig = sig;
-        $('wsInfo').innerHTML = `Мастерская ур. ${AB.Sim.bl(ws)}: урон боевых навыков всех игроков <b>+${Math.round(cfg.BUILD_UPGRADES.workshop.abDmg * (AB.Sim.bl(ws) - 1) * 100)}%</b> (улучшение — правый клик по мастерской).<br>Топор ур. ${me.axe || 1}: сильнее бьёт монстров и быстрее рубит деревья.`;
+        $('wsInfo').innerHTML = `Мастерская ур. ${AB.Sim.bl(ws)}: урон боевых навыков всех игроков <b>+${Math.round(cfg.BUILD_UPGRADES.workshop.abDmg * (AB.Sim.bl(ws) - 1) * 100)}%</b> (улучшение — правый клик по мастерской).<br>Топор ур. ${me.axe || 1}: быстрее рубит деревья. Монстров топор не бьёт.`;
         axeButton($('btnAxeWs'), me);
+        pickButton($('btnPickWs'), me, ws);
       }
     }
+  }
+  function pickButton(b, me, ws) {
+    const PC = C().PICKAXE_CRAFT, G = App.G;
+    if (me.pick) { b.textContent = 'Кирка: уже есть'; b.disabled = true; }
+    else if (AB.Sim.bl(ws) < PC.workshopLevel) { b.textContent = `Кирка: нужна мастерская ур. ${PC.workshopLevel}`; b.disabled = true; }
+    else {
+      b.textContent = `Сделать кирку: ${PC.coins} $ + ${PC.planks} досок + ${PC.iron} железа`;
+      b.disabled = G.coins < PC.coins || AB.Sim.woodOf(G, me) < PC.planks || AB.Sim.ironOf(G, me) < PC.iron;
+    }
+    b.style.opacity = b.disabled ? 0.5 : 1;
   }
   function axeButton(b, me) {
     const cfg = C(), lv = me.axe || 1, G = App.G;
     if (lv >= cfg.AXE_LEVELS.length) { b.textContent = `Топор: максимум (ур. ${lv})`; b.disabled = true; }
     else {
       const hits = Math.ceil(cfg.TREE_HP / cfg.AXE_LEVELS[lv]), ac = AB.Sim.axeCost(G, lv);
-      b.textContent = `Топор ур.${lv}→${lv + 1} (дерево за ${hits} ударов, урон ×${cfg.AXE_COMBAT[lv]}): ${ac.coins} $ + ${ac.planks} досок${ac.iron ? ` + ${ac.iron} железа` : ''}`;
+      b.textContent = `Топор ур.${lv}→${lv + 1} (дерево за ${hits} ударов): ${ac.coins} $ + ${ac.planks} досок${ac.iron ? ` + ${ac.iron} железа` : ''}`;
       b.disabled = G.coins < ac.coins || AB.Sim.woodOf(G, me) < ac.planks || AB.Sim.ironOf(G, me) < ac.iron;
     }
     b.style.opacity = b.disabled ? 0.5 : 1;
@@ -464,8 +501,8 @@
     if (!b) { box.classList.add('hidden'); App.bpSig = null; if (App.selRef && App.state === 'play' && !(me && me.offers)) App.selRef = null; return; }
     box.classList.remove('hidden');
     const planks = AB.Sim.woodOf(G, me);
-    const ironH = AB.Sim.ironOf(G, me);
-    const sig = JSON.stringify([b.title, b.now, b.asp, b.mods, planks, G.coins, me.prof, ironH]);
+    const ironH = AB.Sim.ironOf(G, me), stoneH = AB.Sim.stoneOf(G, me);
+    const sig = JSON.stringify([b.title, b.now, b.asp, b.mods, planks, G.coins, me.prof, ironH, stoneH]);
     if (sig === App.bpSig) return;
     App.bpSig = sig;
     $('bpTitle').textContent = b.title;
@@ -480,10 +517,10 @@
       let body;
       if (max) body = '<div class="an">Максимальный уровень</div>';
       else if (a.by === 'feed') body = `<div class="an">Следующий уровень: ${a.next}</div><div class="bar"><div style="width:${Math.round(a.prog / a.cost * 100)}%"></div></div><div class="an">Топливо ${a.prog}/${a.cost} — заполните шкалу</div><div class="who">${pn.feed}</div>`;
-      else body = `<div class="an">Следующий уровень: ${a.next}</div>` + `<div class="an">Цена: ${a.cost} досок${a.iron ? ` + <b style="color:#dfe8ee">${a.iron} железа</b>` : ''} · на складе ${planks}${a.iron ? `, железа ${ironH}` : ''}</div>` + (can ? `<button class="btn small gold">Улучшить</button>` : `<div class="who">Улучшает: ${pn[a.by]}</div>`);
+      else body = `<div class="an">Следующий уровень: ${a.next}</div>` + `<div class="an">Цена: ${a.cost} досок${a.iron ? ` + <b style="color:#dfe8ee">${a.iron} железа</b>` : ''}${a.stone ? ` + <b style="color:#d8d0c0">${a.stone} камня</b>` : ''} · на складе ${planks}${a.iron ? `, железа ${ironH}` : ''}${a.stone ? `, камня ${stoneH}` : ''}</div>` + (can ? `<button class="btn small gold">Улучшить</button>` : `<div class="who">Улучшает: ${pn[a.by]}</div>`);
       el.innerHTML = `<div class="ah"><span>${a.name}</span><span>ур. ${a.lvl}/${a.max}</span></div>` + body;
       const btn = el.querySelector('button');
-      if (btn) { if (planks < a.cost || ironH < (a.iron || 0)) { btn.disabled = true; btn.style.opacity = 0.5; } btn.addEventListener('click', () => { AB.Sound.play('click', 1); sendCmd2('bup', b.ref, a.key); }); }
+      if (btn) { if (planks < a.cost || ironH < (a.iron || 0) || stoneH < (a.stone || 0)) { btn.disabled = true; btn.style.opacity = 0.5; } btn.addEventListener('click', () => { AB.Sound.play('click', 1); sendCmd2('bup', b.ref, a.key); }); }
       box2.appendChild(el);
     });
     const mb = $('bpMods'); mb.innerHTML = '';
@@ -547,6 +584,11 @@
         if (d < C().CLICK_STOP_DIST) App.moveTarget = null;
         else { dx = tx; dy = ty; }
       }
+    }
+    if (App.pendingDump) {
+      const f = App.G.fires.find(q => 'f' + q.id === App.pendingDump);
+      if (!f || !(me.inv.wood > 0) || (dx === 0 && dy === 0 && !App.moveTarget)) App.pendingDump = null;
+      else if (AB.dist(me.x, me.y, f.x, f.y) <= C().FIRE_DUMP_RANGE * 0.9) { sendCmd('dumpfire', App.pendingDump); App.pendingDump = null; App.moveTarget = null; dx = 0; dy = 0; }
     }
     if (App.pendingPick) {
       const d = App.G.drops.find(q => q.id === App.pendingPick);
@@ -641,6 +683,7 @@
     }
     for (const p of G.projs) { p.x += p.vx * dt; p.y += p.vy * dt; }
     for (const t of G.W.trees) if (t.shake > 0) t.shake = Math.max(0, t.shake - dt);
+    for (const o of (G.W.ores || [])) if (o.shake > 0) o.shake = Math.max(0, o.shake - dt);
   }
 
   function animateEntities(G, dt) {
@@ -686,6 +729,10 @@
     bind('btnLater', () => { App.abDefer = true; App.lvSig = null; });
     bind('btnAxeWs', () => { sendCmd('axeup', 0); App.wsSig = null; });
     bind('btnAxeMc', () => { sendCmd('axeup', 0); App.mcSig = null; });
+    bind('btnPickWs', () => { sendCmd('pickcraft', 0); App.wsSig = null; });
+    try { App.autoPick = localStorage.getItem('avibro-autopick') === null ? !!C().AUTO_PICKUP : localStorage.getItem('avibro-autopick') === '1'; } catch (e) { App.autoPick = !!C().AUTO_PICKUP; }
+    $('optAutoPick').checked = App.autoPick;
+    $('optAutoPick').addEventListener('change', (e) => setAutoPick(e.target.checked));
     document.querySelectorAll('[data-ex]').forEach(b => b.addEventListener('click', () => { AB.Sound.play('click', 1); const [c, v] = b.dataset.ex.split(':'); sendCmd(c, v === 'all' ? 'all' : +v); App.exSig = null; }));
     bind('btnCoop', () => { show('coop'); $('coopErr').textContent = ''; $('peerWarn').classList.toggle('hidden', AB.Net.available()); });
     bind('btnHelp', () => show('help'));

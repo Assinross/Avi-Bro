@@ -202,6 +202,34 @@
     W.decor.push({ x: W.camp.x - 150, y: W.camp.y + 10, kind: 'torch', v: 0 });
     W.decor.push({ x: W.camp.x + 170, y: W.camp.y + 40, kind: 'torch', v: 0 });
     W.decor.push({ x: W.camp.x + 20, y: W.camp.y + 150, kind: 'torch', v: 0 });
+
+    // ---- залежи камня и железа в дальних участках леса (добываются киркой)
+    W.ores = [];
+    const ORES = cfg.ORES || {};
+    const maxR = N / 2 - cfg.BORDER_TILES - 3;
+    for (const kind of Object.keys(ORES)) {
+      const O = ORES[kind];
+      let placed = 0, tries2 = 0;
+      while (placed < O.count && tries2++ < 4000) {
+        const a = r() * Math.PI * 2, d = r.range(O.minDist, maxR);
+        const tx = Math.round(cx + Math.cos(a) * d), ty = Math.round(cy + Math.sin(a) * d);
+        if (!inb(tx, ty)) continue;
+        let ok = true;
+        for (let y = ty - 1; y <= ty + 1 && ok; y++) for (let x = tx - 1; x <= tx + 1; x++) {
+          if (!inb(x, y)) { ok = false; break; }
+          const j = idx(x, y);
+          if (W.ground[j] !== AB.G_GRASS || W.treeAt[j] >= 0 || W.rockAt[j] >= 0 || reserved[j] || ring[j]) { ok = false; break; }
+        }
+        if (!ok || W.ores.some(o => Math.abs(o.tx - tx) + Math.abs(o.ty - ty) < 6)) continue;
+        const i = idx(tx, ty);
+        const o = { id: W.ores.length, x: tx * T + T / 2, y: ty * T + T / 2 + 4, tx, ty, v: Math.floor(r() * 3), s: 1, kind: 'ore', ore: kind, hp: cfg.ORE_HITS, dead: false, regrow: 0, shake: 0 };
+        W.rockAt[i] = W.rocks.length; W.rocks.push(o); W.ores.push(o);
+        W.solid[i] = AB.S_ROCK;
+        // ягодные кусты на месте залежи убираем
+        for (let k = W.bushes.length - 1; k >= 0; k--) if (Math.abs(W.bushes[k].x - o.x) < T && Math.abs(W.bushes[k].y - o.y) < T) W.bushes[k].x = -9999;
+        placed++;
+      }
+    }
     return W;
   };
 

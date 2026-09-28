@@ -351,6 +351,22 @@
         ctx.fillStyle = '#e8eef2'; ctx.fillRect(25, 6, 2, 8);
         break;
       }
+      case 'stone': {
+        [[10, 22, 8, 6.5, '#8e8778'], [21, 22, 8, 6.5, '#a09888'], [15, 13, 7.5, 6, '#b4ac9c']].forEach(q => {
+          ell(ctx, q[0], q[1], q[2] + 1.3, q[3] + 1.3, O); ell(ctx, q[0], q[1], q[2], q[3], q[4]);
+          ell(ctx, q[0] - 2, q[1] - 2, q[2] * 0.5, q[3] * 0.4, 'rgba(255,255,255,0.28)');
+          ctx.fillStyle = 'rgba(0,0,0,0.18)'; ctx.fillRect(q[0] - 3, q[1] + 2, 6, 1.5);
+        });
+        break;
+      }
+      case 'pickaxe': {
+        ctx.strokeStyle = O; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(8, 28); ctx.lineTo(21, 9); ctx.stroke();
+        ctx.strokeStyle = '#8a5a30'; ctx.lineWidth = 3; ctx.stroke();
+        ctx.strokeStyle = O; ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(6, 8); ctx.quadraticCurveTo(19, 1, 30, 14); ctx.stroke();
+        ctx.strokeStyle = '#9aa4ac'; ctx.lineWidth = 3.5; ctx.stroke();
+        ctx.strokeStyle = '#e0e8ee'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(9, 7); ctx.quadraticCurveTo(19, 2.5, 27, 11); ctx.stroke();
+        break;
+      }
       default: weaponIcon(ctx, k);
     }
     return c;
@@ -417,6 +433,65 @@
     }
   };
 
+  // Залежи: большая куча камней и маленькая железная скала (dead — осколки после добычи). Рисуются в 2× для чёткости.
+  function makeOre(kind, v, dead) {
+    const K = 2, W = 64, H = 60, c = AB.canvas(W * K, H * K), ctx = c.getContext('2d');
+    ctx.scale(K, K);
+    const rng = AB.rng(900 + v * 17 + (kind === 'iron' ? 50 : 0));
+    const O = '#16110c', bx = 32, by = 50;
+    const stoneBlob = (x, y, rx, ry, base, hi, sh) => {
+      ell(ctx, x, y, rx + 1.4, ry + 1.4, O);
+      ell(ctx, x, y, rx, ry, base);
+      ell(ctx, x - rx * 0.25, y - ry * 0.35, rx * 0.62, ry * 0.45, hi);
+      ctx.fillStyle = sh; ctx.beginPath(); ctx.ellipse(x + rx * 0.1, y + ry * 0.55, rx * 0.8, ry * 0.3, 0, 0, TAU); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.fillRect(x - rx * 0.45, y - ry * 0.55, rx * 0.35, 1.2);
+    };
+    ell(ctx, bx, by, dead ? 16 : 26, dead ? 5 : 8, 'rgba(0,0,0,0.3)');
+    if (kind === 'stone') {
+      const pal = [['#8a8272', '#aaa292', 'rgba(40,30,20,0.3)'], ['#9a9282', '#bab2a2', 'rgba(40,30,20,0.3)'], ['#7e786c', '#9e9888', 'rgba(40,30,20,0.3)']];
+      const list = dead
+        ? [[-8, -2, 5, 3.5], [3, 0, 6, 4], [10, -3, 4, 3], [-2, -6, 4, 3]]
+        : [[-16, -4, 9, 7], [-4, -3, 10, 8], [9, -4, 9, 7], [18, -2, 6, 5], [-10, -13, 9, 7.5], [4, -14, 10, 8], [-3, -23, 8.5, 7], [13, -12, 6, 5], [-19, -12, 5, 4]];
+      list.sort((a, b) => a[1] - b[1]);
+      list.forEach((q, i) => { const pc = pal[(i + v) % 3]; stoneBlob(bx + q[0] + (rng() - 0.5) * 2, by + q[1], q[2], q[3], pc[0], pc[1], pc[2]); });
+      if (!dead) { ctx.fillStyle = '#4f8a3a'; for (let i = 0; i < 4; i++) { const x = bx - 20 + rng() * 40, y = by - 2 + rng() * 3; ctx.fillRect(x, y - 3, 1.5, 3); ctx.fillRect(x + 2, y - 2, 1.5, 2); } }
+    } else {
+      if (dead) {
+        [[-7, -1, 5, 3.5], [4, 0, 6, 4], [11, -2, 3.5, 2.5]].forEach(q => stoneBlob(bx + q[0], by + q[1], q[2], q[3], '#4a4f56', '#646a72', 'rgba(0,0,0,0.3)'));
+        ctx.fillStyle = '#b8603a'; ctx.fillRect(bx + 2, by - 2, 3, 2); ctx.fillRect(bx - 8, by - 1, 2, 1.5);
+      } else {
+        // зубчатая скала: несколько граней
+        const peaks = [[-22, 0], [-20, -16], [-12, -30 - v * 2], [-4, -24], [4, -38 + v], [12, -26], [19, -32 + v * 2], [24, -12], [22, 0]];
+        ctx.fillStyle = O; ctx.beginPath(); peaks.forEach((q, i) => { const x = bx + q[0] * 1.08, y = by + q[1] * 1.04 + (q[1] ? -1 : 1); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#4a5058'; ctx.beginPath(); peaks.forEach((q, i) => { const x = bx + q[0], y = by + q[1]; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.closePath(); ctx.fill();
+        // освещённые грани
+        ctx.fillStyle = '#6a727c';
+        ctx.beginPath(); ctx.moveTo(bx - 20, by - 16); ctx.lineTo(bx - 12, by - 30 - v * 2); ctx.lineTo(bx - 4, by - 24); ctx.lineTo(bx - 9, by - 8); ctx.closePath(); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(bx - 4, by - 24); ctx.lineTo(bx + 4, by - 38 + v); ctx.lineTo(bx + 12, by - 26); ctx.lineTo(bx + 5, by - 12); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#8a929c';
+        ctx.beginPath(); ctx.moveTo(bx + 4, by - 38 + v); ctx.lineTo(bx + 8, by - 32); ctx.lineTo(bx + 1, by - 26); ctx.closePath(); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(bx - 12, by - 30 - v * 2); ctx.lineTo(bx - 9, by - 24); ctx.lineTo(bx - 15, by - 20); ctx.closePath(); ctx.fill();
+        // тёмный низ
+        ctx.fillStyle = '#353a40'; ctx.beginPath(); ctx.moveTo(bx - 22, by); ctx.lineTo(bx - 18, by - 7); ctx.lineTo(bx + 20, by - 9); ctx.lineTo(bx + 22, by); ctx.closePath(); ctx.fill();
+        // трещины
+        ctx.strokeStyle = '#23272c'; ctx.lineWidth = 1.2;
+        ctx.beginPath(); ctx.moveTo(bx - 9, by - 8); ctx.lineTo(bx - 6, by - 18); ctx.moveTo(bx + 5, by - 12); ctx.lineTo(bx + 9, by - 20); ctx.lineTo(bx + 14, by - 18); ctx.stroke();
+        // рыжие жилы железной руды и блёстки
+        ctx.strokeStyle = '#1a0e08'; ctx.lineWidth = 3.4; ctx.lineCap = 'round';
+        const veins = [[[-16, -12], [-10, -16], [-6, -12]], [[2, -20], [8, -24], [14, -20]], [[-2, -6], [6, -8]], [[14, -8], [19, -14]]];
+        veins.forEach(vn => { ctx.beginPath(); vn.forEach((q, i) => i ? ctx.lineTo(bx + q[0], by + q[1]) : ctx.moveTo(bx + q[0], by + q[1])); ctx.stroke(); });
+        ctx.strokeStyle = '#c0643a'; ctx.lineWidth = 2;
+        veins.forEach(vn => { ctx.beginPath(); vn.forEach((q, i) => i ? ctx.lineTo(bx + q[0], by + q[1]) : ctx.moveTo(bx + q[0], by + q[1])); ctx.stroke(); });
+        ctx.fillStyle = '#e8906a'; veins.forEach(vn => ctx.fillRect(bx + vn[0][0], by + vn[0][1] - 0.5, 1.5, 1));
+        ctx.fillStyle = '#eef4f8'; [[-13, -20], [6, -30], [16, -16], [-4, -14], [10, -6]].forEach(q => { ctx.fillRect(bx + q[0], by + q[1], 1.6, 1.6); ctx.fillRect(bx + q[0] - 1, by + q[1] + 0.5, 3.6, 0.6); });
+        // камешки у подножия
+        stoneBlob(bx - 24, by - 1, 4, 3, '#4a4f56', '#646a72', 'rgba(0,0,0,0.3)');
+        stoneBlob(bx + 25, by - 2, 3.5, 2.6, '#555b62', '#6e757c', 'rgba(0,0,0,0.3)');
+      }
+    }
+    return { c, ox: bx * K, oy: by * K, k: K };
+  }
+
   S.init = function () {
     S.trees = []; for (let v = 0; v < 6; v++) S.trees.push(makeTree(v));
     S.stump = makeStump();
@@ -426,6 +501,8 @@
     S.chest = makeChest(false); S.chestOpen = makeChest(true);
     S.tent = makeTent(); S.logs = makeLogs();
     S.icons = {};
-    ['wood', 'meat', 'berry', 'carrot', 'pumpkin', 'cooked_meat', 'cooked_carrot', 'cooked_pumpkin', 'plank', 'hide', 'coal', 'coin', 'seed_carrot', 'seed_pumpkin', 'iron', 'axe'].forEach(k => S.icons[k] = makeIcon(k));
+    ['wood', 'meat', 'berry', 'carrot', 'pumpkin', 'cooked_meat', 'cooked_carrot', 'cooked_pumpkin', 'plank', 'hide', 'coal', 'coin', 'seed_carrot', 'seed_pumpkin', 'iron', 'axe', 'stone', 'pickaxe'].forEach(k => S.icons[k] = makeIcon(k));
+    S.ores = { stone: [0, 1, 2].map(v => makeOre('stone', v, false)), iron: [0, 1, 2].map(v => makeOre('iron', v, false)) };
+    S.oresDead = { stone: makeOre('stone', 0, true), iron: makeOre('iron', 0, true) };
   };
 })(window.AB);
