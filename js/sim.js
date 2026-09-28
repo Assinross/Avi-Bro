@@ -22,7 +22,7 @@
       fires: W.fires.map((f, i) => ({ id: i, x: f.x, y: f.y, fuel: cfg.FIRE_FUEL_START, main: f.main, lvl: 1, mod: false, lm: 1 })),
       nextId: 1, spawnT: 2, fxOut: [], treeDirty: new Set(), bushDirty: new Set(),
       over: null, stats: { kills: 0 }, fireLevel: 1, nextBoss: cfg.BOSS_FIRST_NIGHT, bossCount: 0, team: {},
-      store: { x: W.fires[0].x + cfg.STORAGE_OFFSET[0], y: W.fires[0].y + cfg.STORAGE_OFFSET[1], logs: 0, planks: cfg.MILL.startPlanks, coal: 0, iron: 0, stone: 0, lvl: 1, up: 0, saws: [], coalCnt: 0, feedT: 0, bmod: null },
+      store: { x: W.fires[0].x + cfg.STORAGE_OFFSET[0], y: W.fires[0].y + cfg.STORAGE_OFFSET[1], logs: 0, planks: cfg.MILL.startPlanks, coal: 0, iron: 0, stone: 0, hides: 0, lvl: 1, up: 0, saws: [], coalCnt: 0, feedT: 0, bmod: null },
       coins: cfg.START_COINS, fireUp: 0, debt: 0, upkeepLast: 0,
       crypto: { price: cfg.EXCHANGE.startPrice, hist: [cfg.EXCHANGE.startPrice], held: 0, t: 0 },
       merchant: null,
@@ -298,6 +298,18 @@
     for (let i = 0; i < Math.min(4, n); i++) Sim.fx(G, { k: 'feed', x: f.x + (rnd() - 0.5) * 16, y: f.y });
     const cap = Sim.fireCap(G, f);
     Sim.msg(G, `В костёр: бревна ×${n} · шкала ${Math.floor(f.fuel)}/${cap}${G.fireLevel > lv0 ? '' : f.main && G.fireLevel < Sim.fireMaxLevel() ? ` (до ур. ${G.fireLevel + 1}: ещё ${Math.ceil(cap - f.fuel)})` : ''}`, p.id, '#ffc46b');
+  }
+  // Кладовая: правый клик по лесопилке со шкурами в рюкзаке — сдать все шкуры на склад (лавка продаёт их сама)
+  function dumpHide(G, p) {
+    const cfg = C(), S = G.store;
+    if (!S || p.dead) return;
+    if (AB.dist(p.x, p.y, S.x, S.y) > (cfg.MILL.radius || 55) + 30) { Sim.msg(G, 'Подойдите к лесопилке', p.id, '#ff9d7a'); return; }
+    const have = p.inv.hide || 0;
+    if (!have) { Sim.msg(G, 'В рюкзаке нет шкур', p.id, '#ffb36b'); return; }
+    S.hides = (S.hides || 0) + have;
+    p.inv.hide = 0;
+    Sim.fx(G, { k: 'rustle', x: S.x, y: S.y });
+    Sim.msg(G, `В кладовую: шкуры ×${have} (всего ${S.hides})`, p.id, '#ffd24a');
   }
   // Кирка: мастерская максимального уровня
   function craftPick(G, p) {
@@ -1167,6 +1179,12 @@
     for (const p of G.players) {
       if (p.dead || AB.dist2(p.x, p.y, s.x, s.y) > SH.depositRadius ** 2) continue;
       const got = [];
+      // шкуры со склада уходят в продажу первыми (их сдают ПКМ по лесопилке или подойдя к ней)
+      if (SH.prices.hide && (G.store.hides || 0) > 0) {
+        const nh = G.store.hides; G.store.hides = 0;
+        for (let i = 0; i < nh; i++) s.stock.push('hide');
+        got.push(`шкуры со склада ×${nh}`);
+      }
       let foodLeft = Object.keys(SH.prices).filter(k => cfg.FOOD[k]).reduce((a, k) => a + (p.inv[k] || 0), 0);
       for (const k in SH.prices) {
         let n = p.inv[k] || 0;
@@ -1725,6 +1743,12 @@
         Sim.msg(G, `На склад: камень ×${p.inv.stone} (всего ${S.stone})`, p.id, '#d8d0c0');
         p.inv.stone = 0;
       }
+      // шкуры сами уходят в кладовую (лавка продаёт их со склада)
+      if (!p.dead && p.inv.hide > 0 && AB.dist2(p.x, p.y, S.x, S.y) < M.radius ** 2) {
+        S.hides = (S.hides || 0) + p.inv.hide;
+        Sim.msg(G, `В кладовую: шкуры ×${p.inv.hide} (всего ${S.hides})`, p.id, '#ffd24a');
+        p.inv.hide = 0;
+      }
     }
     for (const p of G.players) {
       if (p.dead || !(p.inv.wood > 0) || AB.dist2(p.x, p.y, S.x, S.y) > M.radius ** 2) continue;
@@ -1963,6 +1987,7 @@
     if (c === 'pickup') { pickupDrop(G, p, x); return; }
     if (c === 'autopick') { p.ap = !!x; return; }
     if (c === 'dumpfire') { dumpFire(G, p, x); return; }
+    if (c === 'dumphide') { dumpHide(G, p); return; }
     if (c === 'pickcraft') { craftPick(G, p); return; }
     if (c === 'dropk') {
       if (!(p.inv[x] > 0) || x === 'coin') return;
@@ -2124,8 +2149,8 @@
       now = [`Готовит одновременно: ${o.lvl}`, `В очереди: ${o.queue ? o.queue.length : 0}`];
       push('kitchen', 'Кухня', o.lvl, cfg.KITCHEN_MAX_LEVEL, lvlCost(o.lvl), o.up, 'any', `${o.lvl + 1} блюд одновременно`);
     } else if (kind === 'mill') {
-      title = 'Лесопилка'; desc = 'Подойдите — бревна из рюкзака выгрузятся. Пилит бревна в доски, подкидывает бревна в главный костёр.';
-      now = [`На складе: доски ${o.planks}, уголь ${o.coal || 0}, железо ${o.iron || 0}, камень ${o.stone || 0}`, `Бревна в очереди: ${o.logs}/${cfg.MILL.queueMax}`];
+      title = 'Лесопилка'; desc = 'Подойдите — бревна, железо, камень и шкуры из рюкзака выгрузятся (шкуры — в кладовую, лавка продаёт их сама; шкуры можно сдать и правым кликом). Пилит бревна в доски.';
+      now = [`На складе: доски ${o.planks}, уголь ${o.coal || 0}, железо ${o.iron || 0}, камень ${o.stone || 0}, шкуры ${o.hides || 0}`, `Бревна в очереди: ${o.logs}/${cfg.MILL.queueMax}`];
       push('mill', 'Лесопилка', o.lvl, cfg.MILL.maxLevel, lvlCost(o.lvl), o.up, 'any', `${Sim.millLines({ lvl: o.lvl + 1 })} бревен пилится одновременно`);
     } else {
       const S = cfg.STRUCTURES[o.kind], up = o.up || {}, bl = Sim.bl(o);
@@ -2356,7 +2381,7 @@
       pl: G.plots.map(p => [r1(p.x), r1(p.y), p.crop, Math.round(p.t), p.ready ? 1 : 0, p.mod ? 1 : 0]),
       f: G.fires.map(f => [r1(f.x), r1(f.y), r1(f.fuel), f.main ? 1 : 0, f.lvl, f.mod ? 1 : 0, f.lm, f.cap || Sim.fireCap(G, f), f.bmod || 0]),
       ch: W.sites.filter(s2 => s2.opened).map(s2 => s2.id),
-      so: [G.store.x, G.store.y, G.store.logs, G.store.planks, G.store.lvl, G.store.up, (G.store.saws || []).map(v => Math.round(v)), G.store.coal || 0, G.store.bmod || 0, G.store.iron || 0, G.store.stone || 0],
+      so: [G.store.x, G.store.y, G.store.logs, G.store.planks, G.store.lvl, G.store.up, (G.store.saws || []).map(v => Math.round(v)), G.store.coal || 0, G.store.bmod || 0, G.store.iron || 0, G.store.stone || 0, G.store.hides || 0],
       eco: [G.coins, G.fireUp, G.debt, G.upkeepLast, Math.round(G.crypto.price * 10) / 10, G.crypto.held, G.crypto.hist],
       bag: G.players.map(p => p.bagUp || 0),
       kl: [G.kitchen.lvl, G.kitchen.up, G.kitchen.bmod || 0],
@@ -2425,7 +2450,7 @@
     G.plots = s.pl.map((a, i) => ({ id: i, x: a[0], y: a[1], crop: a[2], t: a[3], ready: !!a[4], mod: !!a[5] }));
     G.fires = s.f.map((a, i) => ({ id: i, x: a[0], y: a[1], fuel: a[2], main: !!a[3], lvl: a[4], mod: !!a[5], lm: a[6], cap: a[7], bmod: a[8] || null }));
     s.ch.forEach(id => { if (W.sites[id]) W.sites[id].opened = true; });
-    if (s.so) G.store = { x: s.so[0], y: s.so[1], logs: s.so[2], planks: s.so[3], lvl: s.so[4], up: s.so[5], saws: s.so[6], coal: s.so[7], bmod: s.so[8] || null, iron: s.so[9] || 0, stone: s.so[10] || 0 };
+    if (s.so) G.store = { x: s.so[0], y: s.so[1], logs: s.so[2], planks: s.so[3], lvl: s.so[4], up: s.so[5], saws: s.so[6], coal: s.so[7], bmod: s.so[8] || null, iron: s.so[9] || 0, stone: s.so[10] || 0, hides: s.so[11] || 0 };
     if (s.eco) { G.coins = s.eco[0]; G.fireUp = s.eco[1]; G.debt = s.eco[2]; G.upkeepLast = s.eco[3]; G.crypto = { price: s.eco[4], held: s.eco[5], hist: s.eco[6] }; }
     if (s.bag) G.players.forEach((p, i) => { p.bagUp = s.bag[i] || 0; });
     if (s.kc) G.kitchen = { x: s.kc[0], y: s.kc[1], slots: s.kc[2].map(a => ({ k: a[0], prog: a[1] })), queue: new Array(s.kc[3]), lvl: s.kl ? s.kl[0] : 1, up: s.kl ? s.kl[1] : 0, bmod: s.kl && s.kl[2] || null };

@@ -222,6 +222,14 @@
           else if (f) { App.pendingDump = ref; App.pendingPick = null; App.moveTarget = { x: f.x, y: f.y + 24 }; App.clickMark = { x: f.x, y: f.y, t: 1 }; }
           return;
         }
+        // правый клик по лесопилке со шкурами в рюкзаке — сдать все шкуры в кладовую (если далеко — сначала подойти)
+        if (ref === 'm' && me && !me.dead && (me.inv.hide || 0) > 0 && !App.paused) {
+          const S = App.G.store;
+          AB.Sound.play('click', 1);
+          if (S && AB.dist(me.x, me.y, S.x, S.y) <= C().MILL.radius) { sendCmd('dumphide', ref); App.pendingDump = null; }
+          else if (S) { App.pendingDump = ref; App.pendingPick = null; App.moveTarget = { x: S.x, y: S.y + 24 }; App.clickMark = { x: S.x, y: S.y, t: 1 }; }
+          return;
+        }
         App.selRef = ref;
         App.bpSig = null;
         if (App.selRef) AB.Sound.play('click', 1);
@@ -589,9 +597,15 @@
       }
     }
     if (App.pendingDump) {
-      const f = App.G.fires.find(q => 'f' + q.id === App.pendingDump);
-      if (!f || !(me.inv.wood > 0) || (dx === 0 && dy === 0 && !App.moveTarget)) App.pendingDump = null;
-      else if (AB.dist(me.x, me.y, f.x, f.y) <= C().FIRE_DUMP_RANGE * 0.9) { sendCmd('dumpfire', App.pendingDump); App.pendingDump = null; App.moveTarget = null; dx = 0; dy = 0; }
+      if (App.pendingDump === 'm') {
+        const S = App.G.store;
+        if (!S || !(me.inv.hide > 0) || (dx === 0 && dy === 0 && !App.moveTarget)) App.pendingDump = null;
+        else if (AB.dist(me.x, me.y, S.x, S.y) <= C().MILL.radius * 0.9) { sendCmd('dumphide', App.pendingDump); App.pendingDump = null; App.moveTarget = null; dx = 0; dy = 0; }
+      } else {
+        const f = App.G.fires.find(q => 'f' + q.id === App.pendingDump);
+        if (!f || !(me.inv.wood > 0) || (dx === 0 && dy === 0 && !App.moveTarget)) App.pendingDump = null;
+        else if (AB.dist(me.x, me.y, f.x, f.y) <= C().FIRE_DUMP_RANGE * 0.9) { sendCmd('dumpfire', App.pendingDump); App.pendingDump = null; App.moveTarget = null; dx = 0; dy = 0; }
+      }
     }
     if (App.pendingPick) {
       const d = App.G.drops.find(q => q.id === App.pendingPick);
