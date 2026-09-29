@@ -8,7 +8,8 @@
 window.CONFIG = {
 
   /* ------------------------------ МИР ------------------------------ */
-  WORLD_SIZE_TILES: 160,      // Размер карты в тайлах (квадрат WORLD_SIZE_TILES × WORLD_SIZE_TILES)
+  WORLD_SIZE_TILES: 300,      // Размер всей карты в тайлах: лесное ядро + земли четырёх сторон света
+  CORE_TILES: 160,            // Лесное ядро в центре (прежняя карта); за ним — по биому на каждую сторону света
   TILE: 32,                   // Размер одного тайла в пикселях
   VIEW_HEIGHT: 540,           // Сколько пикселей мира помещается по высоте экрана (чем меньше — тем крупнее картинка)
   VIEW_HEIGHT_MOBILE: 400,    // То же для телефона: картинка крупнее, чтобы персонажи не были мелкими
@@ -24,9 +25,57 @@ window.CONFIG = {
   WATER_LEVEL: 0.74,          // Порог шума для озёр (больше → меньше воды, 1 = воды нет)
   BORDER_TILES: 4,            // Ширина непроходимого леса по краю карты
   CAMP_RADIUS_TILES: 8,       // Радиус поляны лагеря в центре карты
+
+  /* ---------------------- ЗЕМЛИ СТОРОН СВЕТА ----------------------- *
+   * За лесным ядром в каждой стороне свой биом, а в нём — поселение со своим вечным костром
+   * (лечит, отпугивает монстров, рядом они не появляются) и торговцами вещей и товаров.
+   * treeK/rockK/bushK — множители плотности; water — порог озёр (меньше — больше воды). */
+  BIOMES: {
+    north: { name: 'Снежная тайга',    color: '#dfeaf5', treeK: 1.0,  rockK: 1.6, bushK: 0.3, water: 0.7,  trees: [6, 7] },
+    east:  { name: 'Степь',            color: '#e0c070', treeK: 0.22, rockK: 1.2, bushK: 1.6, water: 0.76, trees: [10, 10, 11] },
+    south: { name: 'Топи',             color: '#7aa060', treeK: 0.75, rockK: 0.3, bushK: 0.8, water: 0.56, trees: [8, 9, 11] },
+    west:  { name: 'Каменные холмы',   color: '#b0a890', treeK: 0.35, rockK: 5,   bushK: 0.5, water: 0.72, trees: [3, 4, 5] },
+  },
+  BIOME_BLEND: 6,             // Ширина плавного перехода между лесом и биомом (в тайлах)
+  TOWN_RADIUS: 9,             // Радиус поселения (в тайлах)
+  TOWN_SAFE: 420,             // Рядом с поселением монстры не появляются (пикселей от центра)
+  TOWNS: {
+    north: { name: 'Северная деревня',     origin: 'северян',      traders: [
+      { role: 'furrier', name: 'Меховщик', look: 'fur',     gear: ['head', 'body', 'hands'] },
+      { role: 'fisher',  name: 'Рыбак',    look: 'fisher',  goods: ['cooked_meat', 'coal', 'cooked_carrot'] } ] },
+    east:  { name: 'Стойбище',             origin: 'кочевников',   traders: [
+      { role: 'shaman',  name: 'Шаман',    look: 'shaman',  goods: ['seed_carrot', 'seed_pumpkin', 'xp', 'berry'] },
+      { role: 'tanner',  name: 'Кожевник', look: 'tanner',  gear: ['feet', 'legs', 'hands'] } ] },
+    south: { name: 'Деревня на деревьях',  origin: 'лесных людей', traders: [
+      { role: 'herbal',  name: 'Травница', look: 'herbal',  goods: ['cooked_pumpkin', 'cooked_carrot', 'seed_pumpkin', 'xp'] },
+      { role: 'ranger',  name: 'Следопыт', look: 'ranger',  gear: ['head', 'feet', 'legs'] } ] },
+    west:  { name: 'Каменный город',       origin: 'горожан',      traders: [
+      { role: 'smith',   name: 'Кузнец',   look: 'smith',   gear: ['head', 'body', 'legs'], goods: ['iron'] },
+      { role: 'grocer',  name: 'Лавочник', look: 'grocer',  goods: ['bag', 'planks', 'coal', 'pickaxe', 'stone'] } ] },
+  },
+  // Товары поселений: n — сколько за покупку, price — цена в монетах (казна лагеря)
+  TOWN_GOODS: {
+    cooked_meat:    { name: 'Жареное мясо',    n: 3,  price: 8 },
+    cooked_carrot:  { name: 'Печёная морковь', n: 3,  price: 5 },
+    cooked_pumpkin: { name: 'Печёная тыква',   n: 2,  price: 9 },
+    berry:          { name: 'Ягоды',           n: 5,  price: 3 },
+    seed_carrot:    { name: 'Семена моркови',  n: 2,  price: 5 },
+    seed_pumpkin:   { name: 'Семена тыквы',    n: 1,  price: 6 },
+    coal:           { name: 'Уголь',           n: 2,  price: 7 },
+    iron:           { name: 'Железо',          n: 1,  price: 16 },
+    stone:          { name: 'Камень',          n: 3,  price: 8 },
+    planks:         { name: 'Доски на склад',  n: 10, price: 10 },
+    xp:             { name: 'Шарики опыта',    n: 12, price: 14 },
+    bag:            { name: 'Рюкзак +2',       n: 2,  price: 30, once: true },
+    pickaxe:        { name: 'Кирка',           n: 1,  price: 55, once: true },
+  },
+  TOWN_GEAR: { count: 3, priceMult: 3, powerDay: 0.03, rarityTier: 2 }, // вещей у торговца; цена = разбор × priceMult; сила растёт со днями
+  TRADER_RADIUS: 70,          // Подойдите так близко к торговцу — откроется его прилавок
   // Территория лагеря по уровню главного костра (1..4): внутри монстры не появляются
   TERRITORY_RADIUS: [320, 450, 600, 780],
-  // Глубина леса: чем дальше от лагеря, тем опаснее. depth = 0 у границы территории, 1 у края карты
+  // Глубина леса: чем дальше от лагеря, тем опаснее. depth = 0 у границы территории, 1 у края лесного ядра,
+  // в землях сторон света — до DEPTH_MAX
+  DEPTH_MAX: 1.4,             // Максимальная глубина (дальние края биомов)
   DEPTH_HP: 1.5,              // +150% здоровья монстров на краю карты
   DEPTH_DMG: 0.8,             // +80% урона монстров на краю карты
   DEPTH_NIGHTS: 12,           // Глубоко в лесу виды монстров «из будущих ночей» появляются раньше на столько ночей

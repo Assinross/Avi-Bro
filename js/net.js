@@ -63,11 +63,11 @@
       const ws = new WebSocket(wsUrl());
       Net.ws = ws;
       Net.conn = { send: (d) => { if (ws.readyState === 1) ws.send(JSON.stringify(d)); }, close: () => ws.close() };
-      ws.onopen = () => ws.send(JSON.stringify({ t: '_host', code: Net.code }));
+      ws.onopen = () => ws.send(JSON.stringify({ t: '_host', code: Net.code, name: h.name || '', prof: h.prof || '' }));
       ws.onmessage = (e) => {
         const m = JSON.parse(e.data);
         if (m.t === '_ok') { h.ready(Net.code); return; }
-        if (m.t === '_taken') { Net.code = genCode(); ws.send(JSON.stringify({ t: '_host', code: Net.code })); h.ready(Net.code); return; }
+        if (m.t === '_taken') { Net.code = genCode(); ws.send(JSON.stringify({ t: '_host', code: Net.code, name: h.name || '', prof: h.prof || '' })); h.ready(Net.code); return; }
         if (m.t === '_open') { Net.open = true; h.guest(); return; }
         if (m.t === '_close') { Net.open = false; h.guestLeft(); return; }
         h.data(m);

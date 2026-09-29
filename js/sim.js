@@ -19,7 +19,7 @@
       seed, W, mode, clock: 0, day: 1, isNight: false, nightF: 0,
       players: [], monsters: [], projs: [], drops: [], eprojs: [], tele: [], structs: [], mines: [], bots: [],
       plots: W.plots.map((p, i) => ({ id: i, x: p.x, y: p.y, crop: null, t: 0, ready: false, mod: false })),
-      fires: W.fires.map((f, i) => ({ id: i, x: f.x, y: f.y, fuel: cfg.FIRE_FUEL_START, main: f.main, lvl: 1, mod: false, lm: 1 })),
+      fires: W.fires.map((f, i) => ({ id: i, x: f.x, y: f.y, fuel: f.town !== undefined ? cfg.FIRE_FUEL_MAX : cfg.FIRE_FUEL_START, main: f.main, town: f.town, lvl: 1, mod: false, lm: 1 })),
       nextId: 1, spawnT: 2, fxOut: [], treeDirty: new Set(), bushDirty: new Set(),
       over: null, stats: { kills: 0 }, fireLevel: 1, nextBoss: cfg.BOSS_FIRST_NIGHT, bossCount: 0, team: {},
       store: { x: W.fires[0].x + cfg.STORAGE_OFFSET[0], y: W.fires[0].y + cfg.STORAGE_OFFSET[1], logs: 0, planks: cfg.MILL.startPlanks, coal: 0, iron: 0, stone: 0, hides: 0, lvl: 1, up: 0, saws: [], coalCnt: 0, feedT: 0, bmod: null },
@@ -30,6 +30,7 @@
       wx: { id: 'clear', t: (cfg.WEATHER && cfg.WEATHER.firstClear) || 120 }, bolts: [], boltT: 3,
     };
     AB.WX = Sim.wxDef('clear');
+    G.tstock = {}; if (mode !== 'guest') Sim.restockTowns(G);
     W.G = G; // для столкновений со зданиями
     if (mode !== 'guest') {
       W.sites.forEach((s) => {
@@ -73,6 +74,50 @@
     }
     Sim.msg(G, 'Лесные локации разрослись: больше стражи, но и сундуки богаче', -1, '#c8e0a0');
   };
+
+  /* ======================= ПОСЕЛЕНИЯ И ТОРГОВЦЫ ======================= */
+  // Прилавки обновляются каждый рассвет: вещи своих ячеек и товары поселения
+  Sim.restockTowns = function (G) {
+    const cfg = C(), TG = cfg.TOWN_GEAR;
+    G.tstock = {};
+    for (const town of (G.W.towns || [])) for (const tr of town.traders) {
+      const def = cfg.TOWNS[town.key].traders.find(q => q.role === tr.role) || {};
+      const st = { gear: [], goods: (def.goods || []).slice(), once: {} };
+      const pseudo = { tier: TG.rarityTier, pwAdd: TG.powerDay * ((G.day || 1) - 1) };
+      if (def.gear) for (let k = 0; k < TG.count; k++) { const it = Sim.makeItem(G, pseudo, def.gear, cfg.TOWNS[town.key].origin || ''); it.price = Math.round(Sim.scrapValue(it) * TG.priceMult); st.gear.push(it); }
+      G.tstock[tr.id] = st;
+    }
+    G.tsDirty = true;
+  };
+  Sim.traderById = (G, id) => { for (const t of (G.W.towns || [])) for (const tr of t.traders) if (tr.id === id) return tr; return null; };
+  function traderBuy(G, p, tid, what) {
+    const cfg = C(), tr = Sim.traderById(G, tid), st = G.tstock[tid];
+    if (!tr || !st) return;
+    if (AB.dist(p.x, p.y, tr.x, tr.y) > cfg.TRADER_RADIUS * 1.6) { Sim.msg(G, 'Подойдите к торговцу', p.id, '#ff9d7a'); return; }
+    if (typeof what === 'string' && what[0] === 'g') { // вещь
+      const i = st.gear.findIndex(it => it.id === +what.slice(1)); if (i < 0) return;
+      const it = st.gear[i];
+      if (G.coins < it.price) { Sim.msg(G, `Нужно ${it.price} $ (в казне ${G.coins})`, p.id, '#ff9d7a'); return; }
+      G.coins -= it.price; st.gear.splice(i, 1); const bought = Object.assign({}, it); delete bought.price;
+      Sim.giveItem(G, p, bought); G.tsDirty = true;
+      return;
+    }
+    const g = cfg.TOWN_GOODS[what]; if (!g || !st.goods.includes(what)) return;
+    if (g.once && st.once[p.id + ':' + what]) { Sim.msg(G, 'Уже куплено — приходите завтра', p.id, '#ff9d7a'); return; }
+    if (what === 'pickaxe' && p.pick) { Sim.msg(G, 'Кирка уже есть', p.id, '#ff9d7a'); return; }
+    if (G.coins < g.price) { Sim.msg(G, `Нужно ${g.price} $ (в казне ${G.coins})`, p.id, '#ff9d7a'); return; }
+    G.coins -= g.price;
+    if (what === 'bag') p.bagUp = (p.bagUp || 0) + g.n;
+    else if (what === 'pickaxe') p.pick = 1;
+    else if (what === 'planks') G.store.planks += g.n;
+    else if (what === 'iron' || what === 'stone' || what === 'coal') G.store[what] = (G.store[what] || 0) + g.n;
+    else if (what === 'xp') Sim.dropItem(G, 'xp', g.n, p.x, p.y + 10, 10);
+    else p.inv[what] = (p.inv[what] || 0) + g.n;
+    if (g.once) st.once[p.id + ':' + what] = 1;
+    G.tsDirty = true;
+    Sim.fx(G, { k: 'sold', x: tr.x, y: tr.y - 20, n: -g.price });
+    Sim.msg(G, `Куплено: ${g.name}${g.n > 1 ? ' ×' + g.n : ''}${['iron', 'stone', 'coal', 'planks'].includes(what) ? ' — на склад' : ''}`, p.id, '#ffd24a');
+  }
 
   /* ======================= ПОГОДА ======================= */
   Sim.wxDef = function (id) {
@@ -124,11 +169,12 @@
   // Вещь: { s: ячейка, b: основа, r: редкость 0..3, pw: сила, m: {свойство: значение}, n: имя, id }
   const r2 = (v) => Math.round(v * 100) / 100;
   const nice = (v) => Math.abs(v) >= 3 ? Math.round(v) : Math.abs(v) >= 1 ? Math.round(v * 10) / 10 : r2(v); // красивые числа
-  Sim.makeItem = function (G, site) {
+  Sim.makeItem = function (G, site, slots, origin) {
     const cfg = C(), GR = cfg.GEAR, tier = site ? site.tier : 0;
-    const slot = GR.slots[Math.floor(rnd() * GR.slots.length)];
+    const SL = slots && slots.length ? slots : GR.slots;
+    const slot = SL[Math.floor(rnd() * SL.length)];
     const bases = GR.bases[slot], base = bases[Math.floor(rnd() * bases.length)];
-    let pw = 1 + GR.powerTier * tier + GR.powerFire * ((G.fireLevel || 1) - 1) + (site && site.elite ? GR.powerElite : 0) + (site && site.hidden ? GR.powerElite : 0);
+    let pw = 1 + (site && site.pwAdd || 0) + GR.powerTier * tier + GR.powerFire * ((G.fireLevel || 1) - 1) + (site && site.elite ? GR.powerElite : 0) + (site && site.hidden ? GR.powerElite : 0);
     pw = Math.round(pw * (0.92 + rnd() * 0.16) * 10) / 10;
     const ws = GR.rarity.map(q => q.w[Math.min(3, tier + (site && (site.elite || site.hidden) ? 1 : 0))]);
     let x = rnd() * ws.reduce((a, b) => a + b, 0), rar = 0;
@@ -140,8 +186,8 @@
       const k = keys.splice(Math.floor(rnd() * keys.length), 1)[0], A = GR.affixes[k];
       m[k] = nice((A[0] + rnd() * (A[1] - A[0])) * pw * R.mult);
     }
-    const origin = site && GR.origin[site.kind] ? ' ' + GR.origin[site.kind] : '';
-    return { id: G.nextId++, s: slot, b: base.id, r: rar, pw, m, n: base.name + origin };
+    const org = origin ? ' ' + origin : site && GR.origin[site.kind] ? ' ' + GR.origin[site.kind] : '';
+    return { id: G.nextId++, s: slot, b: base.id, r: rar, pw, m, n: base.name + org };
   };
   Sim.itemBase = (it) => (C().GEAR.bases[it.s] || []).find(b => b.id === it.b) || {};
   Sim.itemScore = (it) => { if (!it) return 0; let v = 0; for (const k in it.m) v += it.m[k] * ({ maxHp: 0.25, armor: 2.5, regen: 8, thorns: 0.8 }[k] || 1); return v; };
@@ -209,7 +255,8 @@
   Sim.territory = (G) => C().TERRITORY_RADIUS[Math.min(3, (G.fireLevel || 1) - 1)];
   Sim.depth = function (G, x, y) {
     const W = G.W, d = AB.dist(x, y, W.camp.x, W.camp.y), t = Sim.territory(G);
-    return AB.clamp((d - t) / (W.size / 2 - t), 0, 1);
+    const core = (W.core || W.N) * W.T / 2; // 1 — край лесного ядра; дальше, в землях сторон света, ещё глубже
+    return AB.clamp((d - t) / (core - t), 0, C().DEPTH_MAX || 1);
   };
   Sim.spawnMonster = function (G, type, x, y, guard, depth, power) {
     const cfg = C(), def = AB.monDef(type);
@@ -332,6 +379,7 @@
       Sim.msg(G, 'К лагерю пришёл торговец! Он уйдёт с наступлением ночи', -1, '#ffd24a');
     }
     Sim.msg(G, `Рассвет! Пережито ночей: ${prevDay} из ${cfg.NIGHTS_TO_WIN}`, -1, '#ffd98a');
+    if (G.W.towns && G.W.towns.length) Sim.restockTowns(G);
     G.monsters.forEach(m => { if (!m.boss) m.hunter = false; if (m.type === 'shade') m.dying = 1.2; });
     for (const p of G.players) {
       p.level++;
@@ -717,7 +765,7 @@
           const lv = f.main ? G.fireLevel : 1;
           p.hp = Math.min(p.mhp, p.hp + cfg.FIRE_HEAL * (1 + cfg.FIRE_LEVEL_HEAL * (lv - 1)) * (1 + st.fireHeal / 100) * (Sim.hasMod(f, 'hearth') ? 2 : 1) * dt);
         }
-        if (d < cfg.FIRE_FEED_RADIUS && p.feedCd <= 0) {
+        if (f.town === undefined && d < cfg.FIRE_FEED_RADIUS && p.feedCd <= 0) {
           // сначала уголь, потом бревна
           const k = ['coal', 'wood'].find(q => (p.inv[q] || 0) > 0);
           if (k && Sim.feedFire(G, f, cfg.FUEL_VALUES[k])) {
@@ -1885,7 +1933,7 @@
       }
     }
     for (const f of G.fires) {
-      f.fuel = Math.max(0, f.fuel - cfg.FIRE_BURN_RATE * dt * (AB.WX ? AB.WX.fireBurn : 1));
+      if (f.town === undefined) f.fuel = Math.max(0, f.fuel - cfg.FIRE_BURN_RATE * dt * (AB.WX ? AB.WX.fireBurn : 1)); // костры поселений горят вечно
       f.cap = Sim.fireCap(G, f);
       f.lvl = f.main ? G.fireLevel : 1;
       f.lm = (f.mod ? 1 + cfg.MODULES.fire.light / 100 : 1) * (Sim.hasMod(f, 'signal') ? 1.4 : 1);
@@ -2074,7 +2122,8 @@
       const x = tx * W.T + W.T / 2 + (rnd() - 0.5) * 10, y = ty * W.T + W.T / 2 + (rnd() - 0.5) * 10;
       if (AB.dist(x, y, W.camp.x, W.camp.y) < terr) continue;
       if (G.structs.some(s => AB.dist2(s.x, s.y, x, y) < 60 * 60) || G.players.some(p => AB.dist2(p.x, p.y, x, y) < 60 * 60)) continue;
-      const t = { id: W.trees.length, x, y, tx, ty, v: Math.floor(rnd() * 6), s: 0.85 + rnd() * 0.4, hp: 0, dead: true, sap: 0, sg: G.clock, regrow: Sim.saplingTime(), shake: 0, border: false, wild: true };
+      const bi = W.biome ? W.biome[i] : 0, BL = bi && W.bmix[i] > 0.5 ? C().BIOMES[AB.biomeKey(bi)].trees : null;
+      const t = { id: W.trees.length, x, y, tx, ty, v: BL ? BL[Math.floor(rnd() * BL.length)] : Math.floor(rnd() * 6), s: 0.85 + rnd() * 0.4, hp: 0, dead: true, sap: 0, sg: G.clock, regrow: Sim.saplingTime(), shake: 0, border: false, wild: true };
       W.trees.push(t); W.treeAt[i] = t.id; W.solid[i] = AB.S_TREE;
       G.sapCount = (G.sapCount || 0) + 1;
       G.treeDirty.add(t.id);
@@ -2103,6 +2152,7 @@
       if (G.players.some(q => AB.dist(q.x, q.y, x, y) < cfg.SPAWN_MIN_DIST * 0.9)) continue;
       if (AB.dist(x, y, W.camp.x, W.camp.y) < terr + 80) continue;
       if (!G.isNight && AB.dist(x, y, W.camp.x, W.camp.y) < cfg.SAFE_CAMP_RADIUS * 2) continue;
+      if ((W.towns || []).some(tn => AB.dist(x, y, tn.x, tn.y) < (cfg.TOWN_SAFE || 400))) continue; // у поселений спокойно
       const depth = Sim.depth(G, x, y), effDay = G.day + cfg.DEPTH_NIGHTS * depth;
       const table = cfg.SPAWN_TABLE.filter(e => e.from <= effDay && (G.isNight ? e.night !== false : e.day));
       if (!table.length) return;
@@ -2161,6 +2211,7 @@
     if (c === 'pickup') { pickupDrop(G, p, x); return; }
     if (c === 'autopick') { p.ap = !!x; return; }
     if (c === 'equip' || c === 'unequip' || c === 'scrap') { gearCommand(G, p, c, x); return; }
+    if (c === 'tbuy') { traderBuy(G, p, x, y); return; }
     if (c === 'dumpfire') { dumpFire(G, p, x); return; }
     if (c === 'dumphide') { dumpHide(G, p); return; }
     if (c === 'dumpfood') {
@@ -2564,7 +2615,7 @@
       bt: G.bots.map(b => [b.id, b.ab, r1(b.x), r1(b.y), r1(b.a), Math.round(b.life / b.max * 100) / 100]),
       d: G.drops.map(d => d.v > 1 ? [d.id, d.k, r1(d.x), r1(d.y), d.v] : [d.id, d.k, r1(d.x), r1(d.y)]),
       pl: G.plots.map(p => [r1(p.x), r1(p.y), p.crop, Math.round(p.t), p.ready ? 1 : 0, p.mod ? 1 : 0]),
-      f: G.fires.map(f => [r1(f.x), r1(f.y), r1(f.fuel), f.main ? 1 : 0, f.lvl, f.mod ? 1 : 0, f.lm, f.cap || Sim.fireCap(G, f), f.bmod || 0]),
+      f: G.fires.map(f => [r1(f.x), r1(f.y), r1(f.fuel), f.main ? 1 : 0, f.lvl, f.mod ? 1 : 0, f.lm, f.cap || Sim.fireCap(G, f), f.bmod || 0, f.town === undefined ? -1 : f.town]),
       ch: W.sites.filter(s2 => s2.opened).map(s2 => s2.id),
       so: [G.store.x, G.store.y, G.store.logs, G.store.planks, G.store.lvl, G.store.up, (G.store.saws || []).map(v => Math.round(v)), G.store.coal || 0, G.store.bmod || 0, G.store.iron || 0, G.store.stone || 0, G.store.hides || 0],
       eco: [G.coins, G.fireUp, G.debt, G.upkeepLast, Math.round(G.crypto.price * 10) / 10, G.crypto.held, G.crypto.hist],
@@ -2573,6 +2624,7 @@
       kc: [G.kitchen.x, G.kitchen.y, G.kitchen.slots.map(q => [q.k, Math.round(q.t / C().COOKING[q.k].time * 100) / 100]), G.kitchen.queue.length, G.kitchen.ready || {}],
       fx: G.fxOut,
       wx: [G.wx.id, Math.round(G.wx.t)],
+      ts: full || G.tsDirty ? G.tstock : undefined,
       bo: G.bolts.map(b => [r1(b.x), r1(b.y), b.r, Math.round(b.t / b.dur * 100) / 100]),
     };
     const trees = [], bushes = [];
@@ -2591,7 +2643,7 @@
     }
     s.tr = trees; s.bu = bushes;
     G.treeDirty.clear(); G.bushDirty.clear();
-    G.fxOut = [];
+    G.fxOut = []; G.tsDirty = false;
     return s;
   };
 
@@ -2600,6 +2652,7 @@
     G.clock = s.c; G.stats.kills = s.k; G.nextBoss = s.nb;
     if (s.fl !== G.fireLevel) { G.fireLevel = s.fl; Sim.onFireLevel(G); }
     if (s.wx) { G.wx = { id: s.wx[0], t: s.wx[1] }; AB.WX = Sim.wxDef(s.wx[0]); }
+    if (s.ts) G.tstock = s.ts;
     G.bolts = (s.bo || []).map(a => ({ x: a[0], y: a[1], r: a[2], t: a[3], dur: 1 }));
     const ti = Sim.timeInfo(G.clock); G.day = ti.day; G.isNight = ti.isNight; G.nightF = ti.nightF;
     if (s.o && !G.over) G.over = s.o;
@@ -2639,7 +2692,7 @@
     const dmap = new Map(G.drops.map(d => [d.id, d]));
     G.drops = s.d.map(a => { const o = dmap.get(a[0]); return { id: a[0], k: a[1], x: a[2], y: a[3], v: a[4] || 1, age: o ? o.age : 0 }; });
     G.plots = s.pl.map((a, i) => ({ id: i, x: a[0], y: a[1], crop: a[2], t: a[3], ready: !!a[4], mod: !!a[5] }));
-    G.fires = s.f.map((a, i) => ({ id: i, x: a[0], y: a[1], fuel: a[2], main: !!a[3], lvl: a[4], mod: !!a[5], lm: a[6], cap: a[7], bmod: a[8] || null }));
+    G.fires = s.f.map((a, i) => ({ id: i, x: a[0], y: a[1], fuel: a[2], main: !!a[3], lvl: a[4], mod: !!a[5], lm: a[6], cap: a[7], bmod: a[8] || null, town: a[9] >= 0 ? a[9] : undefined }));
     s.ch.forEach(id => { if (W.sites[id]) W.sites[id].opened = true; });
     if (s.so) G.store = { x: s.so[0], y: s.so[1], logs: s.so[2], planks: s.so[3], lvl: s.so[4], up: s.so[5], saws: s.so[6], coal: s.so[7], bmod: s.so[8] || null, iron: s.so[9] || 0, stone: s.so[10] || 0, hides: s.so[11] || 0 };
     if (s.eco) { G.coins = s.eco[0]; G.fireUp = s.eco[1]; G.debt = s.eco[2]; G.upkeepLast = s.eco[3]; G.crypto = { price: s.eco[4], held: s.eco[5], hist: s.eco[6] }; }

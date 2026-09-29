@@ -63,7 +63,70 @@
     ctx.beginPath(); ctx.moveTo(x + w / 2 + 5, yb + 1); ctx.lineTo(x + w / 2, yb - 7); ctx.lineTo(x + 2, yb + 1); ctx.fill();
   }
 
+  // Деревья биомов: 6–7 заснеженные ели, 8–9 болотные ивы, 10 степная акация, 11 сухое дерево
+  function makeBiomeTree(v) {
+    const W = 120, H = 150, c = AB.canvas(W, H), ctx = c.getContext('2d');
+    const rng = AB.rng(3000 + v * 131);
+    const bx = W / 2, by = H - 10;
+    if (v === 6 || v === 7) {
+      const pal = v === 6 ? { outline: '#0b1a16', dark: '#1a3a34', mid: '#285a4c', light: '#3f7a66' } : { outline: '#0c1614', dark: '#16322e', mid: '#224a44', light: '#3a6e62' };
+      trunk(ctx, bx, by, 9, 24);
+      const tiers = 5;
+      for (let t = 0; t < tiers; t++) {
+        const k = t / (tiers - 1), w = AB.lerp(46, 13, k), yb2 = by - 14 - t * 21, h = 40;
+        const pts = []; for (let i = 0; i <= 7; i++) { const f = i / 7; pts.push([bx - w + f * w * 2, yb2 + (i % 2 ? -3 : 3) + Math.sin(f * Math.PI) * 5]); }
+        const draw = (grow, col) => { ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(bx, yb2 - h - grow); pts.forEach(p => ctx.lineTo(p[0] + (p[0] < bx ? -grow : grow), p[1] + grow)); ctx.closePath(); ctx.fill(); };
+        draw(2.5, pal.outline); draw(0, pal.dark);
+        ctx.save(); ctx.beginPath(); ctx.moveTo(bx, yb2 - h); pts.forEach(p => ctx.lineTo(p[0], p[1])); ctx.closePath(); ctx.clip();
+        ctx.fillStyle = pal.mid; ctx.beginPath(); ctx.moveTo(bx, yb2 - h); ctx.lineTo(bx - w, yb2); ctx.lineTo(bx + w * 0.25, yb2 - 4); ctx.fill();
+        // снег на лапах: белые шапки по верхнему краю яруса
+        ctx.fillStyle = '#f4f8fc';
+        ctx.beginPath(); ctx.moveTo(bx, yb2 - h - 1); ctx.lineTo(bx - w * 0.85, yb2 - 6); ctx.quadraticCurveTo(bx - w * 0.45, yb2 - 16, bx - w * 0.1, yb2 - 12); ctx.quadraticCurveTo(bx + w * 0.3, yb2 - 18, bx + w * 0.8, yb2 - 7); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#c8daea'; ctx.beginPath(); ctx.moveTo(bx + w * 0.8, yb2 - 7); ctx.quadraticCurveTo(bx + w * 0.3, yb2 - 18, bx, yb2 - h - 1); ctx.lineTo(bx + w * 0.2, yb2 - h * 0.4); ctx.fill();
+        for (let i = 0; i < 30; i++) { ctx.fillStyle = rng() < 0.5 ? '#ffffff' : pal.light; ctx.globalAlpha = 0.6; ctx.fillRect(Math.round(bx + (rng() - 0.5) * w * 2), Math.round(yb2 - rng() * h), 2, 2); }
+        ctx.globalAlpha = 1; ctx.fillStyle = 'rgba(0,0,0,0.22)'; ctx.fillRect(bx - w - 4, yb2 - 6, w * 2 + 8, 10);
+        ctx.restore();
+      }
+      // сугроб у корней
+      ell(ctx, bx, by + 1, 26, 7, '#b8cadc'); ell(ctx, bx - 3, by - 1, 22, 5.5, '#f0f6fc');
+    } else if (v === 8 || v === 9) {
+      trunk(ctx, bx, by, 13, 40);
+      const pal = v === 8 ? { outline: '#0e160c', dark: '#26341c', mid: '#3a4e26', light: '#5a6e36' } : { outline: '#101810', dark: '#223020', mid: '#34482c', light: '#526a40' };
+      leafCluster(ctx, rng, bx, by - 70, 42, pal, 9);
+      leafCluster(ctx, rng, bx - 22, by - 58, 22, pal, 5);
+      leafCluster(ctx, rng, bx + 22, by - 60, 22, pal, 5);
+      // свисающие ветви-плети и мох
+      for (let i = 0; i < 16; i++) {
+        const x = bx + (rng() - 0.5) * 84, y0 = by - 66 + (rng() - 0.3) * 30, len = 18 + rng() * 32;
+        ctx.strokeStyle = pal.outline; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x, y0); ctx.quadraticCurveTo(x + (rng() - 0.5) * 6, y0 + len * 0.6, x + (rng() - 0.5) * 8, y0 + len); ctx.stroke();
+        ctx.strokeStyle = rng() < 0.5 ? pal.light : '#8a9a6a'; ctx.lineWidth = 1.6; ctx.stroke();
+      }
+      ell(ctx, bx, by + 1, 22, 5, 'rgba(60,80,50,0.5)');
+    } else if (v === 10) {
+      trunk(ctx, bx, by, 8, 34);
+      ctx.strokeStyle = '#3a2616'; ctx.lineWidth = 5; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(bx, by - 30); ctx.lineTo(bx - 22, by - 58); ctx.moveTo(bx, by - 30); ctx.lineTo(bx + 24, by - 56); ctx.moveTo(bx, by - 34); ctx.lineTo(bx + 4, by - 62); ctx.stroke();
+      const pal = { outline: '#1c200c', dark: '#5a6a22', mid: '#7a8a2e', light: '#a8b848' };
+      // плоская зонтичная крона
+      for (const [dx, dy, R] of [[-26, -64, 20], [0, -70, 24], [26, -63, 20], [-12, -72, 16], [14, -73, 16]]) { ell(ctx, bx + dx, by + dy, R + 2, R * 0.45 + 2, pal.outline); }
+      for (const [dx, dy, R] of [[-26, -64, 20], [0, -70, 24], [26, -63, 20], [-12, -72, 16], [14, -73, 16]]) { ell(ctx, bx + dx, by + dy, R, R * 0.45, pal.dark); ell(ctx, bx + dx - 3, by + dy - 3, R * 0.8, R * 0.3, pal.mid); ell(ctx, bx + dx - 6, by + dy - 5, R * 0.45, R * 0.16, pal.light); }
+      ell(ctx, bx, by + 1, 20, 4, 'rgba(90,70,30,0.35)');
+    } else {
+      // сухое дерево: голые ветви
+      trunk(ctx, bx, by, 10, 36);
+      const branch = (x, y, a, len, w, d) => {
+        const x2 = x + Math.cos(a) * len, y2 = y + Math.sin(a) * len;
+        ctx.strokeStyle = '#1e140c'; ctx.lineWidth = w + 2; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x2, y2); ctx.stroke();
+        ctx.strokeStyle = '#6b5a48'; ctx.lineWidth = w; ctx.stroke();
+        if (d > 0) { branch(x2, y2, a - 0.45 - rng() * 0.3, len * 0.7, w * 0.65, d - 1); branch(x2, y2, a + 0.4 + rng() * 0.3, len * 0.65, w * 0.6, d - 1); }
+      };
+      branch(bx, by - 34, -Math.PI / 2, 28, 7, 3);
+    }
+    return { c, ox: bx, oy: by };
+  }
+
   function makeTree(v) {
+    if (v >= 6) return makeBiomeTree(v);
     const W = 120, H = 150, c = AB.canvas(W, H), ctx = c.getContext('2d');
     const rng = AB.rng(1000 + v * 77);
     const bx = W / 2, by = H - 10;
@@ -493,7 +556,7 @@
   }
 
   S.init = function () {
-    S.trees = []; for (let v = 0; v < 6; v++) S.trees.push(makeTree(v));
+    S.trees = []; for (let v = 0; v < 12; v++) S.trees.push(makeTree(v));
     S.stump = makeStump();
     S.rocks = [0, 1, 2].map(v => makeRock(v, false));
     S.ruins = [0, 1, 2].map(v => makeRock(v, true, v / 2));

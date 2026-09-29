@@ -29,6 +29,8 @@
     for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) bakeQueue.push([x, y]);
     const cx = W.camp.x / CHUNK, cy = W.camp.y / CHUNK;
     bakeQueue.sort((a, b) => Math.hypot(b[0] - cx, b[1] - cy) - Math.hypot(a[0] - cx, a[1] - cy));
+    // карта большая: заранее печём только окрестности лагеря, остальное — по мере надобности
+    bakeQueue = bakeQueue.filter(q => Math.hypot(q[0] - cx, q[1] - cy) < 5.5);
     buildMinimap(W);
     if (AB.Bld) AB.Bld.warm();
   };
@@ -62,6 +64,9 @@
         for (const o of [[12, 0], [-12, 0], [0, 12], [0, -12]]) if (groundAt(W, wx + o[0], wy + o[1]) !== AB.G_WATER) shore++;
         const wave = AB.noise(wx / 30, wy / 12, seed + 8);
         c = AB.mix(COL.deep, COL.shallow, Math.min(1, shore * 0.35 + wave * 0.25));
+        const wti = Math.floor(wy / W.T) * W.N + Math.floor(wx / W.T);
+        if (W.biome && W.biome[wti] === 1) c = AB.mix(c, AB.mix([150, 190, 215], [200, 225, 240], wave), W.bmix[wti] * 0.85); // лёд
+        else if (W.biome && W.biome[wti] === 3) c = AB.mix(c, [40, 60, 40], W.bmix[wti] * 0.6); // болотная вода
         if (h < 0.03) c = AB.mix(c, [120, 170, 170], 0.4);
       } else {
         const forest = AB.fbm(wx / W.T / 14, wy / W.T / 14, seed + 101, 4);
@@ -69,6 +74,9 @@
         const dry = AB.fbm(wx / 140, wy / 140, seed + 44, 2);
         if (dry > 0.62) c = AB.mix(c, COL.dry, (dry - 0.62) * 1.6);
         c = AB.mix(c, [14, 30, 20], AB.clamp((forest - 0.45) * 1.1, 0, 0.45));
+        // земли сторон света: свой цвет земли, плавно переходящий из леса
+        const bti = Math.floor(wy / W.T) * W.N + Math.floor(wx / W.T), bb = W.biome ? W.biome[bti] : 0;
+        if (bb) c = AB.mix(c, biomeGround(bb, wx, wy, seed, n1, h), W.bmix[bti]);
         if (g === AB.G_CAMP || g === AB.G_PATH) {
           const dn = AB.noise(wx / 18, wy / 18, seed + 5);
           c = AB.mix(COL.dirt, COL.dirtL, dn);
@@ -103,7 +111,10 @@
       const g = W.ground[ty * W.N + tx];
       const lx = (tx - t0x) * T, ly = (ty - t0y) * T;
       const r = AB.rng(tx * 7919 + ty * 104729 + seed);
-      if (g === AB.G_GRASS) {
+      const tbi = ty * W.N + tx;
+      if (g === AB.G_GRASS && W.biome && W.biome[tbi] && W.bmix[tbi] > r()) {
+        biomeDetail(ctx, W.biome[tbi], r, lx, ly, T);
+      } else if (g === AB.G_GRASS) {
         const nt = 2 + (r() * 3 | 0);
         for (let k = 0; k < nt; k++) {
           const x = Math.round(lx + r() * T), y = Math.round(ly + r() * T);
@@ -174,6 +185,31 @@
       if (mini.explored[i]) { for (let k = 0; k < 4; k++) mini.img.data[i * 4 + k] = mini.base[i * 4 + k]; mini.dirty = true; }
     }
   };
+  // Цвет земли биома: 1 снег, 2 степь, 3 топь, 4 каменистые холмы
+  function biomeGround(b, wx, wy, seed, n1, h) {
+    const n = AB.noise(wx / 26, wy / 26, seed + 81), n2 = AB.noise(wx / 70, wy / 70, seed + 82);
+    if (b === 1) { const c = AB.mix([206, 218, 230], [240, 245, 250], n); return n2 > 0.64 ? AB.mix(c, [170, 190, 212], 0.5) : c; }
+    if (b === 2) { const c = AB.mix([176, 150, 78], [214, 190, 108], n); return n2 < 0.35 ? AB.mix(c, [140, 150, 70], 0.45) : n2 > 0.7 ? AB.mix(c, [190, 160, 110], 0.4) : c; }
+    if (b === 3) { const c = AB.mix([46, 66, 40], [74, 92, 50], n); return n2 > 0.6 ? AB.mix(c, [62, 52, 36], 0.55) : c; }
+    const c = AB.mix([118, 110, 94], [150, 142, 124], n); return n2 < 0.4 ? AB.mix(c, [84, 110, 60], 0.45) : c;
+  }
+  // Мелкие детали земли биома (травинки, снежные искры, камыш, камешки)
+  function biomeDetail(ctx, b, r, lx, ly, T) {
+    if (b === 1) {
+      for (let k = 0; k < 3; k++) { const x = lx + r() * T, y = ly + r() * T; ctx.fillStyle = r() < 0.5 ? 'rgba(255,255,255,0.9)' : 'rgba(150,175,205,0.6)'; ctx.fillRect(Math.round(x), Math.round(y), 2, 1); }
+      if (r() < 0.06) { const x = lx + r() * T, y = ly + r() * T; ctx.strokeStyle = '#5a4a3a'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - 3, y - 5); ctx.moveTo(x, y); ctx.lineTo(x + 3, y - 4); ctx.stroke(); }
+    } else if (b === 2) {
+      const nt = 3 + (r() * 4 | 0);
+      for (let k = 0; k < nt; k++) { const x = Math.round(lx + r() * T), y = Math.round(ly + r() * T), hh = 3 + r() * 5; ctx.strokeStyle = r() < 0.5 ? 'rgba(120,96,40,0.7)' : 'rgba(236,210,130,0.75)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + (r() - 0.5) * 3, y - hh); ctx.stroke(); }
+      if (r() < 0.04) { const x = lx + r() * T, y = ly + r() * T; for (let q = 0; q < 4; q++) S().circle(ctx, x + (r() - 0.5) * 8, y + (r() - 0.5) * 5, 1.4, r() < 0.5 ? '#e05a3a' : '#f0e0a0'); }
+    } else if (b === 3) {
+      if (r() < 0.35) { const x = lx + r() * T, y = ly + r() * T; for (let q = 0; q < 4; q++) { ctx.strokeStyle = q % 2 ? '#6a7a3a' : '#3a4a24'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(x + q * 2, y); ctx.lineTo(x + q * 2 + (r() - 0.5) * 3, y - 7 - r() * 5); ctx.stroke(); } if (r() < 0.4) S().ell(ctx, x + 3, y - 10, 1.2, 3, '#5a3a22'); }
+      if (r() < 0.2) { const x = lx + r() * T, y = ly + r() * T; S().ell(ctx, x, y, 5 + r() * 4, 2.2, 'rgba(30,45,35,0.55)'); }
+    } else {
+      for (let k = 0; k < 3; k++) { if (r() < 0.5) continue; const x = Math.round(lx + r() * T), y = Math.round(ly + r() * T); ctx.fillStyle = 'rgba(40,36,30,0.6)'; ctx.fillRect(x, y + 1, 4, 2); ctx.fillStyle = '#a8a092'; ctx.fillRect(x, y, 4, 2); }
+      if (r() < 0.1) { const x = lx + r() * T, y = ly + r() * T; ctx.fillStyle = '#4a6a34'; for (let q = 0; q < 3; q++) ctx.fillRect(Math.round(x + q * 2), Math.round(y - q % 2), 1, 4); }
+    }
+  }
   function getChunk(W, cx, cy) {
     const key = cx + ',' + cy;
     let c = chunks.get(key);
@@ -185,6 +221,12 @@
     while (n-- > 0 && bakeQueue.length) { const q = bakeQueue.pop(); getChunk(worldRef, q[0], q[1]); }
   };
   R.bakeProgress = function () { const t = Math.pow(Math.ceil(worldRef.size / CHUNK), 2); return 1 - bakeQueue.length / t; };
+  // Далёкие куски земли выбрасываем из памяти (на большой карте их сотни)
+  function evictChunks(cam) {
+    if (chunks.size <= 56) return;
+    const ccx = cam.x / CHUNK, ccy = cam.y / CHUNK;
+    for (const key of chunks.keys()) { const [a, b] = key.split(',').map(Number); if (Math.abs(a + 0.5 - ccx) > 3.5 || Math.abs(b + 0.5 - ccy) > 3.5) chunks.delete(key); }
+  }
 
   /* =========================== МИНИКАРТА =========================== */
   let mini = null;
@@ -198,7 +240,9 @@
       else if (g === AB.G_CAMP || g === AB.G_PATH) c = [128, 100, 64];
       else if (g === AB.G_SITE) c = [120, 116, 100];
       else c = [52, 92, 44];
-      if (W.treeAt[i] >= 0) c = [24, 52, 30];
+      if (W.biome && W.biome[i] && g !== AB.G_WATER && g !== AB.G_PATH && g !== AB.G_CAMP) c = AB.mix(c, [[0], [225, 232, 240], [196, 170, 92], [58, 78, 44], [132, 124, 108]][W.biome[i]], W.bmix[i]);
+      if (W.biome && W.biome[i] === 1 && g === AB.G_WATER) c = [170, 205, 225];
+      if (W.treeAt[i] >= 0) c = W.biome && W.biome[i] === 1 && W.bmix[i] > 0.5 ? [40, 80, 70] : [24, 52, 30];
       if (W.rockAt[i] >= 0) { const rk = W.rocks[W.rockAt[i]]; c = rk && rk.kind === 'ore' ? (rk.ore === 'iron' ? [196, 110, 70] : [200, 196, 184]) : [110, 110, 110]; }
       base[i * 4] = c[0]; base[i * 4 + 1] = c[1]; base[i * 4 + 2] = c[2]; base[i * 4 + 3] = 255;
     }
@@ -670,6 +714,32 @@
     else if (L.hat === 'witch') { ctx.fillStyle = O; ctx.beginPath(); ctx.ellipse(x, hy2 - 5, 12, 3.6, 0, 0, TAU); ctx.fill(); ctx.fillStyle = L.hatC; ctx.beginPath(); ctx.ellipse(x, hy2 - 5, 10.8, 2.6, 0, 0, TAU); ctx.fill(); ctx.fillStyle = O; ctx.beginPath(); ctx.moveTo(x - 7, hy2 - 5); ctx.quadraticCurveTo(x - 2, hy2 - 22, x + 7 - Math.cos(a) * 3, hy2 - 24); ctx.lineTo(x + 7, hy2 - 5); ctx.fill(); ctx.fillStyle = L.hatC; ctx.beginPath(); ctx.moveTo(x - 5.5, hy2 - 6); ctx.quadraticCurveTo(x - 1.5, hy2 - 20, x + 5.5 - Math.cos(a) * 3, hy2 - 22); ctx.lineTo(x + 5.5, hy2 - 6); ctx.fill(); ctx.fillStyle = '#9b6ad8'; ctx.fillRect(x - 5.5, hy2 - 9, 11, 2); }
     if (!up) weapon();
   }
+  // Торговцы поселений: свой наряд у каждого, лоток с товаром, табличка с именем
+  const TRADER_LOOK = {
+    fur:    { body: '#8a6a4a', skin: '#e8c0a0', hat: 'hood', hatC: '#e8e0d0', weapon: null, belt: '#4a2e18' },
+    fisher: { body: '#3a5a7a', skin: '#e0b090', hat: 'bandana', hatC: '#2a3a5a', weapon: null, belt: '#2a1a10' },
+    shaman: { body: '#8a5a2a', skin: '#c8905a', hat: 'witch', hatC: '#3a6a5a', weapon: 'staff', robe: true },
+    tanner: { body: '#a8763e', skin: '#c8905a', hat: 'bandana', hatC: '#c83a2a', weapon: 'knife', belt: '#5a3a20' },
+    herbal: { body: '#4a7a3a', skin: '#e8c0a0', hat: 'hood', hatC: '#6a9a4a', weapon: null, robe: true },
+    ranger: { body: '#3a5a2a', skin: '#dcae88', hat: 'hood', hatC: '#2c3a28', weapon: 'crossbow', belt: '#5a3a20' },
+    smith:  { body: '#5a4a3a', skin: '#e0b090', hat: 'bandana', hatC: '#3a3a3a', weapon: null, belt: '#2a1a10' },
+    grocer: { body: '#b8483a', skin: '#e8c0a0', hat: 'hood', hatC: '#f0e0c0', weapon: null, belt: '#4a2e18' },
+  };
+  function drawTrader(ctx, tr, t, me) {
+    const L = TRADER_LOOK[tr.look] || TRADER_LOOK.grocer;
+    const a = me ? Math.atan2(me.y - tr.y, me.x - tr.x) : Math.PI / 2;
+    // лоток
+    const bx = tr.x + 26, by = tr.y + 2;
+    S().ell(ctx, bx, by + 2, 18, 4, 'rgba(0,0,0,0.3)');
+    ctx.fillStyle = '#140c08'; ctx.fillRect(bx - 16, by - 16, 32, 18); ctx.fillStyle = '#8a6a44'; ctx.fillRect(bx - 15, by - 15, 30, 16); ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.fillRect(bx - 15, by - 8, 30, 1);
+    const ic = S().icons, show = tr.look === 'smith' ? ['iron', 'stone'] : tr.look === 'fisher' ? ['cooked_meat', 'coal'] : tr.look === 'shaman' || tr.look === 'herbal' ? ['seed_pumpkin', 'berry'] : tr.look === 'grocer' ? ['plank', 'coal'] : ['hide', 'hide'];
+    show.forEach((k, i) => { if (ic[k]) ctx.drawImage(ic[k], bx - 13 + i * 13, by - 26, 12, 12); });
+    humanoid(ctx, { vx: 0, vy: 0, st: 'idle', atk: 0, id: tr.id }, t, tr.x, tr.y, a, 0, false, '#0c0806', L);
+    // табличка
+    const near = me && AB.dist2(me.x, me.y, tr.x, tr.y) < 200 * 200;
+    nameTag(ctx, tr.x, tr.y - 40, `${tr.name}${near ? ' · торговец' : ''}`, '#ffd24a');
+    if (near) { const bob = Math.sin(t * 3 + tr.id) * 2; S().circle(ctx, tr.x, tr.y - 56 + bob, 6, '#140c08'); S().circle(ctx, tr.x, tr.y - 56 + bob, 5, '#ffd24a'); ctx.fillStyle = '#7a5210'; ctx.font = 'bold 8px system-ui'; ctx.textAlign = 'center'; ctx.fillText('$', tr.x, tr.y - 55.5 + bob); }
+  }
   const HUM = {
     bandit: { body: '#7a4a2a', skin: '#e0b088', hat: 'bandana', hatC: '#c83a2a', weapon: 'knife', belt: '#3a2414', mask: null },
     robber: { body: '#3f5238', skin: '#dcae88', hat: 'hood', hatC: '#2c3a28', weapon: 'crossbow', mask: '#2a2a2a', belt: '#5a3a20' },
@@ -805,7 +875,7 @@
   }
 
   /* ---------- убранство локаций ---------- */
-  const FLAT_DECOR = new Set(['bones', 'rubble', 'crater', 'ribcage', 'fring', 'fishbones', 'bonepile', 'herbs']);
+  const FLAT_DECOR = new Set(['bones', 'rubble', 'crater', 'ribcage', 'fring', 'fishbones', 'bonepile', 'herbs', 'boardwalk']);
   // [насколько выше опоры источник, радиус, сила]
   const DECOR_LIGHT = { bfire: [-10, 150, 0.9], cauldron: [-18, 100, 0.6], crystal: [-12, 80, 0.5], jack: [-10, 70, 0.55], saucer: [-30, 120, 0.5], gmush: [-60, 70, 0.3], glowcap: [-30, 80, 0.45] };
   // за чем может спрятаться монстр: [полуширина, высота]
@@ -1474,6 +1544,11 @@
       ctx.fillStyle = 'rgba(10,16,12,0.8)'; roundRect(ctx, x - 16, y + 22, 32, 13, 6); ctx.fill(); ctx.strokeStyle = tc; ctx.lineWidth = 1; ctx.stroke();
       ctx.fillStyle = tc; ctx.fillText('ур. ' + f.lvl, x, y + 29);
     }
+    if (f.town !== undefined) { // вечный костёр поселения: подпись с названием вместо шкалы
+      const tn = G_ref && G_ref.W.towns && G_ref.W.towns[f.town];
+      if (tn) label(ctx, `${tn.name} · вечный костёр`, x, y + 22, '#ffe7a8');
+      return;
+    }
     if (near) {
       drawFireBar(ctx, f, x, y);
     }
@@ -1500,7 +1575,7 @@
     S().ell(ctx, x, y + 2, 5 + k * 10, 2 + k * 3, 'rgba(0,0,0,0.25)');
     ctx.strokeStyle = '#3a2616'; ctx.lineWidth = 1.5 + k * 2.5; ctx.lineCap = 'round';
     ctx.beginPath(); ctx.moveTo(x, y); ctx.quadraticCurveTo(x + sway * 0.5, y - h * 0.5, x + sway, y - h); ctx.stroke();
-    const pine = o.v >= 3, lr = 3 + k * 11;
+    const pine = o.v >= 3 && o.v <= 7, lr = 3 + k * 11;
     if (pine) {
       for (let i = 0; i < 3; i++) { const yy = y - h * (0.45 + i * 0.25), w = lr * (1 - i * 0.25);
         ctx.fillStyle = '#0e1a0e'; ctx.beginPath(); ctx.moveTo(x + sway - w - 1, yy + 1); ctx.lineTo(x + sway, yy - w * 1.1 - 1); ctx.lineTo(x + sway + w + 1, yy + 1); ctx.fill();
@@ -1541,6 +1616,7 @@
   function drawDecor(ctx, d, t) {
     const sp = S();
     if (SITE_PROPS[d.kind]) { SITE_PROPS[d.kind](ctx, d, t); return; }
+    if (AB.Towns && AB.Towns.has(d.kind)) { AB.Towns.draw(ctx, d); return; }
     if (d.kind === 'tent') Bd().draw(ctx, 'tent', d.x, d.y);
     else if (d.kind === 'logs') drawSprite(ctx, sp.logs, d.x, d.y);
     else if (d.kind === 'stump_seat') drawSprite(ctx, sp.stump, d.x, d.y);
@@ -1557,6 +1633,7 @@
   }
   function drawFlatDecor(ctx, d, t) {
     if (SITE_FLAT[d.kind]) { SITE_FLAT[d.kind](ctx, d, t || 0); return; }
+    if (AB.Towns && AB.Towns.drawFlat(ctx, d)) return;
     if (d.kind === 'bones') {
       ctx.strokeStyle = '#d8d0bc'; ctx.lineWidth = 2.5; ctx.lineCap = 'round';
       ctx.beginPath(); ctx.moveTo(d.x - 8, d.y - 2); ctx.lineTo(d.x + 6, d.y + 3); ctx.moveTo(d.x - 4, d.y + 5); ctx.lineTo(d.x + 3, d.y - 4); ctx.stroke();
@@ -1706,6 +1783,7 @@
       for (let cx = Math.max(0, Math.floor(x0 / CHUNK)); cx <= Math.min(Math.ceil(W.size / CHUNK) - 1, Math.floor(x1 / CHUNK)); cx++)
         ctx.drawImage(getChunk(W, cx, cy), cx * CHUNK, cy * CHUNK);
     ctx.imageSmoothingEnabled = true;
+    evictChunks(cam);
     // блики на воде
     const T = W.T;
     const tx0 = Math.max(0, Math.floor(x0 / T)), tx1 = Math.min(W.N - 1, Math.floor(x1 / T));
@@ -1763,6 +1841,7 @@
     if (G.store) vis.push({ y: G.store.y, k: 11, o: G.store });
     if (G.merchant) vis.push({ y: G.merchant.y, k: 12, o: G.merchant });
     updateBirds(G, Math.min(dt, 0.05), t);
+    for (const tn of (W.towns || [])) for (const tr of tn.traders) if (tr.x > x0 && tr.x < x1 && tr.y > y0 && tr.y < y1) vis.push({ y: tr.y, k: 14, o: tr });
     for (const b of birds) if (b.x > x0 && b.x < x1 && b.y > y0 && b.y < y1) vis.push({ y: b.y, k: 13, o: b });
     for (const w of worms) if (w.x > x0 && w.x < x1 && w.y > y0 && w.y < y1) drawWorm(ctx, w, t);
     for (const f of G.fires) if (f.x > x0 && f.x < x1 && f.y > y0 && f.y < y1) vis.push({ y: f.y, k: 5, o: f });
@@ -1816,7 +1895,8 @@
           if (!o.opened && Math.sin(t * 2 + o.id) > 0.9) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; S().circle(ctx, o.x + 6, o.y - 12, 3, '#fff6c0'); ctx.restore(); }
           if (!o.opened && me && AB.dist2(me.x, me.y, o.x, o.y) < 320 * 320) { const K = C().SITE_KINDS[o.kind]; if (K) label(ctx, o.elite ? `${K.name} · ${o.elite.name}` : K.name, o.x, o.y - 30, K.color); }
           break;
-        case 4: { const ob = DECOR_OCC[o.kind]; see(ob && markAll(o.x, o.y, ob[0], ob[1])); drawDecor(ctx, o, t); ctx.globalAlpha = 1; break; }
+        case 4: { const ob = DECOR_OCC[o.kind] || (AB.Towns && AB.Towns.OCC[o.kind]); see(ob && markAll(o.x, o.y, ob[0], ob[1])); drawDecor(ctx, o, t); ctx.globalAlpha = 1; break; }
+        case 14: drawTrader(ctx, o, t, me); break;
         case 5: drawFire(ctx, o, t, o.main || (me && AB.dist2(me.x, me.y, o.x, o.y) < 140 * 140)); break;
         case 6: drawDrop(ctx, o, t); break;
         case 7: drawMonster(ctx, o, t); break;
@@ -1909,6 +1989,7 @@
     for (const d of W.decor) {
       if (d.kind === 'torch') lights.push([d.x, d.y - 30, 120 * (1 + Math.sin(t * 13 + d.x) * 0.05), 0.8]);
       else if (DECOR_LIGHT[d.kind] && !(d.lv > (G.fireLevel || 1))) { const L = DECOR_LIGHT[d.kind]; lights.push([d.x, d.y + L[0], L[1] * (1 + Math.sin(t * 7 + d.x) * 0.05), L[2]]); }
+      else if (AB.Towns && AB.Towns.LIGHT[d.kind]) { const L = AB.Towns.LIGHT[d.kind]; lights.push([d.x, d.y + L[0], L[1], L[2]]); }
     }
     // окна и фонари зданий
     const LB = { townhall: [-10, -30, 95], workshop: [0, -24, 85], exchange: [0, -22, 80], shop: [0, -30, 60] };
@@ -2033,7 +2114,17 @@
   const wxAmt = {};
   function weather(G, cam, z, dt, t) {
     const ctx = R.ctx, cur = (G.wx && G.wx.id) || 'clear';
-    for (const k of ['rain', 'storm', 'snow', 'fog', 'heat']) wxAmt[k] = AB.clamp((wxAmt[k] || 0) + (k === cur ? dt : -dt) / 3, 0, 1);
+    // в снежной тайге снег идёт всегда (немного), в степи — лёгкий зной
+    const W0 = G.W, ci = W0.biome ? Math.floor(cam.y / W0.T) * W0.N + Math.floor(cam.x / W0.T) : -1, bio = ci >= 0 ? W0.biome[ci] : 0, bm = ci >= 0 && bio ? W0.bmix[ci] : 0;
+    for (const k of ['rain', 'storm', 'snow', 'fog', 'heat']) {
+      let tgt = k === cur ? 1 : 0;
+      if (k === 'snow' && bio === 1) tgt = Math.max(tgt, 0.55 * bm);
+      if (k === 'rain' && bio === 1) tgt = 0; // в тайге дождь превращается в снег
+      if (k === 'snow' && bio === 1 && (cur === 'rain' || cur === 'storm')) tgt = 1;
+      if (k === 'heat' && bio === 2 && !G.isNight) tgt = Math.max(tgt, 0.35 * bm);
+      if (k === 'fog' && bio === 3) tgt = Math.max(tgt, 0.35 * bm);
+      const v0 = wxAmt[k] || 0; wxAmt[k] = AB.clamp(v0 + Math.sign(tgt - v0) * Math.min(Math.abs(tgt - v0), dt / 3), 0, 1);
+    }
     ctx.save(); ctx.setTransform(R.dpr, 0, 0, R.dpr, 0, 0);
     const W2 = R.w, H2 = R.h, ox = cam.x * z, oy = cam.y * z; // привязка к миру, чтобы капли не «ехали» за камерой
     const wrap = (v, m) => ((v % m) + m) % m;
@@ -2752,7 +2843,12 @@
       ctx.fillStyle = s.opened ? '#6d6a60' : ((C().SITE_KINDS[s.kind] || {}).color || '#ffd24a'); ctx.fillRect(px - 3, py - 2, 6, 4);
     }
     { const [tx, ty] = P(W.camp.x, W.camp.y); ctx.strokeStyle = 'rgba(255,210,120,0.8)'; ctx.lineWidth = 1.2; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.arc(tx, ty, AB.Sim.territory(G) * sc, 0, TAU); ctx.stroke(); ctx.setLineDash([]); }
-    for (const f of G.fires) { const [px, py] = P(f.x, f.y); S().circle(ctx, px, py, 3, f.fuel > 0 ? '#ff9a2a' : '#555'); }
+    for (const f of G.fires) { if (f.town !== undefined) continue; const [px, py] = P(f.x, f.y); S().circle(ctx, px, py, 3, f.fuel > 0 ? '#ff9a2a' : '#555'); }
+    for (const tn of (W.towns || [])) { // поселения: домик с флажком
+      const [px, py] = P(tn.x, tn.y);
+      ctx.fillStyle = '#000'; ctx.fillRect(px - 5, py - 3, 10, 8); ctx.beginPath(); ctx.moveTo(px - 6.5, py - 2); ctx.lineTo(px, py - 8); ctx.lineTo(px + 6.5, py - 2); ctx.fill();
+      ctx.fillStyle = '#ffd98a'; ctx.fillRect(px - 4, py - 2, 8, 6); ctx.fillStyle = '#c8663a'; ctx.beginPath(); ctx.moveTo(px - 5, py - 2); ctx.lineTo(px, py - 6.5); ctx.lineTo(px + 5, py - 2); ctx.fill();
+    }
     if (G.merchant) { const [px, py] = P(G.merchant.x, G.merchant.y); S().circle(ctx, px, py, 4.5, '#000'); S().circle(ctx, px, py, 3.5, '#ffd24a'); }
     for (const st of G.structs) { const [px, py] = P(st.x, st.y); ctx.fillStyle = st.kind === 'turret' ? '#ffb23a' : '#d08aff'; ctx.fillRect(px - 1.5, py - 1.5, 3, 3); }
     for (const m of G.monsters) if (m.boss) { const [px, py] = P(m.x, m.y); S().circle(ctx, px, py, 5, '#000'); S().circle(ctx, px, py, 4, '#ff3a2a'); }

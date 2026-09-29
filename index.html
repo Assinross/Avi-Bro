@@ -41,7 +41,28 @@
       <label class="field">Ваше имя
         <input id="name2" maxlength="12" placeholder="Игрок" autocomplete="off">
       </label>
+      <!-- игра открыта с нашего сервера: комнаты без кодов -->
+      <div id="lanBox" class="hidden">
+        <div class="lanlink">Ссылка для обоих компьютеров (всегда одна):<br><a id="lanLink" href="#"></a> <button id="btnLanCopy" class="btn small ghost">Копировать</button><div id="lanAlt" class="note"></div></div>
+      </div>
+      <!-- игра открыта из интернета: свой сервер в один клик -->
+      <div id="srvBox" class="srvbox hidden">
+        <div class="mchead">Свой сервер (надёжно, без интернета)</div>
+        <p class="note left">Один раз скачайте и запустите файл на компьютере, где будет сервер. Он сам скачает последнюю версию игры, запустит сервер и откроет игру. Потом на рабочем столе будет значок «Avi-Bro сервер» — запуск в один клик, обновление каждый раз.</p>
+        <div class="row wrap"><a class="btn small" href="start-server.sh" download>Скачать для Linux</a><a class="btn small" href="start-server.bat" download>Скачать для Windows</a></div>
+        <p class="note left">Linux: <code>bash ~/Загрузки/start-server.sh</code> · Windows: двойной клик по файлу.</p>
+        <label class="field">Адрес сервера
+          <div class="row"><input id="srvUrl" placeholder="http://имя-компьютера.local:8080" autocomplete="off"><button id="btnSrvGo" class="btn small gold">Открыть</button></div>
+        </label>
+        <div class="sep"><span>или через интернет</span></div>
+      </div>
       <button id="btnHost" class="btn gold">Создать комнату</button>
+      <div id="roomsBox" class="hidden">
+        <div class="mchead">Комнаты в сети</div>
+        <div id="roomsList" class="rooms"><span class="note">Ищем…</span></div>
+        <button id="btnUpdate" class="btn ghost">Обновить игру до последней версии</button>
+      </div>
+      <div id="codeBox">
       <div class="sep"><span>или</span></div>
       <label class="field">Код комнаты друга
         <div class="row">
@@ -49,6 +70,7 @@
           <button id="btnJoin" class="btn small">Войти</button>
         </div>
       </label>
+      </div>
       <div id="coopErr" class="msg"></div>
       <div id="peerWarn" class="msg warn hidden">Сетевая библиотека не загрузилась — игра вдвоём недоступна. Проверьте интернет.</div>
       <button class="btn ghost" data-back="menu">Назад</button>
@@ -147,6 +169,7 @@
             <li>Чем глубже в лес, тем опаснее монстры.</li>
             <li>В лесу много охраняемых локаций: руины, <b>лагерь разбойников</b>, <b>упавшая тарелка</b>, <b>кладбище зверей</b>, <b>избушка колдуньи</b>, <b>грибная поляна</b>, <b>медвежья берлога</b>. Сундук стережёт либо группа монстров, либо один <b>босс лагеря</b> с короной. Чем дальше от лагеря, тем сильнее охрана и богаче сундук. Некоторые логова <b>скрыты в чаще</b>: тропы к ним нет, прорубайтесь топором.</li>
             <li>В сундуках — монеты, опыт и <b>одежда</b>: 5 ячеек, 4 редкости (обычная, <span style="color:#5aa8ff">магическая</span>, <span style="color:#ffd24a">редкая</span>, <span style="color:#ff8a3a">легендарная</span>), у каждой вещи свои бонусы. Пустая ячейка заполняется сама, остальное ждёт в сундуке героя (<kbd>I</kbd>). Лишнее можно разобрать на монеты.</li>
+            <li>За лесом в каждой стороне света свой край: на севере <b>снежная тайга</b>, на востоке <b>степь</b>, на юге <b>топи</b>, на западе <b>каменные холмы</b>. К каждому ведёт дорога, а там — <b>поселение</b> с вечным костром (лечит, монстры рядом не появляются) и торговцами одежды и товаров.</li>
             <li>Каждый новый уровень главного костра <b>расширяет все локации</b>: лес вокруг отступает, появляются новые постройки, стражи становится больше, а сундуки богаче.</li>
             <li><b>Погода</b> меняется сама: дождь (костёр гаснет быстрее, грядки растут быстрее), гроза (молнии бьют в светлые круги — отойдите), туман, снегопад, зной. Текущая погода — в плашке у левого верхнего угла.</li>
             <li><b>Железо</b> — редкий ресурс из дальних и скрытых логов и от боссов. Сдавайте его на склад у лесопилки. Нужно для высоких уровней зданий, топора и навыков.</li>
@@ -245,6 +268,16 @@
     </div>
   </div>
 
+  <!-- Торговец поселения -->
+  <div id="trader" class="overlay hidden">
+    <div class="lvpanel traderpanel">
+      <div class="lvtitle small" id="trTitle">Торговец</div>
+      <p class="note" id="trInfo"></p>
+      <div id="trGear" class="trgear"></div>
+      <div id="trGoods" class="trgoods"></div>
+    </div>
+  </div>
+
   <!-- Снаряжение -->
   <div id="gear" class="overlay hidden">
     <div class="lvpanel gearpanel">
@@ -310,6 +343,7 @@
   <script src="js/sim.js"></script>
   <script src="js/sprites.js"></script>
   <script src="js/mushrooms.js"></script>
+  <script src="js/towns.js"></script>
   <script src="js/buildings.js"></script>
   <script src="js/fx.js"></script>
   <script src="js/render.js"></script>

@@ -114,11 +114,12 @@
     hostSeed = (Math.random() * 1e9) | 0;
     const name = playerName();
     AB.Net.host({
+      name, prof: App.prof ? (C().PROFESSIONS[App.prof] || {}).name : '',
       ready(code) {
         $('roomCode').textContent = code;
         const url = AB.Net.shareBase() + '?room=' + code + (AB.Net.isLocal ? '&local=1' : '');
         $('roomLink').value = url;
-        $('lobbyStatus').textContent = 'Ожидание второго игрока… Сообщите ему код или ссылку.';
+        $('lobbyStatus').textContent = AB.Net.server ? 'Ожидание второго игрока… Он увидит вашу комнату в списке «Комнаты в сети».' : 'Ожидание второго игрока… Сообщите ему код или ссылку.';
       },
       guest() {
         $('lobbyStatus').textContent = 'Игрок подключается…';
@@ -192,6 +193,37 @@
       },
       error(t) { $('joinStatus').textContent = t; },
     });
+  }
+
+  // Экран «Игра вдвоём»: со своего сервера — ссылка и список комнат; из интернета — скачать сервер
+  function setupCoopScreen() {
+    const sv = AB.Net.server; App.roomsSig = null;
+    $('lanBox').classList.toggle('hidden', !sv);
+    $('roomsBox').classList.toggle('hidden', !sv);
+    $('codeBox').classList.toggle('hidden', !!sv);
+    $('srvBox').classList.toggle('hidden', !!sv);
+    if (sv) {
+      const links = sv.links || [`http://${location.host}`];
+      $('lanLink').textContent = links[0]; $('lanLink').href = links[0];
+      $('lanAlt').textContent = links.length > 1 ? 'Если не открывается: ' + links.slice(1).join(' · ') : '';
+      pollRooms();
+    } else { try { $('srvUrl').value = localStorage.getItem('avibro-srv') || ''; } catch (e) { /* */ } }
+  }
+  function pollRooms() {
+    clearTimeout(App.roomsT);
+    if (!AB.Net.server || $('coop').classList.contains('hidden')) return;
+    fetch('/rooms', { cache: 'no-store' }).then(r => r.json()).then(list => {
+      const sig = JSON.stringify(list); if (sig === App.roomsSig) return; App.roomsSig = sig; // перерисовываем только при изменениях — иначе клик «проваливается»
+      const box = $('roomsList'); box.innerHTML = '';
+      if (!list.length) box.innerHTML = '<span class="note">Пока никто не создал комнату. Создайте её на одном компьютере — на втором она появится здесь сама.</span>';
+      list.forEach(rm => {
+        const el = document.createElement('div'); el.className = 'room';
+        el.innerHTML = `<span><b>${String(rm.name || 'Игрок').replace(/[<>&]/g, '')}</b>${rm.prof ? ' · ' + String(rm.prof).replace(/[<>&]/g, '') : ''}${rm.full ? ' · <span class="note">занята</span>' : ''}</span>`;
+        const b = document.createElement('button'); b.className = 'btn small gold'; b.textContent = 'Войти'; b.disabled = rm.full;
+        b.addEventListener('click', () => { AB.Sound.play('click', 1); clearTimeout(App.roomsT); chooseProf(() => startJoin(rm.code), 'coop'); });
+        el.appendChild(b); box.appendChild(el);
+      });
+    }).catch(() => { /* */ }).finally(() => { App.roomsT = setTimeout(pollRooms, 1500); });
   }
 
   function endToMenu(msg) {
@@ -757,6 +789,60 @@
     App.bpSig = null;
   }
   function toggleBuild() { App.showBuild = !App.showBuild; App.buildSig = null; }
+  /* ============================ ПОСЕЛЕНИЯ ============================ */
+  // Приветствие при входе в поселение и в новый край
+  function townArrival(me) {
+    const G = App.G; if (!me || !G || !G.W.towns) return;
+    const tn = G.W.towns.find(q => AB.dist2(me.x, me.y, q.x, q.y) < (q.r + 40) ** 2);
+    const id = tn ? tn.id : -1;
+    if (id !== App.inTown) { App.inTown = id; if (tn) AB.FX.toast(`${tn.name}: вечный костёр, торговцы. Здесь безопасно`, '#ffe7a8'); }
+    const W = G.W, i = Math.floor(me.y / W.T) * W.N + Math.floor(me.x / W.T), b = W.biome && W.bmix[i] > 0.6 ? W.biome[i] : 0;
+    if (b !== App.inBiome) { const was = App.inBiome; App.inBiome = b; if (b && was !== undefined) { const B = C().BIOMES[AB.biomeKey(b)]; AB.FX.toast(`${B.name}`, B.color); } }
+  }
+  function nearestTrader(me) {
+    const G = App.G, R = C().TRADER_RADIUS; let best = null, bd = R * R;
+    for (const tn of (G.W.towns || [])) for (const tr of tn.traders) { const d = AB.dist2(me.x, me.y, tr.x, tr.y); if (d < bd) { bd = d; best = tr; } }
+    return best;
+  }
+  function updateTraderUI(me) {
+    const cfg = C(), G = App.G, box = $('trader');
+    const tr = me && !me.dead && App.state === 'play' && !App.showGear ? nearestTrader(me) : null;
+    const st = tr && G.tstock ? G.tstock[tr.id] : null;
+    if (!tr || !st) { box.classList.add('hidden'); App.trSig = null; return; }
+    box.classList.remove('hidden');
+    const sig = JSON.stringify([tr.id, st, G.coins, me.eq, me.pick, me.bagUp]);
+    if (sig === App.trSig) return;
+    App.trSig = sig;
+    const town = G.W.towns[tr.town];
+    $('trTitle').textContent = `${tr.name} · ${town.name}`;
+    $('trInfo').innerHTML = `В казне: <b style="color:#ffd24a">${G.coins} $</b>. Товар обновляется каждый рассвет. Купленная одежда попадает в снаряжение (I).`;
+    const GR = cfg.GEAR, L = cfg.STAT_LABELS;
+    const gb = $('trGear'); gb.innerHTML = '';
+    st.gear.forEach(it => {
+      const R = GR.rarity[it.r], cur = (me.eq || {})[it.s], better = AB.Sim.itemScore(it) > AB.Sim.itemScore(cur);
+      const el = document.createElement('div');
+      el.className = 'tritem' + (G.coins < it.price ? ' poor' : '');
+      el.style.borderColor = R.color;
+      const lines = Object.keys(it.m).map(k => { const v = it.m[k], c0 = cur ? (cur.m[k] || 0) : 0, dv = Math.round((v - c0) * 100) / 100; return `<div>${v > 0 ? '+' : ''}${v}${L[k] && L[k][1] ? '%' : ''} ${L[k] ? L[k][0] : k}${dv ? ` <span class="${dv > 0 ? 'up' : 'down'}">(${dv > 0 ? '+' : ''}${dv})</span>` : ''}</div>`; }).join('');
+      el.innerHTML = `<div class="th"><img src="${AB.Render.itemIcon(it)}" alt=""><div><div class="tn" style="color:${R.color}">${it.n}${better ? ' ▲' : ''}</div><div class="ts">${R.name} · ${GR.slotNames[it.s]} · сила ${it.pw}</div></div></div>${lines}<div class="price">${it.price} $</div>`;
+      el.addEventListener('click', () => { AB.Sound.play('click', 1); sendCmd2('tbuy', tr.id, 'g' + it.id); App.trSig = null; });
+      gb.appendChild(el);
+    });
+    gb.style.display = st.gear.length ? '' : 'none';
+    const go = $('trGoods'); go.innerHTML = '';
+    st.goods.forEach(id => {
+      const g = cfg.TOWN_GOODS[id]; if (!g) return;
+      const b = document.createElement('button'); b.className = 'trgood';
+      const done = (g.once && st.once[me.id + ':' + id]) || (id === 'pickaxe' && me.pick);
+      const icon = { planks: 'plank', bag: 'hide', pickaxe: 'pickaxe' }[id] || id;
+      const ic = AB.Sprites.icons[icon];
+      b.innerHTML = `${ic ? `<img src="${ic.toDataURL ? ic.toDataURL() : ''}" alt="">` : ''}${g.name}${g.n > 1 ? ' ×' + g.n : ''} · <b>${g.price} $</b>${done ? ' ✓' : ''}`;
+      b.disabled = done || G.coins < g.price;
+      b.addEventListener('click', () => { AB.Sound.play('click', 1); sendCmd2('tbuy', tr.id, id); App.trSig = null; });
+      go.appendChild(b);
+    });
+  }
+
   /* ============================ СНАРЯЖЕНИЕ ============================ */
   function toggleGear() { App.showGear = !App.showGear; App.gearSig = null; App.gearSel = null; if (App.showGear) App.mobPanel = null; }
   App.toggleGear = toggleGear;
@@ -994,6 +1080,8 @@
     updateBuildingUI(me);
     updateBuildUI(me);
     updateGearUI(me);
+    updateTraderUI(me);
+    townArrival(me);
   }
 
   function smoothRemote(G, dt) {
@@ -1038,7 +1126,7 @@
   /* ============================ ИНИЦИАЛИЗАЦИЯ ============================ */
   function init() {
     AB.Net.detect().then(sv => {
-      if (sv) { const el = $('netInfo'); el.textContent = `Локальный сервер: игра вдвоём по Wi-Fi без интернета. Адрес для второго ПК: http://${sv.ips[0] || location.hostname}:${location.port || sv.port}`; el.classList.remove('hidden'); }
+      if (sv) { const el = $('netInfo'); el.textContent = `Свой сервер: игра вдвоём без интернета. Ссылка для второго ПК: ${(sv.links && sv.links[0]) || location.origin}`; el.classList.remove('hidden'); }
     });
     AB.Sprites.init();
     AB.Render.init($('game'));
@@ -1064,7 +1152,16 @@
     $('optAutoPick').checked = App.autoPick;
     $('optAutoPick').addEventListener('change', (e) => setAutoPick(e.target.checked));
     document.querySelectorAll('[data-ex]').forEach(b => b.addEventListener('click', () => { AB.Sound.play('click', 1); const [c, v] = b.dataset.ex.split(':'); sendCmd(c, v === 'all' ? 'all' : +v); App.exSig = null; }));
-    bind('btnCoop', () => { show('coop'); $('coopErr').textContent = ''; $('peerWarn').classList.toggle('hidden', AB.Net.available()); });
+    bind('btnCoop', () => { show('coop'); $('coopErr').textContent = ''; $('peerWarn').classList.toggle('hidden', AB.Net.available() || !!AB.Net.server); setupCoopScreen(); });
+    bind('btnLanCopy', () => { const t = $('lanLink').textContent; try { navigator.clipboard.writeText(t); } catch (e) { /* */ } $('btnLanCopy').textContent = 'Скопировано!'; setTimeout(() => $('btnLanCopy').textContent = 'Копировать', 1500); });
+    bind('btnSrvGo', () => { let u = $('srvUrl').value.trim(); if (!u) return; if (!/^https?:\/\//.test(u)) u = 'http://' + u; try { localStorage.setItem('avibro-srv', u); } catch (e) { /* */ } location.href = u; });
+    bind('btnUpdate', () => {
+      $('btnUpdate').textContent = 'Скачиваю обновление…'; $('btnUpdate').disabled = true;
+      fetch('/update', { cache: 'no-store' }).then(r => r.json()).then(j => {
+        if (j.ok) { $('btnUpdate').textContent = `Обновлено (${j.files} файлов). Перезапуск…`; setTimeout(() => location.reload(), 4000); }
+        else { $('btnUpdate').textContent = 'Не удалось: ' + (j.error || 'ошибка'); $('btnUpdate').disabled = false; }
+      }).catch(() => { $('btnUpdate').textContent = 'Сервер перезапускается…'; setTimeout(() => location.reload(), 4000); });
+    });
     bind('btnHelp', () => show('help'));
     bind('btnHost', () => chooseProf(startHost, 'coop'));
     bind('btnJoin', () => { const code = $('code').value; if (code.replace(/\D/g, '').length < 3) { $('coopErr').textContent = 'Введите код комнаты'; return; } chooseProf(() => startJoin(code), 'coop'); });

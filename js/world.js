@@ -26,6 +26,21 @@
     const reserved = new Uint8Array(N * N); // места, где нельзя ставить деревья/воду
 
     const cx = W.camp.tx, cy = W.camp.ty, CR = cfg.CAMP_RADIUS_TILES;
+    // ---- земли сторон света: 0 — лесное ядро, 1 север, 2 восток, 3 юг, 4 запад; bmix — сила биома (плавный переход)
+    const BKEYS = [null, 'north', 'east', 'south', 'west'];
+    W.biome = new Uint8Array(N * N); W.bmix = new Float32Array(N * N);
+    W.core = cfg.CORE_TILES || N;
+    const HALF = W.core / 2, BL = cfg.BIOME_BLEND || 6;
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+      const dx = x - cx, dy = y - cy, ax = Math.abs(dx), ay = Math.abs(dy);
+      const m = Math.max(ax, ay) + (AB.noise(x * 0.08, y * 0.08, seed + 61) - 0.5) * 10;
+      if (m < HALF - BL / 2 || W.core >= N) continue;
+      const vert = ay + (AB.noise(x * 0.05, y * 0.05, seed + 62) - 0.5) * 16 > ax;
+      const b = vert ? (dy < 0 ? 1 : 3) : (dx > 0 ? 2 : 4), i = y * N + x;
+      W.biome[i] = b; W.bmix[i] = AB.clamp((m - (HALF - BL / 2)) / BL, 0, 1);
+    }
+    AB.biomeKey = (b) => BKEYS[b];
+    const bdef = (i) => (W.biome[i] ? cfg.BIOMES[BKEYS[W.biome[i]]] : null);
     // ---- лагерь
     for (let y = cy - CR - 2; y <= cy + CR + 2; y++) for (let x = cx - CR - 2; x <= cx + CR + 2; x++) {
       if (!inb(x, y)) continue;
@@ -120,6 +135,39 @@
       }
     });
 
+    // ---- поселения в каждой стороне света: поляна, дорога к лагерю, постройки, вечный костёр, торговцы
+    W.towns = [];
+    if (W.core < N && cfg.TOWNS) {
+      const dist = HALF + (N / 2 - HALF) * 0.5;
+      [['north', 0, -1], ['east', 1, 0], ['south', 0, 1], ['west', -1, 0]].forEach(([key, ux, uy], ti) => {
+        const TW = cfg.TOWNS[key]; if (!TW) return;
+        const side = (r() - 0.5) * 18;
+        const tx = Math.round(cx + ux * dist + uy * side), ty = Math.round(cy + uy * dist + ux * side);
+        const town = { id: ti, key, name: TW.name, tx, ty, x: tx * T + T / 2, y: ty * T + T / 2, r: cfg.TOWN_RADIUS * T, traders: [] };
+        W.towns.push(town);
+        const TR = cfg.TOWN_RADIUS;
+        for (let y = ty - TR - 2; y <= ty + TR + 2; y++) for (let x = tx - TR - 2; x <= tx + TR + 2; x++) {
+          if (!inb(x, y)) continue;
+          const d = Math.hypot(x - tx, y - ty) + (AB.noise(x * 0.4, y * 0.4, seed + 64) - 0.5) * 2.5;
+          if (d < TR) { W.ground[idx(x, y)] = AB.G_CAMP; reserved[idx(x, y)] = 1; } else if (d < TR + 2) reserved[idx(x, y)] = 1;
+        }
+        // дорога от лагеря
+        const steps = Math.ceil(Math.hypot(tx - cx, ty - cy) * 2);
+        const nx = -(ty - cy), ny = tx - cx, nl = Math.hypot(nx, ny) || 1;
+        for (let k = 0; k <= steps; k++) {
+          const t = k / steps, wob = (AB.fbm(t * 5, ti * 7.3, seed + 66, 3) - 0.5) * 22 * Math.sin(t * Math.PI);
+          const px = cx + (tx - cx) * t + (nx / nl) * wob, py = cy + (ty - cy) * t + (ny / nl) * wob;
+          for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
+            const x = Math.round(px + ox * 0.7), y = Math.round(py + oy * 0.7);
+            if (!inb(x, y)) continue;
+            const i2 = idx(x, y);
+            if (W.ground[i2] === AB.G_GRASS) W.ground[i2] = AB.G_PATH;
+            reserved[i2] = 1;
+          }
+        }
+      });
+    }
+
     // ---- тропинки от лагеря к локациям
     W.sites.forEach((s, si) => {
       if (s.hidden) return; // к скрытым логовам тропы нет
@@ -146,8 +194,9 @@
       W.forest[i] = AB.fbm(x / 14, y / 14, seed + 101, 4);
       const edge = Math.min(x, y, N - 1 - x, N - 1 - y);
       if (reserved[i] || ring[i] || grow[i] || edge < cfg.BORDER_TILES + 1) continue;
-      const w = AB.fbm(x / 20, y / 20, seed + 202, 4);
-      if (w > cfg.WATER_LEVEL) { W.ground[i] = AB.G_WATER; W.solid[i] = AB.S_WATER; }
+      const w = AB.fbm(x / 20, y / 20, seed + 202, 4), B = bdef(i);
+      const wl = B ? AB.lerp(cfg.WATER_LEVEL, B.water, W.bmix[i]) : cfg.WATER_LEVEL;
+      if (w > wl) { W.ground[i] = AB.G_WATER; W.solid[i] = AB.S_WATER; }
     }
 
     // ---- деревья, камни, кусты
@@ -163,23 +212,28 @@
       }
       if (ring[i]) { addTree(x, y, px, py, false); continue; }
       if (reserved[i]) continue;
+      const B = bdef(i), bm = B ? W.bmix[i] : 0;
       let dens = cfg.TREE_DENSITY * (0.25 + 1.9 * Math.pow(W.forest[i], 1.6));
-      // чаща: почти сплошной лес
+      // чаща: почти сплошной лес (в степи и на холмах её нет)
       const TH = cfg.THICKET;
-      if (TH && AB.fbm(x / TH.scale, y / TH.scale, seed + 303, 3) > TH.level) dens = Math.max(dens, TH.density);
+      if (TH && AB.fbm(x / TH.scale, y / TH.scale, seed + 303, 3) > TH.level && !(B && B.treeK < 0.5 && bm > 0.4)) dens = Math.max(dens, TH.density);
+      if (B) dens *= AB.lerp(1, B.treeK, bm);
+      const rockD = cfg.ROCK_DENSITY * (B ? AB.lerp(1, B.rockK, bm) : 1), bushD = cfg.BUSH_DENSITY * (B ? AB.lerp(1, B.bushK, bm) : 1);
       if (h < dens) addTree(x, y, px, py, false);
       else if (grow[i]) continue; // на земле, куда вырастет поляна, — только деревья
-      else if (h < dens + cfg.ROCK_DENSITY) {
+      else if (h < dens + rockD) {
         W.rockAt[i] = W.rocks.length;
         W.rocks.push({ x: px, y: py, tx: x, ty: y, v: Math.floor(AB.hash2(x, y, seed + 10) * 3), s: 0.8 + AB.hash2(x, y, seed + 11) * 0.5, kind: 'rock' });
         W.solid[i] = AB.S_ROCK;
-      } else if (h < dens + cfg.ROCK_DENSITY + cfg.BUSH_DENSITY) {
+      } else if (h < dens + rockD + bushD) {
         W.bushes.push({ id: W.bushes.length, x: px, y: py, berries: 1, t: 0 });
       }
     }
     function addTree(x, y, px, py, border) {
       const i = idx(x, y);
-      const v = Math.floor(AB.hash2(x, y, seed + 12) * 6);
+      let v = Math.floor(AB.hash2(x, y, seed + 12) * 6);
+      const bi = W.biome[i];
+      if (bi && W.bmix[i] > AB.hash2(x, y, seed + 14)) { const L = cfg.BIOMES[BKEYS[bi]].trees; v = L[Math.floor(AB.hash2(x, y, seed + 15) * L.length) % L.length]; }
       W.treeAt[i] = W.trees.length;
       W.trees.push({ id: W.trees.length, x: px, y: py, tx: x, ty: y, v, s: 0.85 + AB.hash2(x, y, seed + 13) * 0.4, hp: cfg.TREE_HP, dead: false, regrow: 0, shake: 0, border });
       W.solid[i] = AB.S_TREE;
@@ -248,6 +302,30 @@
     W.decor.push({ x: W.camp.x + 170, y: W.camp.y + 40, kind: 'torch', v: 0 });
     W.decor.push({ x: W.camp.x + 20, y: W.camp.y + 150, kind: 'torch', v: 0 });
 
+    // ---- постройки поселений (у каждого поселения свой набор), вечный костёр и торговцы
+    const LAYOUT = {
+      north: [['izba', -150, -90, 46], ['izba', 110, -110, 46], ['izba', -170, 90, 46], ['well', 60, 140, 16], ['woodpile', -60, -140, 0], ['sled', 160, 20, 0], ['snowman', -40, 150, 0]],
+      east:  [['tipi', -140, -80, 32], ['tipi', 120, -100, 32], ['tipi', -150, 100, 32], ['tipi', 150, 110, 32], ['rack', 0, -150, 0], ['totemT', 40, 150, 10], ['drum', -40, -80, 0]],
+      south: [['treehouse', -150, -90, 34], ['treehouse', 140, -80, 34], ['treehouse', -120, 120, 34], ['stilthut', 150, 120, 28], ['boardwalk', 0, 60, 0], ['lanterns', 0, -150, 0]],
+      west:  [['stonehouse', -150, -100, 44], ['stonehouse', 140, -110, 44], ['stonehouse', -150, 110, 44], ['stonetower', 170, 120, 26], ['fountain', 0, -150, 22], ['stall', -40, 150, 0], ['citywall', 0, 0, 0]],
+    };
+    W.towns.forEach((town) => {
+      const TW = cfg.TOWNS[town.key];
+      W.fires.push({ x: town.x, y: town.y, main: false, town: town.id });
+      (LAYOUT[town.key] || []).forEach(([kind, ox, oy, br]) => {
+        if (kind === 'citywall') { // обрывки городской стены по кругу с проходами
+          const R0 = (cfg.TOWN_RADIUS - 1) * T;
+          for (let k = 0; k < 16; k++) { const a = k / 16 * Math.PI * 2 + 0.2; if (k % 4 === 0) continue; W.decor.push({ x: town.x + Math.cos(a) * R0, y: town.y + Math.sin(a) * R0 * 0.9, kind: 'wallseg', v: r(), a, town: town.id }); W.blockers.push({ x: town.x + Math.cos(a) * R0, y: town.y + Math.sin(a) * R0 * 0.9 - 6, r: 18 }); }
+          return;
+        }
+        W.decor.push({ x: town.x + ox, y: town.y + oy, kind, v: r(), town: town.id });
+        if (br) W.blockers.push({ x: town.x + ox, y: town.y + oy - 8, r: br });
+      });
+      TW.traders.forEach((tr, k) => {
+        town.traders.push({ id: town.id * 10 + k, town: town.id, role: tr.role, name: tr.name, look: tr.look, x: town.x + (k === 0 ? -110 : 100), y: town.y - 20 });
+      });
+    });
+
     // ---- залежи камня и железа в дальних участках леса (добываются киркой)
     W.ores = [];
     const ORES = cfg.ORES || {};
@@ -255,7 +333,8 @@
     for (const kind of Object.keys(ORES)) {
       const O = ORES[kind];
       let placed = 0, tries2 = 0;
-      while (placed < O.count && tries2++ < 4000) {
+      const want = Math.round(O.count * (maxR * maxR) / Math.max(1, (Math.min(N, W.core) / 2 - 7) ** 2) * 0.6 + O.count * 0.4); // карта больше — залежей больше
+      while (placed < want && tries2++ < 12000) {
         const a = r() * Math.PI * 2, d = r.range(O.minDist, maxR);
         const tx = Math.round(cx + Math.cos(a) * d), ty = Math.round(cy + Math.sin(a) * d);
         if (!inb(tx, ty)) continue;
@@ -272,6 +351,19 @@
         W.solid[i] = AB.S_ROCK;
         // ягодные кусты на месте залежи убираем
         for (let k = W.bushes.length - 1; k >= 0; k--) if (Math.abs(W.bushes[k].x - o.x) < T && Math.abs(W.bushes[k].y - o.y) < T) W.bushes[k].x = -9999;
+        placed++;
+      }
+    }
+    // ---- в Каменных холмах залежей больше, и железо встречается чаще
+    if (W.core < N) {
+      let placed = 0, tries3 = 0;
+      while (placed < 18 && tries3++ < 6000) {
+        const tx = Math.floor(r() * N), ty = Math.floor(r() * N), i = idx(tx, ty);
+        if (W.biome[i] !== 4 || W.bmix[i] < 0.8 || W.ground[i] !== AB.G_GRASS || W.treeAt[i] >= 0 || W.rockAt[i] >= 0 || reserved[i]) continue;
+        if (W.ores.some(o => Math.abs(o.tx - tx) + Math.abs(o.ty - ty) < 5)) continue;
+        const kind = r() < 0.55 ? 'iron' : 'stone';
+        const o = { id: W.ores.length, x: tx * T + T / 2, y: ty * T + T / 2 + 4, tx, ty, v: Math.floor(r() * 3), s: 1, kind: 'ore', ore: kind, hp: cfg.ORE_HITS, dead: false, regrow: 0, shake: 0 };
+        W.rockAt[i] = W.rocks.length; W.rocks.push(o); W.ores.push(o); W.solid[i] = AB.S_ROCK;
         placed++;
       }
     }
