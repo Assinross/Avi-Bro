@@ -321,10 +321,10 @@
   }
 
   /* ============================ СЕНСОРНОЕ УПРАВЛЕНИЕ ============================
-   * Левая часть экрана — плавающий джойстик (коснуться и вести палец).
+   * Любая часть экрана — плавающий джойстик (коснуться и вести палец).
    * Короткое касание земли — идти туда / поднять предмет / поставить постройку.
    * Долгое касание (≈0,45 с) — как правый клик: меню здания, бревна в костёр, шкуры на склад, посадка.
-   * Ведение пальцем по правой части — идти за пальцем. */
+   * Второй палец — касание мира (например, тап по земле, пока первый ведёт джойстик). */
   const LONG_PRESS = 0.45;
   App.tw = {}; App.joy = null;
   function setTouchMode(on) {
@@ -346,7 +346,8 @@
         if (hit) { clickBtn(hit); continue; }
         const si = slotAt(x, y);
         if (si >= 0) { App.tapSlot = si; App.tapSlotT = 2.5; continue; }
-        if (!App.joy && x < AB.Render.w * 0.42 && y > AB.Render.h * 0.22) { App.joy = { id: t.identifier, ox: x, oy: y, x, y, t0: now(), moved: false }; continue; }
+        // джойстик появляется там, где коснулись (в любой части экрана); второй палец — касание мира
+        if (!App.joy) { App.joy = { id: t.identifier, ox: x, oy: y, x, y, t0: now(), moved: false }; continue; }
         App.tw[t.identifier] = { x0: x, y0: y, x, y, t0: now(), long: false, drag: false };
       }
     }, opt);
@@ -674,9 +675,9 @@
   }
   function axeButton(b, me) {
     const cfg = C(), lv = me.axe || 1, G = App.G;
-    if (lv >= cfg.AXE_LEVELS.length) { b.textContent = `Топор: максимум (ур. ${lv})`; b.disabled = true; }
+    if (lv >= AB.Sim.axeMax()) { b.textContent = `Топор: максимум (ур. ${lv}, дерево за ${AB.Sim.axeHits(lv)} удара)`; b.disabled = true; }
     else {
-      const hits = Math.ceil(cfg.TREE_HP / cfg.AXE_LEVELS[lv]), ac = AB.Sim.axeCost(G, lv);
+      const hits = AB.Sim.axeHits(lv + 1), ac = AB.Sim.axeCost(G, lv);
       b.textContent = `Топор ур.${lv}→${lv + 1} (дерево за ${hits} ударов): ${ac.coins} $ + ${ac.planks} досок${ac.iron ? ` + ${ac.iron} железа` : ''}`;
       b.disabled = G.coins < ac.coins || AB.Sim.woodOf(G, me) < ac.planks || AB.Sim.ironOf(G, me) < ac.iron;
     }
@@ -690,7 +691,7 @@
     box.classList.remove('hidden');
     const planks = AB.Sim.woodOf(G, me);
     const ironH = AB.Sim.ironOf(G, me), stoneH = AB.Sim.stoneOf(G, me);
-    const sig = JSON.stringify([b.title, b.now, b.asp, b.mods, planks, G.coins, me.prof, ironH, stoneH]);
+    const sig = JSON.stringify([b.title, b.now, b.asp, b.mods, planks, G.coins, me.prof, ironH, stoneH, me.axe]);
     if (sig === App.bpSig) return;
     App.bpSig = sig;
     $('bpTitle').textContent = b.title;
@@ -711,6 +712,16 @@
       if (btn) { if (planks < a.cost || ironH < (a.iron || 0) || stoneH < (a.stone || 0)) { btn.disabled = true; btn.style.opacity = 0.5; } btn.addEventListener('click', () => { AB.Sound.play('click', 1); sendCmd2('bup', b.ref, a.key); }); }
       box2.appendChild(el);
     });
+    // на лесопилке любой игрок улучшает свой топор
+    if (App.selRef === 'm') {
+      const el = document.createElement('div'); el.className = 'asp';
+      const lv = me.axe || 1;
+      el.innerHTML = `<div class="ah"><span>Ваш топор</span><span>ур. ${lv}/${AB.Sim.axeMax()}</span></div><div class="an">Сейчас дерево падает за ${AB.Sim.axeHits(lv)} ударов${lv < AB.Sim.axeMax() ? `, после улучшения — за ${AB.Sim.axeHits(lv + 1)}` : ''}.</div><button class="btn small gold"></button>`;
+      const btn = el.querySelector('button'); axeButton(btn, me);
+      if (lv < AB.Sim.axeMax()) { const ac = AB.Sim.axeCost(G, lv); btn.textContent = `Улучшить: ${ac.coins} $ + ${ac.planks} досок${ac.iron ? ` + ${ac.iron} железа` : ''}`; } else btn.textContent = 'Максимальный уровень';
+      btn.addEventListener('click', () => { AB.Sound.play('click', 1); sendCmd2('axeup', 'mill', 0); });
+      box2.appendChild(el);
+    }
     const mb = $('bpMods'); mb.innerHTML = '';
     if (!b.mods.length) mb.innerHTML = '<div class="note left">У этого здания нет модификаций.</div>';
     const MC = cfg.MOD_COST, afford = planks >= MC.planks && G.coins >= MC.coins;

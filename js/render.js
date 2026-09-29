@@ -1236,7 +1236,7 @@
     });
     const qn = K.queue ? K.queue.length : 0;
     if (qn) { ctx.font = 'bold 10px "Nunito", system-ui'; ctx.textAlign = 'left'; ctx.fillStyle = '#ffe7a8'; ctx.fillText('+' + qn, x - 40 + Math.min(5, K.slots ? K.slots.length : 0) * 26, y - 100); }
-    label(ctx, `Кухня ур.${K.lvl || 1}`, x, y + 18, '#ffc46b');
+    label(ctx, `Кухня ур.${K.lvl || 1} · готовит ${K.slots ? K.slots.length : 0}/${K.lvl || 1}`, x, y + 18, '#ffc46b');
   }
   // Лесопилка: навес, пильный стол с дисковой пилой, куча бревен и стопка досок
   function drawStore(ctx, Mo, t) {
@@ -1266,8 +1266,8 @@
       ctx.fillStyle = '#16100b'; ctx.fillRect(x + 20, py - 2, 24, 4.4); ctx.fillStyle = i % 2 ? '#d8b078' : '#c8a06a'; ctx.fillRect(x + 21, py - 1.4, 22, 3); ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.fillRect(x + 21, py - 1.4, 22, 0.8);
     }
     const sw = (Mo.saws || []);
-    const prog = sw.length ? Math.max(...sw) / C().MILL.sawTime : 0;
-    if (sw.length) hpBar(ctx, x, y - 38, 34, prog, '#e0c08a');
+    // по полоске на каждое бревно, которое пилится прямо сейчас (ур. N — до N сразу)
+    sw.forEach((v, i) => hpBar(ctx, x, y - 38 - i * 7, 34, v / C().MILL.sawTime, '#e0c08a'));
     // кладовая: стойка со шкурами справа от навеса (сдача — ПКМ по лесопилке)
     if ((Mo.hides || 0) > 0) {
       const hn = Math.min(5, Mo.hides);
@@ -1279,7 +1279,7 @@
       }
       ctx.fillStyle = '#ffd24a'; ctx.fillRect(x + 42, y - 12, 24, 2);
     }
-    label(ctx, `Лесопилка ур.${Mo.lvl || 1} · очередь ${Mo.logs || 0}/${C().MILL.queueMax}${(Mo.hides || 0) > 0 ? ` · шкуры ${Mo.hides}` : ''}`, x, y + 22, '#e0c08a');
+    label(ctx, `Лесопилка ур.${Mo.lvl || 1} · пилит ${sw.length}/${AB.Sim.millLines(Mo)} · очередь ${Mo.logs || 0}/${C().MILL.queueMax}${(Mo.hides || 0) > 0 ? ` · шкуры ${Mo.hides}` : ''}`, x, y + 22, '#e0c08a');
   }
   const S_ell = (c, x, y, rx, ry, col) => S().ell(c, x, y, rx, ry, col);
   // Странствующий торговец с фургоном
@@ -2662,7 +2662,7 @@
       ctx.fillStyle = 'rgba(255,231,168,0.55)'; ctx.beginPath(); ctx.arc(kx, ky, 22 * k, 0, TAU); ctx.fill();
     } else if (me && !me.dead && ui.showJoyHint) {
       ctx.fillStyle = 'rgba(255,255,255,0.05)'; ctx.beginPath(); ctx.arc(80 * k, R.h - 150 * k, 46 * k, 0, TAU); ctx.fill();
-      ctx.font = `600 ${Math.round(11 * k)}px "Nunito", system-ui`; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.fillText('джойстик', 80 * k, R.h - 150 * k);
+      ctx.font = `600 ${Math.round(11 * k)}px "Nunito", system-ui`; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.fillText('ведите пальцем', 80 * k, R.h - 150 * k);
     }
     if (ui.lp) {
       const fr = AB.clamp(ui.lp.f, 0, 1);

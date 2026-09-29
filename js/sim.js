@@ -492,7 +492,9 @@
   };
   // Цена улучшения топора до уровня lv+1 (скидка «Кузни»)
   Sim.axeCost = (G, lv) => { const A = C().AXE_UPGRADE; return { coins: Math.round((A.coins[lv] || 0) * (G && Sim.anyStructMod(G, 'workshop', 'forge') ? 0.7 : 1)), planks: A.planks[lv] || 0, iron: (A.iron || [])[lv] || 0 }; };
-  Sim.axeDmg = (p, G) => C().AXE_LEVELS[Math.min(C().AXE_LEVELS.length, p.axe || 1) - 1] * (G && Sim.anyStructMod(G, 'workshop', 'axes') ? 1.3 : 1);
+  Sim.axeHits = (lv) => { const H = C().AXE_HITS; return H[Math.max(0, Math.min(H.length, lv || 1) - 1)]; };
+  Sim.axeMax = () => C().AXE_HITS.length;
+  Sim.axeDmg = (p, G) => C().TREE_HP / Sim.axeHits(p.axe) * (G && Sim.anyStructMod(G, 'workshop', 'axes') ? 1.3 : 1);
   Sim.saplingTime = () => C().SAPLING_GROW_DAYS * (C().DAY_LENGTH + C().NIGHT_LENGTH);
   Sim.millLines = (S) => C().MILL.linesPerLevel * (S.lvl || 1);
   Sim.millCap = () => Infinity;
@@ -803,7 +805,7 @@
         tree.hp -= Sim.axeDmg(p, G); tree.shake = 0.35;
         G.treeDirty.add(tree.id);
         Sim.fx(G, { k: 'chop', x: tree.x, y: tree.y - 10, id: tree.id });
-        if (tree.hp <= 0) {
+        if (tree.hp <= 1e-6) {
           tree.dead = true; tree.hp = 0; tree.sap = -1; tree.regrow = cfg.STUMP_TO_SAPLING; tree.sg = 0;
           Sim.dropItem(G, 'wood', cfg.WOOD_PER_TREE, tree.x, tree.y, 16);
           Sim.fx(G, { k: 'fell', x: tree.x, y: tree.y, v: tree.v });
@@ -2161,14 +2163,15 @@
     if (c === 'cbuy' || c === 'csell') { cryptoTrade(G, p, c, x); return; }
     if (c === 'axeup') {
       const A = cfg.AXE_UPGRADE, lv = p.axe || 1;
+      // улучшить можно из меню лесопилки (с любого расстояния, как и другие улучшения зданий), в мастерской или у торговца
       const nearWs = G.structs.some(s => s.kind === 'workshop' && AB.dist2(p.x, p.y, s.x, s.y) < 90 * 90);
       const nearMc = G.merchant && AB.dist(p.x, p.y, G.merchant.x, G.merchant.y) < cfg.MERCHANT.radius * 1.6;
-      if (!nearWs && !nearMc) { Sim.msg(G, 'Топор улучшают в мастерской или у торговца', p.id, '#ff9d7a'); return; }
-      if (lv >= cfg.AXE_LEVELS.length) { Sim.msg(G, 'Топор максимального уровня', p.id); return; }
+      if (!nearWs && !nearMc && x !== 'mill') { Sim.msg(G, 'Топор улучшают на лесопилке, в мастерской или у торговца', p.id, '#ff9d7a'); return; }
+      if (lv >= Sim.axeMax()) { Sim.msg(G, 'Топор максимального уровня', p.id); return; }
       const ac = Sim.axeCost(G, lv);
       if (G.coins < ac.coins || Sim.woodOf(G, p) < ac.planks || Sim.ironOf(G, p) < ac.iron) { Sim.msg(G, `Нужно ${ac.coins} $, ${ac.planks} досок${ac.iron ? ` и ${ac.iron} железа` : ''}`, p.id, '#ff9d7a'); return; }
       G.coins -= ac.coins; Sim.spendWood(G, p, ac.planks); if (ac.iron) Sim.spendIron(G, p, ac.iron); p.axe = lv + 1;
-      Sim.fx(G, { k: 'skill', x: p.x, y: p.y, pid: p.id, s: `Топор ур. ${p.axe}: дерево за ${Math.ceil(cfg.TREE_HP / Sim.axeDmg(p))} ударов`, t: Math.min(4, p.axe) });
+      Sim.fx(G, { k: 'skill', x: p.x, y: p.y, pid: p.id, s: `Топор ур. ${p.axe}: дерево за ${Sim.axeHits(p.axe)} ударов`, t: Math.min(4, p.axe) });
       return;
     }
     if (c === 'buy' || c === 'upgrade') {
@@ -2308,7 +2311,7 @@
       push('kitchen', 'Кухня', o.lvl, cfg.KITCHEN_MAX_LEVEL, lvlCost(o.lvl), o.up, 'any', `${o.lvl + 1} блюд одновременно`);
     } else if (kind === 'mill') {
       title = 'Лесопилка'; desc = 'Подойдите — бревна, железо, камень и шкуры из рюкзака выгрузятся (шкуры — в кладовую, лавка продаёт их сама; шкуры можно сдать и правым кликом). Пилит бревна в доски.';
-      now = [`На складе: доски ${o.planks}, уголь ${o.coal || 0}, железо ${o.iron || 0}, камень ${o.stone || 0}, шкуры ${o.hides || 0}`, `Бревна в очереди: ${o.logs}/${cfg.MILL.queueMax}`];
+      now = [`На складе: доски ${o.planks}, уголь ${o.coal || 0}, железо ${o.iron || 0}, камень ${o.stone || 0}, шкуры ${o.hides || 0}`, `Пилит одновременно: ${Sim.millLines(o)} бревна (сейчас ${(o.saws || []).length})`, `Бревна в очереди: ${o.logs}/${cfg.MILL.queueMax}`];
       push('mill', 'Лесопилка', o.lvl, cfg.MILL.maxLevel, millLvlCost(o.lvl), o.up, 'any', `${Sim.millLines({ lvl: o.lvl + 1 })} бревен пилится одновременно`);
     } else {
       const S = cfg.STRUCTURES[o.kind], up = o.up || {}, bl = Sim.bl(o);
