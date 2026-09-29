@@ -193,7 +193,7 @@
       ufo:       { core: [['saucer', 0, -62, 46], ['crater', 0, -50]], ring: ['crystal', 'debris', 'crystal', 'debris'] },
       graveyard: { core: [['skull', -52, -30], ['grave', 40, -44], ['grave', 58, 10], ['ribcage', -40, 36]], ring: ['grave', 'bonepile', 'grave', 'skull'] },
       witch:     { core: [['hut', 0, -64, 40], ['cauldron', 46, 20]], ring: ['jack', 'totem', 'jack', 'herbs'] },
-      mushrooms: { core: [['gmush', -56, -34], ['gmush', 50, -44], ['fring', 0, 0], ['smush', 30, 40]], ring: ['gmush', 'smush', 'gmush', 'smush'] },
+      mushrooms: { core: [['gmush', -60, -42], ['gmush', 56, -54], ['fring', 0, 4], ['smush', 34, 40], ['mlog', -44, 46], ['glowcap', 64, 8]], ring: ['gmush', 'glowcap', 'smush', 'puffball', 'shelf', 'gmush', 'glowcap', 'puffball'] },
       bears:     { core: [['den', 0, -66, 44], ['fishbones', -36, 30]], ring: ['hive', 'logpile', 'fishbones', 'hive'] },
     };
     W.sites.forEach((s) => {

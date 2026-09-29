@@ -2011,21 +2011,35 @@
   }
 
   // Полевая кухня: забирает сырую еду у подошедших игроков и готовит её
+  // Отдать всю сырую еду из инвентаря на кухню (в очередь)
+  function kitchenLoad(G, p) {
+    const cfg = C(), K = G.kitchen, got = [];
+    for (const k in cfg.COOKING) {
+      const n = p.inv[k] || 0;
+      if (n <= 0) continue;
+      for (let i = 0; i < n; i++) K.queue.push(k);
+      p.inv[k] = 0;
+      got.push(`${cfg.FOOD[k].name.toLowerCase()} ×${n}`);
+    }
+    if (got.length) { Sim.msg(G, `На кухню: ${got.join(', ')} · в очереди ${K.queue.length + K.slots.length}`, p.id, '#ffc46b'); Sim.fx(G, { k: 'rustle', x: K.x, y: K.y }); }
+    return got.length;
+  }
   function updateKitchen(G, dt) {
     const cfg = C(), K = G.kitchen;
     const fire = G.fires.find(f => f.main);
     const lit = !cfg.KITCHEN_NEEDS_FIRE || (fire && fire.fuel > 0);
+    K.ready = K.ready || {};
     for (const p of G.players) {
-      if (p.dead || AB.dist2(p.x, p.y, K.x, K.y) > cfg.KITCHEN_RADIUS ** 2) continue;
-      const got = [];
-      for (const k in cfg.COOKING) {
-        const n = p.inv[k] || 0;
-        if (n <= 0) continue;
-        for (let i = 0; i < n; i++) K.queue.push(k);
-        p.inv[k] = 0;
-        got.push(`${cfg.FOOD[k].name.toLowerCase()} ×${n}`);
+      if (p.dead) continue;
+      const d2 = AB.dist2(p.x, p.y, K.x, K.y);
+      // готовые блюда со стола у кухни — сразу в инвентарь подошедшему
+      if (d2 < (cfg.KITCHEN_RADIUS + 30) ** 2) {
+        const took = [];
+        for (const k in K.ready) { const n = K.ready[k]; if (n > 0) { p.inv[k] = (p.inv[k] || 0) + n; took.push(`${cfg.FOOD[k].name.toLowerCase()} ×${n}`); } }
+        if (took.length) { K.ready = {}; Sim.msg(G, `С кухни: ${took.join(', ')}`, p.id, '#8fe08a'); Sim.fx(G, { k: 'pick', x: p.x, y: p.y, pid: p.id, it: 'cooked_meat' }); }
       }
-      if (got.length) { Sim.msg(G, `На кухню: ${got.join(', ')}`, p.id, '#ffc46b'); Sim.fx(G, { k: 'rustle', x: K.x, y: K.y }); }
+      if (d2 > cfg.KITCHEN_RADIUS ** 2) continue;
+      kitchenLoad(G, p);
       if (!lit && K.queue.length && !(K.warnT > 0)) { K.warnT = 8; Sim.msg(G, 'Кухня не готовит: главный костёр погас!', p.id, '#ff9d7a'); }
     }
     K.warnT = (K.warnT || 0) - dt;
@@ -2037,7 +2051,8 @@
       sl.t += kdt;
       if (sl.t >= ck.time) {
         K.slots.splice(i, 1);
-        Sim.dropItem(G, ck.out, Sim.hasMod(K, 'double') && rnd() < 0.3 ? 2 : 1, K.x, K.y + 48, 10);
+        // готовое блюдо ставится на стол рядом с кухней (не падает на землю)
+        K.ready[ck.out] = (K.ready[ck.out] || 0) + (Sim.hasMod(K, 'double') && rnd() < 0.3 ? 2 : 1);
         Sim.fx(G, { k: 'cooked', x: K.x, y: K.y, it: ck.out });
       }
     }
@@ -2148,6 +2163,12 @@
     if (c === 'equip' || c === 'unequip' || c === 'scrap') { gearCommand(G, p, c, x); return; }
     if (c === 'dumpfire') { dumpFire(G, p, x); return; }
     if (c === 'dumphide') { dumpHide(G, p); return; }
+    if (c === 'dumpfood') {
+      const K = G.kitchen;
+      if (!K || AB.dist(p.x, p.y, K.x, K.y) > C().KITCHEN_RADIUS * 1.8) { Sim.msg(G, 'Подойдите к кухне', p.id, '#ff9d7a'); return; }
+      if (!kitchenLoad(G, p)) Sim.msg(G, 'Нет сырой еды: мясо, морковь или тыква', p.id, '#ff9d7a');
+      return;
+    }
     if (c === 'pickcraft') { craftPick(G, p); return; }
     if (c === 'dropk') {
       if (!(p.inv[x] > 0) || x === 'coin') return;
@@ -2549,7 +2570,7 @@
       eco: [G.coins, G.fireUp, G.debt, G.upkeepLast, Math.round(G.crypto.price * 10) / 10, G.crypto.held, G.crypto.hist],
       bag: G.players.map(p => p.bagUp || 0),
       kl: [G.kitchen.lvl, G.kitchen.up, G.kitchen.bmod || 0],
-      kc: [G.kitchen.x, G.kitchen.y, G.kitchen.slots.map(q => [q.k, Math.round(q.t / C().COOKING[q.k].time * 100) / 100]), G.kitchen.queue.length],
+      kc: [G.kitchen.x, G.kitchen.y, G.kitchen.slots.map(q => [q.k, Math.round(q.t / C().COOKING[q.k].time * 100) / 100]), G.kitchen.queue.length, G.kitchen.ready || {}],
       fx: G.fxOut,
       wx: [G.wx.id, Math.round(G.wx.t)],
       bo: G.bolts.map(b => [r1(b.x), r1(b.y), b.r, Math.round(b.t / b.dur * 100) / 100]),
@@ -2623,7 +2644,7 @@
     if (s.so) G.store = { x: s.so[0], y: s.so[1], logs: s.so[2], planks: s.so[3], lvl: s.so[4], up: s.so[5], saws: s.so[6], coal: s.so[7], bmod: s.so[8] || null, iron: s.so[9] || 0, stone: s.so[10] || 0, hides: s.so[11] || 0 };
     if (s.eco) { G.coins = s.eco[0]; G.fireUp = s.eco[1]; G.debt = s.eco[2]; G.upkeepLast = s.eco[3]; G.crypto = { price: s.eco[4], held: s.eco[5], hist: s.eco[6] }; }
     if (s.bag) G.players.forEach((p, i) => { p.bagUp = s.bag[i] || 0; });
-    if (s.kc) G.kitchen = { x: s.kc[0], y: s.kc[1], slots: s.kc[2].map(a => ({ k: a[0], prog: a[1] })), queue: new Array(s.kc[3]), lvl: s.kl ? s.kl[0] : 1, up: s.kl ? s.kl[1] : 0, bmod: s.kl && s.kl[2] || null };
+    if (s.kc) G.kitchen = { x: s.kc[0], y: s.kc[1], slots: s.kc[2].map(a => ({ k: a[0], prog: a[1] })), queue: new Array(s.kc[3]), ready: s.kc[4] || {}, lvl: s.kl ? s.kl[0] : 1, up: s.kl ? s.kl[1] : 0, bmod: s.kl && s.kl[2] || null };
     s.tr.forEach(a => {
       let t = W.trees[a[0]];
       if (!t) { // новый побег

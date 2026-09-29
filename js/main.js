@@ -265,6 +265,15 @@
           else if (S) { App.pendingDump = ref; App.pendingPick = null; App.moveTarget = { x: S.x, y: S.y + 24 }; App.clickMark = { x: S.x, y: S.y, t: 1 }; }
           return;
         }
+        // правый клик по кухне с сырой едой — отдать всю еду в очередь (если далеко — сначала подойти)
+        const rawN = me ? Object.keys(C().COOKING).reduce((a, k) => a + (me.inv[k] || 0), 0) : 0;
+        if (ref === 'k' && me && !me.dead && rawN > 0 && !App.paused) {
+          const K = App.G.kitchen;
+          AB.Sound.play('click', 1);
+          if (K && AB.dist(me.x, me.y, K.x, K.y) <= C().KITCHEN_RADIUS * 1.6) { sendCmd('dumpfood', ref); App.pendingDump = null; }
+          else if (K) { App.pendingDump = ref; App.pendingPick = null; App.moveTarget = { x: K.x, y: K.y + 30 }; App.clickMark = { x: K.x, y: K.y, t: 1 }; }
+          return;
+        }
         // ПКМ по грядке — посадить семя (если далеко — сначала подойти)
         {
           const pl = App.G.plots.find(q => AB.dist(mw.x, mw.y, q.x, q.y) < 34);
@@ -691,7 +700,7 @@
     box.classList.remove('hidden');
     const planks = AB.Sim.woodOf(G, me);
     const ironH = AB.Sim.ironOf(G, me), stoneH = AB.Sim.stoneOf(G, me);
-    const sig = JSON.stringify([b.title, b.now, b.asp, b.mods, planks, G.coins, me.prof, ironH, stoneH, me.axe]);
+    const sig = JSON.stringify([b.title, b.now, b.asp, b.mods, planks, G.coins, me.prof, ironH, stoneH, me.axe, App.selRef === 'k' ? Object.keys(cfg.COOKING).map(k => me.inv[k] || 0) : 0]);
     if (sig === App.bpSig) return;
     App.bpSig = sig;
     $('bpTitle').textContent = b.title;
@@ -712,6 +721,15 @@
       if (btn) { if (planks < a.cost || ironH < (a.iron || 0) || stoneH < (a.stone || 0)) { btn.disabled = true; btn.style.opacity = 0.5; } btn.addEventListener('click', () => { AB.Sound.play('click', 1); sendCmd2('bup', b.ref, a.key); }); }
       box2.appendChild(el);
     });
+    // кухня: отдать всю сырую еду в очередь
+    if (App.selRef === 'k') {
+      const raw = Object.keys(cfg.COOKING).reduce((a, k) => a + (me.inv[k] || 0), 0);
+      const el = document.createElement('div'); el.className = 'asp';
+      el.innerHTML = `<div class="ah"><span>Готовка</span><span>в инвентаре ${raw}</span></div><div class="an">Сырое мясо, морковь и тыква встают в очередь. Готовые блюда появятся на столе у кухни — подойдите, и они попадут в инвентарь.</div><button class="btn small gold">${raw ? `Отдать всю еду (${raw})` : 'Нет сырой еды'}</button>`;
+      const btn = el.querySelector('button'); if (!raw) { btn.disabled = true; btn.style.opacity = 0.5; }
+      btn.addEventListener('click', () => { AB.Sound.play('click', 1); const K = G.kitchen; if (AB.dist(me.x, me.y, K.x, K.y) <= cfg.KITCHEN_RADIUS * 1.6) sendCmd2('dumpfood', 'k', 0); else { App.pendingDump = 'k'; App.moveTarget = { x: K.x, y: K.y + 30 }; } });
+      box2.appendChild(el);
+    }
     // на лесопилке любой игрок улучшает свой топор
     if (App.selRef === 'm') {
       const el = document.createElement('div'); el.className = 'asp';
@@ -865,7 +883,11 @@
       }
     }
     if (App.pendingDump) {
-      if (App.pendingDump === 'm') {
+      if (App.pendingDump === 'k') {
+        const K = App.G.kitchen, raw = Object.keys(C().COOKING).reduce((a, k) => a + (me.inv[k] || 0), 0);
+        if (!K || !raw || (dx === 0 && dy === 0 && !App.moveTarget)) App.pendingDump = null;
+        else if (AB.dist(me.x, me.y, K.x, K.y) <= C().KITCHEN_RADIUS * 0.9) { sendCmd('dumpfood', 'k'); App.pendingDump = null; App.moveTarget = null; dx = 0; dy = 0; }
+      } else if (App.pendingDump === 'm') {
         const S = App.G.store;
         if (!S || !(me.inv.hide > 0) || (dx === 0 && dy === 0 && !App.moveTarget)) App.pendingDump = null;
         else if (AB.dist(me.x, me.y, S.x, S.y) <= C().MILL.radius * 0.9) { sendCmd('dumphide', App.pendingDump); App.pendingDump = null; App.moveTarget = null; dx = 0; dy = 0; }
