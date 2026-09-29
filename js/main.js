@@ -52,6 +52,7 @@
     setAutoPick(App.autoPick, true);
     // мобильное состояние
     App.mobPanel = null; App.joy = null; App.tw = {}; App.tapSlot = null; App.lp = null;
+    App.showGear = false; App.gearSel = null; App.gearSig = null;
     if (App.touch) {
       App.goFull();
       if (innerHeight > innerWidth) AB.FX.toast('Удобнее играть, повернув телефон горизонтально', '#ffe7a8');
@@ -210,7 +211,8 @@
       if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(k)) e.preventDefault();
       if (App.state !== 'play') return;
       if (k === 'Tab') { e.preventDefault(); if (!e.repeat) toggleBuild(); return; }
-      if (k === 'Escape') { if (App.buildMode) { App.buildMode = null; return; } if (App.lvOpen) { App.lvOpen = false; App.lvSig = null; return; } const me0e = App.me(); if (me0e && me0e.ao && !me0e.offers && !App.abDefer) { App.abDefer = true; App.lvSig = null; return; } if (App.selRef) { App.selRef = null; return; } togglePause(); return; }
+      if (k === 'KeyI' && !e.repeat && !App.paused) { toggleGear(); return; }
+      if (k === 'Escape') { if (App.showGear) { toggleGear(); return; } if (App.buildMode) { App.buildMode = null; return; } if (App.lvOpen) { App.lvOpen = false; App.lvSig = null; return; } const me0e = App.me(); if (me0e && me0e.ao && !me0e.offers && !App.abDefer) { App.abDefer = true; App.lvSig = null; return; } if (App.selRef) { App.selRef = null; return; } togglePause(); return; }
       if (App.paused) return;
       App.keys.add(k);
       if (e.repeat) return;
@@ -432,6 +434,7 @@
     if (c.c === 'lvopen') { App.lvOpen = true; App.lvSig = null; return; }
     if (c.c === 'buildno') { AB.FX.toast(c.v, '#ff9d7a'); return; }
     if (c.c === 'm:pause') { togglePause(); return; }
+    if (c.c === 'm:gear') { toggleGear(); return; }
     if (c.c === 'm:panel') { App.mobPanel = App.mobPanel === c.v ? null : c.v; return; }
     if (c.c === 'm:nop') return;
     if (c.c === 'm:cancelbuild') { App.buildMode = null; return; }
@@ -725,6 +728,83 @@
     App.bpSig = null;
   }
   function toggleBuild() { App.showBuild = !App.showBuild; App.buildSig = null; }
+  /* ============================ СНАРЯЖЕНИЕ ============================ */
+  function toggleGear() { App.showGear = !App.showGear; App.gearSig = null; App.gearSel = null; if (App.showGear) App.mobPanel = null; }
+  App.toggleGear = toggleGear;
+  const esc = (t) => String(t).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+  function statLine(k, v, cmp) {
+    const L = C().STAT_LABELS[k] || [k, false], n = Math.round(v * 100) / 100;
+    let d = '';
+    if (cmp !== undefined) { const dv = Math.round((v - cmp) * 100) / 100; if (dv) d = ` <span class="${dv > 0 ? 'up' : 'down'}">(${dv > 0 ? '+' : ''}${dv}${L[1] ? '%' : ''})</span>`; }
+    return `<div>${n > 0 ? '+' : ''}${n}${L[1] ? '%' : ''} ${esc(L[0])}${d}</div>`;
+  }
+  function itemInfo(it, eqd, where) {
+    const cfg = C(), R = cfg.GEAR.rarity[it.r];
+    let h = `<div class="gname" style="color:${R.color}">${esc(it.n)}</div><div class="gsub">${R.name} · ${cfg.GEAR.slotNames[it.s]} · сила ${it.pw}</div>`;
+    const keys = new Set(Object.keys(it.m).concat(eqd && where === 'wd' ? Object.keys(eqd.m) : []));
+    keys.forEach(k => { const v = it.m[k] || 0; h += where === 'wd' && eqd ? (v ? statLine(k, v, eqd.m[k] || 0) : `<div class="down">−${Math.round(eqd.m[k] * 100) / 100}${(C().STAT_LABELS[k] || [])[1] ? '%' : ''} ${esc((C().STAT_LABELS[k] || [k])[0])} (пропадёт)</div>`) : statLine(k, v); });
+    if (where === 'wd') h += `<div class="gbtns"><button class="btn gold" data-g="equip">Надеть${eqd ? ' (заменить)' : ''}</button><button class="btn ghost" data-g="scrap">Разобрать · +${AB.Sim.scrapValue(it)} $</button></div>`;
+    else h += `<div class="gbtns"><button class="btn ghost" data-g="unequip">Снять</button></div>`;
+    return h;
+  }
+  function updateGearUI(me) {
+    const cfg = C(), box = $('gear');
+    if (!App.showGear || !me || App.state !== 'play') { box.classList.add('hidden'); App.gearSig = null; return; }
+    box.classList.remove('hidden');
+    AB.Render.drawHero($('gearHero'), me);
+    const eq = me.eq || {}, wd = me.wd || [];
+    const sig = JSON.stringify(eq) + JSON.stringify(wd) + JSON.stringify(App.gearSel) + JSON.stringify(me.st);
+    if (sig === App.gearSig) return;
+    App.gearSig = sig;
+    const GR = cfg.GEAR, sel = App.gearSel;
+    document.querySelectorAll('#gear .gslot').forEach(el => {
+      const slot = el.dataset.slot, it = eq[slot];
+      el.classList.toggle('full', !!it); el.classList.toggle('sel', !!(sel && sel.w === 'eq' && sel.s === slot));
+      el.style.borderColor = it ? GR.rarity[it.r].color : '';
+      el.innerHTML = (it ? `<img src="${AB.Render.itemIcon(it)}" alt="">` : '') + `<span class="gl">${GR.slotNames[slot]}</span>`;
+      el.title = it ? it.n : GR.slotNames[slot];
+    });
+    $('gearCount').textContent = `${wd.length} / ${GR.wardrobe}`;
+    let cells = '';
+    for (let i = 0; i < GR.wardrobe; i++) {
+      const it = wd[i];
+      if (!it) { cells += '<div class="gcell"></div>'; continue; }
+      const better = AB.Sim.itemScore(it) > AB.Sim.itemScore(eq[it.s]);
+      cells += `<div class="gcell${better ? ' up' : ''}${sel && sel.w === 'wd' && sel.i === i ? ' sel' : ''}" data-i="${i}" style="border-color:${GR.rarity[it.r].color}" title="${esc(it.n)}"><img src="${AB.Render.itemIcon(it)}" alt=""></div>`;
+    }
+    $('gearWd').innerHTML = cells;
+    let info = '<span class="note">Нажмите на вещь, чтобы посмотреть её свойства. Двойной клик — надеть. ▲ — лучше надетой.</span>';
+    if (sel && sel.w === 'wd' && wd[sel.i]) info = itemInfo(wd[sel.i], eq[wd[sel.i].s], 'wd');
+    else if (sel && sel.w === 'eq' && eq[sel.s]) info = itemInfo(eq[sel.s], null, 'eq');
+    $('gearInfo').innerHTML = info;
+    // суммарные бонусы одежды
+    const sum = {};
+    for (const k in eq) { const it = eq[k]; if (it) for (const q in it.m) sum[q] = (sum[q] || 0) + it.m[q]; }
+    const L = cfg.STAT_LABELS;
+    $('gearStats').innerHTML = Object.keys(sum).length ? '<b>Одежда даёт:</b> ' + Object.keys(sum).map(k => `${Math.round(sum[k] * 100) / 100 > 0 ? '+' : ''}${Math.round(sum[k] * 100) / 100}${L[k] && L[k][1] ? '%' : ''} ${esc(L[k] ? L[k][0] : k)}`).join(' · ') : '<span class="note">Одежды пока нет — ищите её в сундуках охраняемых локаций.</span>';
+  }
+  function setupGearUI() {
+    const GR = () => C().GEAR;
+    $('gear').addEventListener('click', (e) => {
+      const me = App.me(); if (!me) return;
+      const slotEl = e.target.closest('.gslot'), cell = e.target.closest('.gcell[data-i]'), btn = e.target.closest('[data-g]');
+      if (btn) {
+        const sel = App.gearSel; if (!sel) return;
+        AB.Sound.play('click', 1);
+        if (btn.dataset.g === 'equip') sendCmd('equip', sel.i);
+        else if (btn.dataset.g === 'scrap') sendCmd('scrap', sel.i);
+        else if (btn.dataset.g === 'unequip') sendCmd('unequip', GR().slots.indexOf(sel.s));
+        App.gearSel = null; App.gearSig = null; return;
+      }
+      if (slotEl) { App.gearSel = me.eq && me.eq[slotEl.dataset.slot] ? { w: 'eq', s: slotEl.dataset.slot } : null; App.gearSig = null; AB.Sound.play('click', 0.6); return; }
+      if (cell) { App.gearSel = { w: 'wd', i: +cell.dataset.i }; App.gearSig = null; AB.Sound.play('click', 0.6); }
+    });
+    $('gear').addEventListener('dblclick', (e) => {
+      const cell = e.target.closest('.gcell[data-i]'); if (!cell) return;
+      sendCmd('equip', +cell.dataset.i); App.gearSel = null; App.gearSig = null; AB.Sound.play('click', 1);
+    });
+    $('gearClose').addEventListener('click', () => { AB.Sound.play('click', 1); toggleGear(); });
+  }
   function updateBuildUI(me) {
     const cfg = C();
     const box = $('build');
@@ -880,6 +960,7 @@
     updateEcoUI(me);
     updateBuildingUI(me);
     updateBuildUI(me);
+    updateGearUI(me);
   }
 
   function smoothRemote(G, dt) {
@@ -959,6 +1040,8 @@
     bind('btnSoloFromLobby', () => { AB.Net.close(); startSolo(); });
     bind('btnResume', togglePause);
     bind('btnPauseBuild', () => { togglePause(); toggleBuild(); });
+    bind('btnPauseGear', () => { togglePause(); if (!App.showGear) toggleGear(); });
+    setupGearUI();
     bind('btnFull', () => App.goFull());
     bind('btnBuildClose', () => { if (App.showBuild) toggleBuild(); });
     bind('btnQuit', () => endToMenu());

@@ -2,7 +2,7 @@
 (function (AB) {
   const C = () => window.CONFIG;
   const TAU = Math.PI * 2;
-  const MON_TYPES = ['wolf', 'ghoul', 'shade', 'brute', 'alpha', 'spider', 'spitter', 'skeleton', 'zombie', 'archer', 'lich', 'giant', 'packlord', 'witch', 'golem'];
+  const MON_TYPES = ['wolf', 'ghoul', 'shade', 'brute', 'alpha', 'spider', 'spitter', 'skeleton', 'zombie', 'archer', 'lich', 'giant', 'packlord', 'witch', 'golem', 'bandit', 'robber', 'alien', 'bonewolf', 'crone', 'shroom', 'bear'];
   AB.MON_TYPES = MON_TYPES;
   const ITEM_KEYS = ['wood', 'meat', 'berry', 'carrot', 'pumpkin', 'cooked_meat', 'cooked_carrot', 'cooked_pumpkin', 'plank', 'hide', 'coal', 'seed_carrot', 'seed_pumpkin', 'iron', 'stone', 'coin'];
   AB.ITEM_KEYS = ITEM_KEYS;
@@ -27,19 +27,153 @@
       crypto: { price: cfg.EXCHANGE.startPrice, hist: [cfg.EXCHANGE.startPrice], held: 0, t: 0 },
       merchant: null,
       kitchen: { x: W.fires[0].x + cfg.KITCHEN_OFFSET[0], y: W.fires[0].y + cfg.KITCHEN_OFFSET[1], slots: [], queue: [], lvl: 1, up: 0, bmod: null }, fireT: 0,
+      wx: { id: 'clear', t: (cfg.WEATHER && cfg.WEATHER.firstClear) || 120 }, bolts: [], boltT: 3,
     };
+    AB.WX = Sim.wxDef('clear');
     W.G = G; // для столкновений со зданиями
     if (mode !== 'guest') {
       W.sites.forEach((s) => {
-        s.guards.forEach((type, k) => {
-          const a = (k / s.guards.length) * TAU;
-          const m = Sim.spawnMonster(G, type, s.x + Math.cos(a) * 55, s.y + Math.sin(a) * 55, true, Sim.depth(G, s.x, s.y), s.power || 1);
-          m.home = { x: s.x, y: s.y }; m.site = s.id;
-        });
+        s.guards.forEach((type, k) => spawnGuard(G, s, type, (k / s.guards.length) * TAU, s.elite ? 0 : 55));
       });
     }
     return G;
   };
+
+  // Страж локации. Одиночный босс лагеря (s.elite) — крупный, с именем и суммарным здоровьем группы.
+  function spawnGuard(G, s, type, a, d) {
+    const cfg = C();
+    const m = Sim.spawnMonster(G, type, s.x + Math.cos(a) * d, s.y + Math.sin(a) * d + (s.elite ? 40 : 0), true, Sim.depth(G, s.x, s.y), s.power || 1);
+    m.home = { x: s.x, y: s.y }; m.site = s.id;
+    if (s.elite && type === s.elite.type && !G.monsters.some(q => q !== m && q.site === s.id && q.es)) {
+      const E = cfg.ELITE, lv = G.fireLevel || 1, SG = cfg.SITE_GROW;
+      const hk = s.elite.hp * (1 + SG.eliteHpPerLevel * (lv - 1));
+      m.hp *= hk; m.maxHp *= hk; m.dmg *= s.elite.dmg; m.speed *= E.speed;
+      m.es = E.scale + SG.eliteScalePerLevel * (lv - 1); m.r *= m.es; m.en = s.elite.name; m.xpk *= s.elite.n;
+    }
+    return m;
+  }
+  // Костёр получил уровень: локации растут — шире поляны, больше стражи, босс лагеря крупнее
+  Sim.onFireLevel = function (G) {
+    const cfg = C(), SG = cfg.SITE_GROW, lv = G.fireLevel;
+    AB.growSites(G.W, lv);
+    if (AB.Render && AB.Render.onSitesGrow) AB.Render.onSitesGrow(G.W);
+    if (G.mode === 'guest' || !SG) return;
+    for (const s of G.W.sites) {
+      if (s.opened) continue;
+      const alive = G.monsters.filter(m => m.site === s.id && !m.dying);
+      if (!alive.length) continue; // локацию уже зачистили — новых стражей не будет
+      const boss = alive.find(m => m.es);
+      if (boss) {
+        const k = (1 + SG.eliteHpPerLevel * (lv - 1)) / (1 + SG.eliteHpPerLevel * (lv - 2));
+        boss.hp *= k; boss.maxHp *= k; boss.r = boss.r / boss.es * (boss.es + SG.eliteScalePerLevel); boss.es += SG.eliteScalePerLevel;
+        continue;
+      }
+      const K = cfg.SITE_KINDS[s.kind] || cfg.SITE_KINDS.ruins, pool = K.packs[s.tier].flat();
+      for (let i = 0; i < SG.guardsPerLevel; i++) spawnGuard(G, s, pool[Math.floor(rnd() * pool.length)], rnd() * TAU, 70 + rnd() * 40);
+    }
+    Sim.msg(G, 'Лесные локации разрослись: больше стражи, но и сундуки богаче', -1, '#c8e0a0');
+  };
+
+  /* ======================= ПОГОДА ======================= */
+  Sim.wxDef = function (id) {
+    const W = C().WEATHER; const t = (W && W.types[id]) || { name: 'Ясно' };
+    return Object.assign({ id, fireBurn: 1, crop: 1, hunger: 1, speed: 1, monSpeed: 1, vision: 1, sight: 1 }, t);
+  };
+  function pickWeather(G) {
+    const WC = C().WEATHER, keys = Object.keys(WC.types).filter(k => k !== G.wx.id && !(WC.types[k].dayOnly && (G.isNight || G.nightF > 0.2)));
+    let sum = keys.reduce((a, k) => a + WC.types[k].w, 0), x = rnd() * sum;
+    for (const k of keys) { x -= WC.types[k].w; if (x <= 0) return k; }
+    return 'clear';
+  }
+  function updateWeather(G, dt) {
+    const WC = C().WEATHER;
+    if (!WC) return;
+    G.wx.t -= dt;
+    const cur = Sim.wxDef(G.wx.id);
+    if (G.wx.t <= 0 || (cur.dayOnly && G.isNight)) {
+      const id = pickWeather(G);
+      G.wx = { id, t: WC.changeEvery[0] + rnd() * (WC.changeEvery[1] - WC.changeEvery[0]) };
+      const d = Sim.wxDef(id);
+      Sim.msg(G, d.desc || `Погода: ${d.name}`, -1, d.color);
+    }
+    AB.WX = Sim.wxDef(G.wx.id);
+    // гроза: молнии бьют рядом с игроками (светлый круг — предупреждение)
+    const L = AB.WX.lightning;
+    for (let i = G.bolts.length - 1; i >= 0; i--) {
+      const b = G.bolts[i];
+      b.t += dt;
+      if (b.t < b.dur) continue;
+      G.bolts.splice(i, 1);
+      Sim.fx(G, { k: 'lightning', x: b.x, y: b.y, r: b.r });
+      const LL = Sim.wxDef('storm').lightning;
+      for (const p of G.players) if (!p.dead && AB.dist2(p.x, p.y, b.x, b.y) < (b.r + 6) ** 2) damagePlayer(G, p, p.mhp * LL.playerFrac, null);
+      for (const m of G.monsters.slice()) if (!m.dying && AB.dist2(m.x, m.y, b.x, b.y) < (b.r + m.r) ** 2) damageMonster(G, m, m.maxHp * (m.boss ? LL.bossFrac : LL.monFrac), { src: 'fire', noProc: true, ang: Math.atan2(m.y - b.y, m.x - b.x) });
+    }
+    if (!L) return;
+    G.boltT -= dt;
+    if (G.boltT > 0) return;
+    G.boltT = L.every[0] + rnd() * (L.every[1] - L.every[0]);
+    const alive = G.players.filter(p => !p.dead);
+    if (!alive.length) return;
+    const p = alive[Math.floor(rnd() * alive.length)];
+    const a = rnd() * TAU, d = 40 + rnd() * 260;
+    G.bolts.push({ x: p.x + Math.cos(a) * d, y: p.y + Math.sin(a) * d, r: L.radius, t: 0, dur: L.windup });
+  }
+
+  /* ======================= СНАРЯЖЕНИЕ ======================= */
+  // Вещь: { s: ячейка, b: основа, r: редкость 0..3, pw: сила, m: {свойство: значение}, n: имя, id }
+  const r2 = (v) => Math.round(v * 100) / 100;
+  const nice = (v) => Math.abs(v) >= 3 ? Math.round(v) : Math.abs(v) >= 1 ? Math.round(v * 10) / 10 : r2(v); // красивые числа
+  Sim.makeItem = function (G, site) {
+    const cfg = C(), GR = cfg.GEAR, tier = site ? site.tier : 0;
+    const slot = GR.slots[Math.floor(rnd() * GR.slots.length)];
+    const bases = GR.bases[slot], base = bases[Math.floor(rnd() * bases.length)];
+    let pw = 1 + GR.powerTier * tier + GR.powerFire * ((G.fireLevel || 1) - 1) + (site && site.elite ? GR.powerElite : 0) + (site && site.hidden ? GR.powerElite : 0);
+    pw = Math.round(pw * (0.92 + rnd() * 0.16) * 10) / 10;
+    const ws = GR.rarity.map(q => q.w[Math.min(3, tier + (site && (site.elite || site.hidden) ? 1 : 0))]);
+    let x = rnd() * ws.reduce((a, b) => a + b, 0), rar = 0;
+    while (x > ws[rar] && rar < ws.length - 1) { x -= ws[rar]; rar++; }
+    const R = GR.rarity[rar], m = {};
+    for (const k in base.base) m[k] = nice(base.base[k] * pw * R.mult);
+    const keys = Object.keys(GR.affixes).filter(k => !(k in m));
+    for (let i = 0; i < R.mods && keys.length; i++) {
+      const k = keys.splice(Math.floor(rnd() * keys.length), 1)[0], A = GR.affixes[k];
+      m[k] = nice((A[0] + rnd() * (A[1] - A[0])) * pw * R.mult);
+    }
+    const origin = site && GR.origin[site.kind] ? ' ' + GR.origin[site.kind] : '';
+    return { id: G.nextId++, s: slot, b: base.id, r: rar, pw, m, n: base.name + origin };
+  };
+  Sim.itemBase = (it) => (C().GEAR.bases[it.s] || []).find(b => b.id === it.b) || {};
+  Sim.itemScore = (it) => { if (!it) return 0; let v = 0; for (const k in it.m) v += it.m[k] * ({ maxHp: 0.25, armor: 2.5, regen: 8, thorns: 0.8 }[k] || 1); return v; };
+  Sim.scrapValue = (it) => Math.max(1, Math.round(C().GEAR.scrapCoins * (it.r + 1) * it.pw));
+  // Отдать вещь игроку: пустая ячейка — надеть сразу; иначе в сундук героя; нет места — разобрать на монеты
+  Sim.giveItem = function (G, p, it) {
+    const cfg = C(), GR = cfg.GEAR, R = GR.rarity[it.r];
+    p.eq = p.eq || {}; p.wd = p.wd || [];
+    Sim.fx(G, { k: 'gear', x: p.x, y: p.y, pid: p.id, s: it.n, c: R.color });
+    if (!p.eq[it.s]) { p.eq[it.s] = it; AB.Skills.recalc(p); Sim.msg(G, `Надето: ${it.n} (${R.name.toLowerCase()})`, p.id, R.color); return; }
+    if (p.wd.length < GR.wardrobe) { p.wd.push(it); Sim.msg(G, `Найдено: ${it.n} (${R.name.toLowerCase()}) — откройте снаряжение (I)`, p.id, R.color); return; }
+    const c = Sim.scrapValue(it); G.coins += c;
+    Sim.msg(G, `Сундук героя полон: «${it.n}» разобрана на ${c} $`, p.id, '#ffd24a');
+  };
+  function gearCommand(G, p, c, x) {
+    const GR = C().GEAR;
+    p.eq = p.eq || {}; p.wd = p.wd || [];
+    if (c === 'equip') { // надеть вещь из сундука героя (надетая уходит на её место)
+      const it = p.wd[x | 0]; if (!it) return;
+      const old = p.eq[it.s];
+      p.eq[it.s] = it; p.wd.splice(x | 0, 1); if (old) p.wd.splice(x | 0, 0, old);
+    } else if (c === 'unequip') {
+      const slot = GR.slots[x | 0], it = p.eq[slot]; if (!it) return;
+      if (p.wd.length >= GR.wardrobe) { Sim.msg(G, 'Сундук героя полон — сначала разберите что-нибудь', p.id, '#ff9d7a'); return; }
+      p.eq[slot] = null; p.wd.push(it);
+    } else if (c === 'scrap') {
+      const it = p.wd[x | 0]; if (!it) return;
+      p.wd.splice(x | 0, 1); const v = Sim.scrapValue(it); G.coins += v;
+      Sim.msg(G, `Разобрано: ${it.n} → +${v} $`, p.id, '#ffd24a');
+    }
+    AB.Skills.recalc(p);
+  }
 
   Sim.addPlayer = function (G, id, name, prof) {
     const cfg = C();
@@ -52,7 +186,7 @@
       atkCd: 0, chopCd: 0, feedCd: 0, sw: 0, sk: 'axe', sa: 0, tp: 0, hurt: 0,
       level: 1, queue: [], offers: null, skills: [], rr: 0, st: {}, swl: 0, wl: {}, axe: 1,
       adrenT: 0, mineT: 0, meteorT: 0, lightT: 0, auraT: 0, droneCd: [], repT: 0,
-      pick: 0, pickCd: 0, ap: !!cfg.AUTO_PICKUP,
+      pick: 0, pickCd: 0, ap: !!cfg.AUTO_PICKUP, eq: {}, wd: [],
     };
     ITEM_KEYS.forEach(k => p.inv[k] = cfg.START_ITEMS[k] || 0);
     // начальное оружие профессии — уже полученный боевой навык 1-го уровня
@@ -125,7 +259,7 @@
     const cfg = C();
     const s = (p.st && p.st.speed) || 0;
     const slow = p.slowT > 0 ? 1 - (p.slowPct || 0) / 100 : 1;
-    return cfg.PLAYER_SPEED * cfg.MOVE_SPEED_MULT * Math.max(0.4, 1 + s / 100) * slow;
+    return cfg.PLAYER_SPEED * cfg.MOVE_SPEED_MULT * Math.max(0.4, 1 + s / 100) * slow * (AB.WX ? AB.WX.speed : 1);
   };
   AB.movePlayer = function (W, p, dx, dy, dt) {
     if (p.dead) return;
@@ -161,6 +295,7 @@
       onDawn(G, prevDay);
       dailyEconomy(G);
     }
+    updateWeather(G, dt);
     updatePlayers(G, dt);
     updateStructs(G, dt);
     updateMonsters(G, dt);
@@ -349,6 +484,7 @@
       cap = Sim.fireCap(G, f);
       Sim.msg(G, `Костёр ур. ${G.fireLevel}! Шкала выросла до ${cap}. Территория шире, умения «${cfg.TIER_NAMES[Math.min(3, G.fireLevel - 1)]}»`, -1, cfg.TIER_COLORS[Math.min(3, G.fireLevel - 1)]);
       Sim.fx(G, { k: 'fireup', x: f.x, y: f.y });
+      Sim.onFireLevel(G);
     }
     f.fuel = Math.min(cap, f.fuel);
     f.cap = cap;
@@ -483,6 +619,11 @@
     if (m.type === 'brute' && depth > 0.5 && rnd() < (cfg.IRON.bruteChance || 0) * (1 + luck / 100)) { Sim.dropItem(G, 'iron', 1, m.x, m.y, 12); Sim.msg(G, 'Громила обронил железо!', -1, '#c8d4e0'); }
     if (def.hide && rnd() < def.hide * (1 + luck / 100)) Sim.dropItem(G, 'hide', 1, m.x, m.y, 12);
     dropCoins(G, m);
+    if (m.es) { // босс лагеря: монеты за всю группу и гарантированная шкура/семя
+      const E = C().ELITE; for (let k = 1; k < E.coinsMult; k++) dropCoins(G, m);
+      if (def.hide) Sim.dropItem(G, 'hide', 1, m.x, m.y, 14);
+      Sim.msg(G, `${m.en || def.name} повержен!`, -1, '#ffd24a');
+    }
     if (rnd() < def.seedChance * (1 + luck / 100)) Sim.dropItem(G, rnd() < 0.7 ? 'seed_carrot' : 'seed_pumpkin', 1, m.x, m.y, 12);
     if (p && p.st.killHeal > 0 && !p.dead) p.hp = Math.min(p.mhp, p.hp + p.st.killHeal);
   }
@@ -560,7 +701,7 @@
         continue;
       }
       const st = p.st;
-      p.food = Math.max(0, p.food - cfg.FOOD_DRAIN * (1 - Math.min(cfg.HUNGER_CAP, st.hunger) / 100) * dt);
+      p.food = Math.max(0, p.food - cfg.FOOD_DRAIN * (1 - Math.min(cfg.HUNGER_CAP, st.hunger) / 100) * dt * (AB.WX ? AB.WX.hunger : 1));
       if (p.food <= 0) { p.hp -= cfg.STARVE_DAMAGE * dt; if (p.hp <= 0) damagePlayer(G, p, 1); }
       else if (p.food > cfg.REGEN_FOOD_MIN) p.hp = Math.min(p.mhp, p.hp + cfg.HP_REGEN * dt);
       if (st.regen > 0) p.hp = Math.min(p.mhp, p.hp + st.regen * dt);
@@ -695,9 +836,11 @@
       s.opened = true;
       Sim.fx(G, { k: 'chest', x: s.x, y: s.y, id: s.id });
       const found = [];
+      const lm = 1 + ((cfg.SITE_GROW && cfg.SITE_GROW.lootPerLevel) || 0) * ((G.fireLevel || 1) - 1); // локация выросла — сундук богаче
       for (const k in s.loot) {
-        const v = s.loot[k];
+        const v = ['coin', 'xp', 'coal', 'meat', 'hide'].includes(k) ? Math.round(s.loot[k] * lm) : s.loot[k];
         if (!v) continue;
+        if (k === 'gear') { for (let i = 0; i < v; i++) { const it = Sim.makeItem(G, s); found.push(`«${it.n}»`); Sim.giveItem(G, p, it); } continue; }
         if (k === 'bag') { p.bagUp = (p.bagUp || 0) + v; found.push(`рюкзак +${v}`); Sim.fx(G, { k: 'skill', x: p.x, y: p.y, pid: p.id, s: `Рюкзак: ${Sim.bagCap(p)} мест`, t: 2 }); continue; }
         Sim.dropItem(G, k, v, s.x, s.y + 14, 26);
         found.push(k === 'xp' ? `опыт ×${v}` : k === 'coin' ? `${v} $` : `${AB.itemName(k).toLowerCase()} ×${v}`);
@@ -1241,8 +1384,8 @@
       const np = nearestPlayer(G, m.x, m.y);
       m.spCd -= dt;
       if (m.sp) { specialStep(G, m, dt); continue; }
-      let tx = null, ty = null, sp = m.speed * (m.slowT > 0 ? 1 - m.slowPct / 100 : 1);
-      let sight = def.sight * (G.isNight ? 1.3 : 1);
+      let tx = null, ty = null, sp = m.speed * (m.slowT > 0 ? 1 - m.slowPct / 100 : 1) * (AB.WX ? AB.WX.speed * AB.WX.monSpeed : 1);
+      let sight = def.sight * (G.isNight ? 1.3 : 1) * (AB.WX ? AB.WX.sight : 1);
       if (m.hunter) sight = 1200;
       if (m.guard) {
         const hd = AB.dist(m.x, m.y, m.home.x, m.home.y);
@@ -1268,7 +1411,7 @@
           if (np.d < R.range && m.shotCd <= 0) {
             m.shotCd = R.cd; m.atk = 0.3;
             const a = Math.atan2(np.p.y - m.y, np.p.x - m.x);
-            G.eprojs.push({ x: m.x, y: m.y - 10, vx: Math.cos(a) * R.speed, vy: Math.sin(a) * R.speed, dmg: m.dmg, life: R.range * 1.4 / R.speed, src: m.id });
+            G.eprojs.push({ x: m.x, y: m.y - 10, vx: Math.cos(a) * R.speed, vy: Math.sin(a) * R.speed, dmg: m.dmg, life: R.range * 1.4 / R.speed, src: m.id, lk: R.look || 0 });
           }
         }
       } else if (m.st === 'return') { tx = m.home.x; ty = m.home.y; sp *= 1.1; }
@@ -1392,13 +1535,13 @@
     const T = (o) => G.tele.push(Object.assign({ id: G.nextId++, t: 0, dur: S.windup, owner: m.id, dmg, fr: 0 }, o));
     if (S.kind === 'lunge') T({ sh: 'l', x: m.x, y: m.y, a, len: S.distance + m.r, w: S.width, warn: 1, dmg: 0 });
     else if (S.kind === 'cone') T({ sh: 'k', x: m.x, y: m.y, a, len: S.length + m.r, w: (S.angle / 2) * Math.PI / 180 });
-    else if (S.kind === 'nova') T({ sh: 'c', x: m.x, y: m.y, r: S.radius });
+    else if (S.kind === 'nova') T({ sh: 'c', x: m.x, y: m.y, r: S.radius, slow: S.slow, slowTime: S.slowTime, sn: S.name });
     else if (S.kind === 'smash') T({ sh: 'c', x: m.x + Math.cos(a) * (m.r + S.radius * 0.55), y: m.y + Math.sin(a) * (m.r + S.radius * 0.55), r: S.radius });
-    else if (S.kind === 'target') T({ sh: 'c', x: target.x, y: target.y, r: S.radius, slow: S.slow, slowTime: S.slowTime });
+    else if (S.kind === 'target') T({ sh: 'c', x: target.x, y: target.y, r: S.radius, slow: S.slow, slowTime: S.slowTime, sn: S.name });
     else if (S.kind === 'volley') {
       for (let i = 0; i < S.count; i++) {
         const ang = rnd() * TAU, off = i === 0 ? 0 : S.spread * (0.5 + rnd() * 0.5);
-        T({ sh: 'c', x: target.x + Math.cos(ang) * off, y: target.y + Math.sin(ang) * off, r: S.radius, dur: S.windup + i * 0.15 });
+        T({ sh: 'c', x: target.x + Math.cos(ang) * off, y: target.y + Math.sin(ang) * off, r: S.radius, dur: S.windup + i * 0.15, slow: S.slow, slowTime: S.slowTime, sn: S.name });
       }
     }
     Sim.fx(G, { k: 'windup', x: m.x, y: m.y });
@@ -1556,7 +1699,7 @@
         const src = G.monsters.find(m => m.id === t.owner);
         for (const p of G.players) if (!p.dead && inShape(t, p.x, p.y, C().PLAYER_RADIUS * 0.6)) {
           damagePlayer(G, p, t.dmg, src);
-          if (t.slow) { p.slowT = t.slowTime; p.slowPct = t.slow; Sim.msg(G, 'Вы в паутине! Скорость снижена', p.id, '#dfe8ee'); }
+          if (t.slow) { if (!(p.slowT > 0)) Sim.msg(G, `${t.sn || 'Паутина'}: скорость снижена`, p.id, '#dfe8ee'); p.slowT = t.slowTime; p.slowPct = t.slow; }
         }
         for (const s of G.structs) if (inShape(t, s.x, s.y, s.r)) s.hp -= t.dmg * 0.7;
       }
@@ -1688,6 +1831,7 @@
   function updateWorld(G, dt) {
     const cfg = C(), W = G.W;
     for (const t of W.trees) {
+      if (t.gone) continue; // на этом месте теперь поляна локации
       if (t.shake > 0) t.shake = Math.max(0, t.shake - dt);
       if (t.dead) {
         t.regrow -= dt;
@@ -1716,7 +1860,7 @@
     for (const b of W.bushes) if (b.berries === 0) { b.t -= dt; if (b.t <= 0) { b.berries = 1; G.bushDirty.add(b.id); } }
     for (const pl of G.plots) {
       if (pl.crop && !pl.ready) {
-        pl.t += dt * (pl.mod ? 1 + cfg.MODULES.plot.grow / 100 : 1);
+        pl.t += dt * (pl.mod ? 1 + cfg.MODULES.plot.grow / 100 : 1) * (AB.WX ? AB.WX.crop : 1);
         if (pl.t >= cfg.CROPS[pl.crop].grow) pl.ready = true;
       }
     }
@@ -1739,7 +1883,7 @@
       }
     }
     for (const f of G.fires) {
-      f.fuel = Math.max(0, f.fuel - cfg.FIRE_BURN_RATE * dt);
+      f.fuel = Math.max(0, f.fuel - cfg.FIRE_BURN_RATE * dt * (AB.WX ? AB.WX.fireBurn : 1));
       f.cap = Sim.fireCap(G, f);
       f.lvl = f.main ? G.fireLevel : 1;
       f.lm = (f.mod ? 1 + cfg.MODULES.fire.light / 100 : 1) * (Sim.hasMod(f, 'signal') ? 1.4 : 1);
@@ -1999,6 +2143,7 @@
     }
     if (c === 'pickup') { pickupDrop(G, p, x); return; }
     if (c === 'autopick') { p.ap = !!x; return; }
+    if (c === 'equip' || c === 'unequip' || c === 'scrap') { gearCommand(G, p, c, x); return; }
     if (c === 'dumpfire') { dumpFire(G, p, x); return; }
     if (c === 'dumphide') { dumpHide(G, p); return; }
     if (c === 'pickcraft') { craftPick(G, p); return; }
@@ -2263,6 +2408,7 @@
       G.fireLevel++; o.fuel = cfg.FIRE_FUEL_MAX;
       Sim.msg(G, `Костёр ур. ${G.fireLevel}! Территория расширена, новые умения: «${cfg.TIER_NAMES[G.fireLevel - 1]}»`, -1, cfg.TIER_COLORS[G.fireLevel - 1]);
       Sim.fx(G, { k: 'fireup', x: o.x, y: o.y });
+      Sim.onFireLevel(G);
       return;
     }
     let lv;
@@ -2380,13 +2526,13 @@
         id: p.id, n: p.name, pr: p.prof, x: r1(p.x), y: r1(p.y), a: r1(p.a), hp: r1(p.hp), mh: r1(p.mhp), f: r1(p.food), d: p.dead ? 1 : 0, rs: r1(p.rs),
         inv: p.inv, sw: r1(p.sw), sk: p.sk, sa: r1(p.sa), tp: p.tp, h: r1(p.hurt), mv: p.moving ? 1 : 0,
         ab: p.ab.map(a => [a.id, a.lv]), abt: p.ab.map(a => r1(Math.max(0, (p.abT && p.abT[a.id]) || 0))), xp: r1(p.xp), xl: p.xl, aq: p.aq, ao: p.ao, sh: Math.round(p.sh || 0), lf: p.left ? 1 : 0,
-        sl: p.slowT > 0 ? p.slowPct : 0, mo: p.mo || [], ax: p.axe || 1, pk: p.pick || 0, bu: p.bagUp || 0, mg: p.mgBought || {}, lv: p.level, q: p.queue, of: p.offers, sks: p.skills.map(q => q.id + ':' + q.tier + ':' + (q.sup || 0)), st: stCompact(p.st), rr: p.rr, swl: p.swl,
+        sl: p.slowT > 0 ? p.slowPct : 0, mo: p.mo || [], ax: p.axe || 1, pk: p.pick || 0, bu: p.bagUp || 0, mg: p.mgBought || {}, lv: p.level, q: p.queue, of: p.offers, sks: p.skills.map(q => q.id + ':' + q.tier + ':' + (q.sup || 0)), st: stCompact(p.st), rr: p.rr, swl: p.swl, eq: p.eq || {}, wd: p.wd || [],
       })),
       m: G.monsters.map(m => [m.id, MON_TYPES.indexOf(m.type), r1(m.x), r1(m.y), r1(m.a), Math.round(m.hp), Math.round(m.maxHp), m.hurt > 0 ? 1 : 0,
         (m.guard ? 1 : 0) | (m.hunter ? 2 : 0) | (m.st === 'chase' ? 4 : 0) | ((m.atk || 0) > 0 ? 8 : 0) | (m.burn ? 16 : 0) | (m.slowT > 0 ? 32 : 0) | (m.act ? 64 : 0) | (m.mark > 0 ? 128 : 0),
-        m.dying > 0 ? r1(m.dying) : 0, m.act ? m.act.k : 0]),
+        m.dying > 0 ? r1(m.dying) : 0, m.act ? m.act.k : 0, m.es ? [Math.round(m.es * 100) / 100, m.en] : 0]),
       pr: G.projs.map(p => [p.id, p.k, r1(p.x), r1(p.y), Math.round(p.vx), Math.round(p.vy)]),
-      ep: G.eprojs.map(e => [r1(e.x), r1(e.y), Math.round(e.vx), Math.round(e.vy)]),
+      ep: G.eprojs.map(e => [r1(e.x), r1(e.y), Math.round(e.vx), Math.round(e.vy), e.lk || 0]),
       te: G.tele.map(t => [t.sh, r1(t.x), r1(t.y), t.r || 0, r1(t.a || 0), t.len || 0, t.w || 0, Math.round(t.t / t.dur * 100) / 100, t.fr]),
       stc: G.structs.map(q => [q.id, q.kind, r1(q.x), r1(q.y), Math.round(q.hp), Math.round(q.mhp), q.owner, q.armed ? 1 : 0, q.mod ? 1 : 0, r1(q.a), q.stock ? q.stock.length : 0, q.stock && q.stock.length ? Math.round(q.sellT / C().SHOP.sellTime * 100) / 100 : 0, q.tl || 1, q.cl || 1, q.ml || 1, q.up || {}, q.bl || 1, q.bmod || 0]),
       mc: G.merchant ? [G.merchant.x, G.merchant.y] : 0,
@@ -2402,6 +2548,8 @@
       kl: [G.kitchen.lvl, G.kitchen.up, G.kitchen.bmod || 0],
       kc: [G.kitchen.x, G.kitchen.y, G.kitchen.slots.map(q => [q.k, Math.round(q.t / C().COOKING[q.k].time * 100) / 100]), G.kitchen.queue.length],
       fx: G.fxOut,
+      wx: [G.wx.id, Math.round(G.wx.t)],
+      bo: G.bolts.map(b => [r1(b.x), r1(b.y), b.r, Math.round(b.t / b.dur * 100) / 100]),
     };
     const trees = [], bushes = [];
     // залежи: [id, прочность, разбита]
@@ -2425,7 +2573,10 @@
 
   Sim.applySnapshot = function (G, s, myId) {
     const W = G.W, cfg = C();
-    G.clock = s.c; G.stats.kills = s.k; G.fireLevel = s.fl; G.nextBoss = s.nb;
+    G.clock = s.c; G.stats.kills = s.k; G.nextBoss = s.nb;
+    if (s.fl !== G.fireLevel) { G.fireLevel = s.fl; Sim.onFireLevel(G); }
+    if (s.wx) { G.wx = { id: s.wx[0], t: s.wx[1] }; AB.WX = Sim.wxDef(s.wx[0]); }
+    G.bolts = (s.bo || []).map(a => ({ x: a[0], y: a[1], r: a[2], t: a[3], dur: 1 }));
     const ti = Sim.timeInfo(G.clock); G.day = ti.day; G.isNight = ti.isNight; G.nightF = ti.nightF;
     if (s.o && !G.over) G.over = s.o;
     s.p.forEach(sp => {
@@ -2437,7 +2588,7 @@
       p.name = sp.n; p.prof = sp.pr; p.hp = sp.hp; p.mhp = sp.mh; p.food = sp.f; p.dead = !!sp.d; p.rs = sp.rs; p.left = !!sp.lf;
       p.inv = sp.inv; p.sw = sp.sw; p.sk = sp.sk; p.sa = sp.sa; p.tp = sp.tp; p.hurt = sp.h;
       p.ab = sp.ab.map(a => ({ id: a[0], lv: a[1] })); p.abT = {}; p.ab.forEach((a, i) => p.abT[a.id] = sp.abt[i]); p.xp = sp.xp; p.xl = sp.xl; p.aq = sp.aq; p.ao = sp.ao; p.sh = sp.sh;
-      p.mo = sp.mo; p.axe = sp.ax; p.pick = sp.pk || 0; p.bagUp = sp.bu; p.mgBought = sp.mg; p.slowT = sp.sl ? 1 : 0; p.slowPct = sp.sl || 0; p.level = sp.lv; p.queue = sp.q; p.offers = sp.of; p.rr = sp.rr; p.swl = sp.swl;
+      p.eq = sp.eq || {}; p.wd = sp.wd || []; p.mo = sp.mo; p.axe = sp.ax; p.pick = sp.pk || 0; p.bagUp = sp.bu; p.mgBought = sp.mg; p.slowT = sp.sl ? 1 : 0; p.slowPct = sp.sl || 0; p.level = sp.lv; p.queue = sp.q; p.offers = sp.of; p.rr = sp.rr; p.swl = sp.swl;
       p.skills = sp.sks.map(x => { const a = x.split(':'); return { id: a[0], tier: +a[1], sup: +a[2] }; });
       const st = {}; AB.Skills.statKeys().forEach(k => st[k] = sp.st[k] || 0); p.st = st;
     });
@@ -2451,10 +2602,11 @@
       m.burn = f & 16 ? {} : null; m.slowT = f & 32 ? 1 : 0; m.mark = f & 128 ? 1 : 0;
       m.act = f & 64 ? { k: a[10] } : null;
       m.dying = a[9]; m.r = AB.monDef(m.type).radius; m.boss = AB.isBoss(m.type); m.lostT = m.lostT || 0;
+      if (a[11]) { m.es = a[11][0]; m.en = a[11][1]; m.r *= m.es; m.guard = true; } else { m.es = 0; m.en = null; }
       return m;
     });
     G.projs = s.pr.map(a => ({ id: a[0], k: a[1], x: a[2], y: a[3], vx: a[4], vy: a[5] }));
-    G.eprojs = s.ep.map(a => ({ x: a[0], y: a[1], vx: a[2], vy: a[3] }));
+    G.eprojs = s.ep.map(a => ({ x: a[0], y: a[1], vx: a[2], vy: a[3], lk: a[4] || 0 }));
     G.tele = s.te.map(a => ({ sh: a[0], x: a[1], y: a[2], r: a[3], a: a[4], len: a[5], w: a[6], prog: a[7], fr: a[8] }));
     G.structs = s.stc.map(a => ({ id: a[0], kind: a[1], x: a[2], y: a[3], hp: a[4], mhp: a[5], owner: a[6], armed: !!a[7], mod: !!a[8], a: a[9], r: cfg.STRUCTURES[a[1]].radius, stockN: a[10], sellP: a[11], tl: a[12], cl: a[13], ml: a[14], up: a[15], bl: a[16], bmod: a[17] || null }));
     G.merchant = s.mc ? { x: s.mc[0], y: s.mc[1] } : null;
@@ -2491,7 +2643,7 @@
   function fireLight(f) {
     const cfg = C();
     const mn = cfg.FIRE_MIN_LIGHT;
-    return cfg.FIRE_LIGHT_RADIUS * (mn + (1 - mn) * Math.min(1, f.fuel / ((f.cap || cfg.FIRE_FUEL_MAX) * 0.5))) * (1 + cfg.FIRE_LEVEL_LIGHT * ((f.lvl || 1) - 1)) * (f.lm || 1);
+    return cfg.FIRE_LIGHT_RADIUS * (mn + (1 - mn) * Math.min(1, f.fuel / Math.min((f.cap || cfg.FIRE_FUEL_MAX) * 0.5, cfg.FIRE_LIGHT_FULL || 30))) * (1 + cfg.FIRE_LEVEL_LIGHT * ((f.lvl || 1) - 1)) * (f.lm || 1);
   }
   AB.fireLight = fireLight;
 })(window.AB);

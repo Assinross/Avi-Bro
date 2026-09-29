@@ -29,6 +29,8 @@
       if (!def) continue;
       for (const k in def.stats) st[k] = (st[k] || 0) + val(def.stats[k], s.tier);
     }
+    // надетая одежда
+    if (p.eq) for (const k in p.eq) { const it = p.eq[k]; if (it && it.m) for (const q in it.m) st[q] = (st[q] || 0) + it.m[q]; }
     const oldM = p.mhp || cfg.PLAYER_MAX_HP;
     p.st = st;
     p.mhp = Math.max(20, cfg.PLAYER_MAX_HP + st.maxHp);

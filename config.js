@@ -53,7 +53,72 @@ window.CONFIG = {
   LOOT_SITE_MIN_DIST: 30,     // Минимальное расстояние локаций от лагеря (в тайлах) — отдалено, чтобы сундуки не были слишком близко
   LOOT_SITE_MAX_DIST: 72,     // Максимальное расстояние локаций от лагеря (в тайлах)
   LOOT_SITE_RADIUS: 4,        // Радиус поляны вокруг сундука (в тайлах)
-  LOOT_SITE_SPACING: 12,      // Минимальное расстояние между локациями (в тайлах)
+  LOOT_SITE_SPACING: 18,      // Минимальное расстояние между локациями (в тайлах) — с запасом, локации растут
+  // РОСТ ЛОКАЦИЙ ОТ УРОВНЯ КОСТРА. Чем выше уровень главного костра, тем больше каждая локация:
+  // шире поляна (лес вокруг отступает), больше построек и декора, больше стражи и богаче сундук.
+  SITE_GROW: {
+    radius: [4, 5, 6.5, 8],   // Радиус поляны (в тайлах) при костре 1, 2, 3, 4 ур.
+    guardsPerLevel: 1,        // Сколько стражей добавляется в каждую неразграбленную группу за уровень костра
+    eliteHpPerLevel: 0.3,     // Одиночный босс лагеря: +30% здоровья за уровень костра
+    eliteScalePerLevel: 0.1,  // ...и становится крупнее
+    lootPerLevel: 0.4,        // Сундук богаче на 40% (монеты, опыт, уголь) за каждый уровень костра выше первого
+  },
+  // ОХРАНА СУНДУКОВ: случайный «пак» — либо группа монстров, либо одиночный босс лагеря.
+  ELITE_CHANCE: 0.35,         // Доля локаций, которые охраняет один сильный босс лагеря вместо группы
+  ELITE: {
+    hpOfPack: 1.2,            // Здоровье босса = суммарное здоровье группы этой локации × это число
+    dmgMult: 1.7,             // Урон босса: × средний урон группы
+    scale: 1.55,              // Во сколько раз он крупнее обычного монстра
+    speed: 0.9,               // Чуть медленнее обычного
+    coinsMult: 3,             // Больше монет при убийстве
+  },
+  // ВИДЫ ЛОКАЦИЙ. packs — варианты группы по уровню локации (0 — ближние .. 3 — дальние);
+  // boss — кто охраняет в одиночку; loot — добавки к сундуку (множители и лишние предметы).
+  SITE_KINDS: {
+    ruins:     { name: 'Руины',               color: '#c8c0b0', boss: 'brute',    bossName: 'Вожак громил',
+      packs: [[['ghoul', 'wolf', 'wolf'], ['wolf', 'wolf', 'spider', 'spider']],
+              [['ghoul', 'ghoul', 'wolf', 'alpha'], ['alpha', 'wolf', 'wolf', 'spider']],
+              [['alpha', 'ghoul', 'ghoul', 'spitter'], ['brute', 'wolf', 'archer', 'ghoul'], ['alpha', 'archer', 'ghoul', 'spitter']],
+              [['brute', 'alpha', 'ghoul', 'spitter'], ['brute', 'brute', 'archer', 'alpha'], ['brute', 'archer', 'alpha', 'spitter']]],
+      loot: {} },
+    bandits:   { name: 'Лагерь разбойников',  color: '#e0a060', boss: 'bandit',   bossName: 'Атаман',
+      packs: [[['bandit', 'bandit'], ['bandit', 'robber']],
+              [['bandit', 'bandit', 'robber'], ['bandit', 'robber', 'wolf', 'wolf']],
+              [['bandit', 'bandit', 'robber', 'robber'], ['bandit', 'bandit', 'bandit', 'robber', 'alpha']],
+              [['bandit', 'bandit', 'robber', 'robber', 'brute'], ['bandit', 'bandit', 'bandit', 'robber', 'robber']]],
+      loot: { coin: 2, meat: 1 } },          // награбленное: вдвое больше монет, есть мясо
+    ufo:       { name: 'Упавшая тарелка',     color: '#8affc0', boss: 'alien',    bossName: 'Капитан пришельцев',
+      packs: [[['alien', 'alien'], ['alien', 'spider', 'spider']],
+              [['alien', 'alien', 'alien'], ['alien', 'alien', 'spider', 'spider']],
+              [['alien', 'alien', 'alien', 'spitter'], ['alien', 'alien', 'alien', 'alien']],
+              [['alien', 'alien', 'alien', 'alien', 'spitter'], ['alien', 'alien', 'alien', 'brute']]],
+      loot: { xp: 1.6, iron: 1 } },          // инопланетный металл и много опыта
+    graveyard: { name: 'Кладбище зверей',     color: '#d8d0bc', boss: 'bonewolf', bossName: 'Костяной вожак',
+      packs: [[['bonewolf', 'bonewolf'], ['bonewolf', 'skeleton']],
+              [['bonewolf', 'bonewolf', 'skeleton'], ['bonewolf', 'skeleton', 'archer']],
+              [['bonewolf', 'bonewolf', 'archer', 'zombie'], ['bonewolf', 'bonewolf', 'bonewolf', 'skeleton']],
+              [['bonewolf', 'bonewolf', 'archer', 'lich'], ['bonewolf', 'bonewolf', 'bonewolf', 'zombie', 'archer']]],
+      loot: { hide: 2, xp: 1.3 } },          // шкуры давно ушедших зверей
+    witch:     { name: 'Избушка колдуньи',    color: '#c890ff', boss: 'crone',    bossName: 'Лесная колдунья',
+      packs: [[['spider', 'spider', 'spitter'], ['spitter', 'spitter']],
+              [['spider', 'spider', 'spitter', 'ghoul'], ['spitter', 'spitter', 'spider']],
+              [['crone', 'spitter', 'spider', 'spider'], ['spitter', 'spitter', 'ghoul', 'ghoul']],
+              [['crone', 'spitter', 'spitter', 'ghoul'], ['crone', 'crone', 'spider', 'spider']]],
+      loot: { seeds: 2, cooked: 2 } },       // зелья… то есть семена и горячая похлёбка
+    mushrooms: { name: 'Грибная поляна',      color: '#ff8ab0', boss: 'shroom',   bossName: 'Грибной король',
+      packs: [[['shroom', 'shroom'], ['shroom', 'spider']],
+              [['shroom', 'shroom', 'shroom'], ['shroom', 'shroom', 'spider', 'spider']],
+              [['shroom', 'shroom', 'shroom', 'spitter'], ['shroom', 'shroom', 'shroom', 'shroom']],
+              [['shroom', 'shroom', 'shroom', 'shroom', 'spitter'], ['shroom', 'shroom', 'shroom', 'brute']]],
+      loot: { seeds: 3, berry: 4 } },
+    bears:     { name: 'Медвежья берлога',    color: '#c89060', boss: 'bear',     bossName: 'Медведь-шатун',
+      packs: [[['bear'], ['wolf', 'wolf', 'wolf']],
+              [['bear', 'wolf'], ['bear', 'wolf', 'wolf']],
+              [['bear', 'bear'], ['bear', 'alpha', 'wolf']],
+              [['bear', 'bear', 'alpha'], ['bear', 'bear', 'wolf', 'wolf']]],
+      loot: { meat: 3, hide: 1 } },          // запасы на зиму
+  },
+  SITE_KIND_MIN: 2,           // Каждый вид локации (кроме руин) встречается на карте хотя бы столько раз
   // СКРЫТЫЕ ЛОГОВА: к ним не ведёт тропа, вокруг — сплошное кольцо деревьев.
   // Чтобы попасть внутрь, прорубитесь топором. Внутри — самая сильная охрана и железо.
   HIDDEN_SITES: 6,            // Сколько локаций скрыто (выбираются из самых дальних)
@@ -86,8 +151,9 @@ window.CONFIG = {
   /* ------------------------------ ИГРОК ----------------------------- */
   MOVE_SPEED_MULT: 0.8,       // Общий множитель скорости движения игроков, монстров и боссов (0.8 = на 20% медленнее)
   MONSTER_SPEED_MULT: 0.85,   // Дополнительный множитель скорости только для монстров и боссов (0.85 = ещё на 15% медленнее)
-  PLAYER_SPEED: 155,          // Базовая скорость ходьбы (до множителя MOVE_SPEED_MULT)
-  PLAYER_RADIUS: 11,          // Радиус столкновения игрока
+  PLAYER_SPEED: 132,          // Базовая скорость ходьбы (до множителя MOVE_SPEED_MULT). Было 155 — герой стал меньше и медленнее
+  PLAYER_RADIUS: 9,           // Радиус столкновения игрока (герой на 20% меньше прежнего)
+  PLAYER_SCALE: 0.8,          // Масштаб рисунка героя
   PLAYER_MAX_HP: 100,         // Максимальное здоровье
   PLAYER_MAX_FOOD: 100,       // Максимальная сытость
   FOOD_DRAIN: 0.32,           // Потеря сытости в секунду
@@ -174,7 +240,8 @@ window.CONFIG = {
   XP_NEED: { base: 6, lin: 6, sq: 0.9 },
   XP_NIGHT_GROWTH: 0.02,     // +2% к опыту с монстров за каждую ночь (ночь 1 ≈ ×1.0, ночь 50 ≈ ×2.0)
   XP_SHARE: 0.5,              // Какую долю опыта получает напарник (в кооперативе)
-  XP_DROP: { wolf: 1, ghoul: 2, shade: 2, spider: 1, alpha: 5, spitter: 3, brute: 8, skeleton: 1, zombie: 2, archer: 3, lich: 6, boss: 40 }, // Опыт с монстров
+  XP_DROP: { wolf: 1, ghoul: 2, shade: 2, spider: 1, alpha: 5, spitter: 3, brute: 8, skeleton: 1, zombie: 2, archer: 3, lich: 6, boss: 40,
+    bandit: 2, robber: 2, alien: 3, bonewolf: 1, crone: 4, shroom: 2, bear: 6 }, // Опыт с монстров
   DEPTH_XP: 1.5,              // Глубоко в лесу опыта больше: +150% на краю карты
   XP_MAGNET: 90,              // Радиус притяжения шариков опыта и монет
   /* Описание навыков. kind — как работает:
@@ -281,6 +348,14 @@ window.CONFIG = {
     zombie:   { name: 'Зомби',         hp: 70,  speed: 60,  damage: 12, attackCd: 1.2, sight: 220, radius: 13, meat: [0, 0], seedChance: 0, undead: true },
     archer:   { name: 'Скелет-лучник', hp: 35,  speed: 75,  damage: 9,  attackCd: 1.0, sight: 300, radius: 12, meat: [0, 0], seedChance: 0, undead: true, ranged: { range: 220, cd: 2.5, speed: 240 } },
     lich:     { name: 'Лич',           hp: 160, speed: 65,  damage: 16, attackCd: 1.2, sight: 340, radius: 15, meat: [0, 0], seedChance: 0, undead: true, ranged: { range: 260, cd: 2.8, speed: 260 } },
+    // ОБИТАТЕЛИ ЛОКАЦИЙ (охраняют сундуки, по лесу не бродят)
+    bandit:   { name: 'Разбойник',     hp: 55,  speed: 112, damage: 10, attackCd: 0.9, sight: 260, radius: 12, meat: [0, 1], seedChance: 0.05 },
+    robber:   { name: 'Арбалетчик',    hp: 40,  speed: 88,  damage: 9,  attackCd: 1.0, sight: 300, radius: 12, meat: [0, 0], seedChance: 0.04, ranged: { range: 240, cd: 2.3, speed: 300, look: 'bolt' } },
+    alien:    { name: 'Пришелец',      hp: 42,  speed: 96,  damage: 9,  attackCd: 1.0, sight: 290, radius: 11, meat: [0, 0], seedChance: 0.02, ranged: { range: 230, cd: 1.9, speed: 280, look: 'laser' } },
+    bonewolf: { name: 'Костяной волк', hp: 38,  speed: 136, damage: 7,  attackCd: 0.8, sight: 250, radius: 12, meat: [0, 0], seedChance: 0, undead: true, hide: 0.1 },
+    crone:    { name: 'Колдунья',      hp: 60,  speed: 72,  damage: 12, attackCd: 1.1, sight: 300, radius: 12, meat: [0, 0], seedChance: 0.3, ranged: { range: 260, cd: 2.4, speed: 220, look: 'hex' } },
+    shroom:   { name: 'Грибовик',      hp: 60,  speed: 70,  damage: 9,  attackCd: 1.0, sight: 220, radius: 13, meat: [0, 0], seedChance: 0.12 },
+    bear:     { name: 'Медведь',       hp: 150, speed: 108, damage: 16, attackCd: 1.2, sight: 240, radius: 18, meat: [3, 5], seedChance: 0.05, hide: 0.8 },
   },
   MEAT_DROP_MULT: 0.2,        // Множитель выпадения мяса (0.2 = в 5 раз меньше, чем указано в meat)
   // Рост монстров с каждой ночью n: множитель = 1 + LIN·(n−1) + SQ·(n−1)².
@@ -303,6 +378,13 @@ window.CONFIG = {
     zombie:  { name: 'Тяжёлый удар',    kind: 'smash',  minDist: 0,  maxDist: 60,  windup: 1.0,  radius: 55, cooldown: 5,   dmgMult: 2.0 },
     archer:  { name: 'Залп стрел',      kind: 'volley', minDist: 90, maxDist: 250, windup: 1.0,  radius: 40, count: 2, spread: 60, cooldown: 6, dmgMult: 1.2 },
     lich:    { name: 'Тёмный взрыв',    kind: 'nova',   minDist: 0,  maxDist: 80,  windup: 1.0,  radius: 90, cooldown: 6,  dmgMult: 1.8 },
+    bandit:  { name: 'Выпад ножом',     kind: 'lunge',  minDist: 50, maxDist: 180, chaseTime: 0.7, windup: 0.5,  distance: 165, time: 0.26, width: 28, recover: 0.45, cooldown: 3.4, dmgMult: 1.5 },
+    robber:  { name: 'Залп болтов',     kind: 'volley', minDist: 90, maxDist: 250, windup: 1.0,  radius: 38, count: 2, spread: 55, cooldown: 6, dmgMult: 1.2 },
+    alien:   { name: 'Луч похищения',   kind: 'target', minDist: 60, maxDist: 240, windup: 1.0,  radius: 48, cooldown: 6, dmgMult: 0.8, slow: 45, slowTime: 2 },
+    bonewolf:{ name: 'Костяной прыжок', kind: 'lunge',  minDist: 55, maxDist: 190, chaseTime: 0.7, windup: 0.45, distance: 180, time: 0.26, width: 30, recover: 0.4, cooldown: 2.8, dmgMult: 1.3 },
+    crone:   { name: 'Проклятие',       kind: 'volley', minDist: 80, maxDist: 270, windup: 1.1,  radius: 40, count: 3, spread: 80, cooldown: 6.5, dmgMult: 1.2, slow: 30, slowTime: 1.5 },
+    shroom:  { name: 'Облако спор',     kind: 'nova',   minDist: 0,  maxDist: 60,  windup: 0.9,  radius: 72, cooldown: 5.5, dmgMult: 1.2, slow: 35, slowTime: 2 },
+    bear:    { name: 'Удар лапой',      kind: 'smash',  minDist: 0,  maxDist: 70,  windup: 0.8,  radius: 58, cooldown: 4.5, dmgMult: 2.0 },
   },
   // Естественное движение: скорость поворота (рад/с), разгон, «вилянье» при беге
   MONSTER_TURN_RATE: 5,       // Как быстро монстр меняет направление
@@ -423,12 +505,93 @@ window.CONFIG = {
   GARDEN_BED_COST: 8,         // Сколько дерева стоит новая грядка (клавиша G)
   PLANT_RANGE: 90,            // С какого расстояния можно посадить семя (клавиша R)
 
+  /* ---------------------------- СНАРЯЖЕНИЕ --------------------------- *
+   * Главная награда сундуков — одежда. 5 ячеек: голова, куртка, перчатки, штаны, обувь.
+   * Вещь = основа (вид и базовый бонус) + редкость (сколько случайных свойств) + сила
+   * (растёт с дальностью локации и уровнем костра). Надетое видно на герое.
+   * Открыть снаряжение: клавиша I (на телефоне — иконка с курткой). Лишние вещи можно разобрать на монеты. */
+  GEAR: {
+    slots: ['head', 'body', 'hands', 'legs', 'feet'],
+    slotNames: { head: 'Голова', body: 'Куртка', hands: 'Перчатки', legs: 'Штаны', feet: 'Обувь' },
+    wardrobe: 10,             // Сколько вещей помещается в сундук героя (сверх надетых)
+    // Основы: base — бонус на силе 1; c — цвет ткани/металла; look — как выглядит на герое
+    bases: {
+      head:  [{ id: 'cap',    name: 'Кепка',       base: { luck: 3 },             c: '#b8483a', look: 'cap' },
+              { id: 'hood',   name: 'Капюшон',     base: { dodge: 3 },            c: '#4a6a3a', look: 'hood' },
+              { id: 'helm',   name: 'Шлем',        base: { armor: 2 },            c: '#9aa4ae', look: 'helm' },
+              { id: 'hat',    name: 'Шляпа',       base: { crit: 3 },             c: '#6a4a2e', look: 'hat' },
+              { id: 'band',   name: 'Бандана',     base: { atkSpd: 3 },           c: '#c83a2a', look: 'band' }],
+      body:  [{ id: 'shirt',  name: 'Рубаха',      base: { maxHp: 8 },            c: '#d8c8a0' },
+              { id: 'jacket', name: 'Куртка',      base: { armor: 1, maxHp: 5 },  c: '#7a5a3a' },
+              { id: 'mail',   name: 'Кольчуга',    base: { armor: 3 },            c: '#8a949e' },
+              { id: 'robe',   name: 'Мантия',      base: { dmgPct: 4 },           c: '#5a3a7a' },
+              { id: 'vest',   name: 'Жилет',       base: { speed: 3, maxHp: 4 },  c: '#3a6a8a' }],
+      hands: [{ id: 'gloves', name: 'Перчатки',    base: { atkSpd: 3 },           c: '#6a4a2e' },
+              { id: 'mitts',  name: 'Рукавицы',    base: { maxHp: 6 },            c: '#c8b890' },
+              { id: 'bracer', name: 'Наручи',      base: { crit: 3 },             c: '#8a949e' }],
+      legs:  [{ id: 'pants',  name: 'Штаны',       base: { maxHp: 6 },            c: '#3a4a6a' },
+              { id: 'greave', name: 'Поножи',      base: { armor: 2 },            c: '#8a949e' },
+              { id: 'baggy',  name: 'Шаровары',    base: { dodge: 3 },            c: '#8a3a4a' }],
+      feet:  [{ id: 'boots',  name: 'Ботинки',     base: { speed: 4 },            c: '#4a3526' },
+              { id: 'jboots', name: 'Сапоги',      base: { armor: 1, speed: 2 },  c: '#2a2a2e' },
+              { id: 'mocs',   name: 'Мокасины',    base: { speed: 6 },            c: '#a0784a' }],
+    },
+    // Редкость: mods — сколько случайных свойств, mult — множитель всех бонусов, w — вес по уровню локации 0..3
+    rarity: [
+      { name: 'Обычный',     color: '#d8d8d0', mods: 0, mult: 1.0, w: [60, 40, 25, 12] },
+      { name: 'Магический',  color: '#5aa8ff', mods: 1, mult: 1.15, w: [32, 40, 40, 38] },
+      { name: 'Редкий',      color: '#ffd24a', mods: 2, mult: 1.3, w: [7, 17, 28, 36] },
+      { name: 'Легендарный', color: '#ff8a3a', mods: 3, mult: 1.5, w: [1, 3, 7, 14] },
+    ],
+    // Случайные свойства: [мин, макс] на силе 1
+    affixes: {
+      maxHp: [5, 12], armor: [1, 2.5], dodge: [2, 4], speed: [2, 5], dmgPct: [3, 7], atkSpd: [2, 5],
+      crit: [2, 4], regen: [0.15, 0.4], luck: [2, 5], lifesteal: [1, 2.5], pickup: [10, 25], thorns: [2, 5],
+    },
+    powerTier: 0.35,          // Сила вещи: 1 + 0.35 × уровень локации (0..3)
+    powerFire: 0.25,          // ... + 0.25 за каждый уровень костра выше первого
+    powerElite: 0.25,         // ... + 0.25, если локацию охранял босс лагеря
+    scrapCoins: 4,            // Разобрать вещь: монет = 4 × (редкость + 1) × сила
+    // Приписка к имени вещи по локации, где её нашли
+    origin: { ruins: 'из руин', bandits: 'разбойника', ufo: 'пришельца', graveyard: 'костяного волка', witch: 'колдуньи', mushrooms: 'грибника', bears: 'медвежатника' },
+  },
+  CHEST_GEAR: [1, 1],         // Сколько вещей в сундуке [мин, макс]; +1 у босса лагеря и в скрытом логове
+
+  /* ------------------------------ ПОГОДА ---------------------------- *
+   * Погода сменяется сама каждые changeEvery секунд. w — как часто выпадает (вес).
+   * Множители (1 — без изменений): fireBurn — прогорание костра, crop — рост грядок,
+   * hunger — голод, speed — скорость всех (игроков и монстров), monSpeed — только монстров,
+   * vision — дальность обзора игрока, sight — как далеко монстры замечают игрока.
+   * dayOnly — такая погода бывает только днём (ночью сменится сама).
+   * lightning — гроза: в землю рядом бьют молнии (светлый круг — успейте выйти).
+   *   Урон: монстрам — доля от их здоровья, игрокам — доля от максимального здоровья. */
+  WEATHER: {
+    changeEvery: [80, 150],   // Сколько секунд держится погода
+    firstClear: 150,          // Первые секунды игры всегда ясно
+    types: {
+      clear: { name: 'Ясно',     icon: '☀', color: '#ffd24a', w: 36 },
+      rain:  { name: 'Дождь',    icon: '☂', color: '#8fc8ff', w: 18, fireBurn: 1.6, crop: 1.5, vision: 0.9,
+               desc: 'Дождь: костёр прогорает быстрее, грядки растут быстрее' },
+      storm: { name: 'Гроза',    icon: '⚡', color: '#c8b0ff', w: 8,  fireBurn: 2, crop: 1.5, vision: 0.82,
+               lightning: { every: [4, 9], windup: 1.4, radius: 70, monFrac: 0.45, bossFrac: 0.06, playerFrac: 0.14 },
+               desc: 'Гроза! Молнии бьют в землю — уходите из светлых кругов (монстрам тоже достаётся)' },
+      fog:   { name: 'Туман',    icon: '≋', color: '#c8d0c8', w: 12, vision: 0.6, sight: 0.6,
+               desc: 'Туман: видно недалеко, но и монстры замечают вас позже' },
+      snow:  { name: 'Снегопад', icon: '❄', color: '#e8f4ff', w: 10, speed: 0.88, hunger: 1.35, fireBurn: 1.3, crop: 0.6, vision: 0.9,
+               desc: 'Снегопад: все ходят медленнее, голод сильнее, грядки растут медленнее' },
+      heat:  { name: 'Зной',     icon: '☼', color: '#ff9a4a', w: 10, hunger: 1.5, crop: 0.7, fireBurn: 0.7, monSpeed: 0.88, dayOnly: true,
+               desc: 'Зной: быстрее голодаете, монстры вялые, костёр прогорает медленнее' },
+    },
+  },
+
   /* ------------------------------ КОСТЁР ---------------------------- */
   // ГЛАВНЫЙ КОСТЁР: шкала топлива. Подойдите к костру — бревна и уголь из рюкзака сами уходят в огонь.
   // Шкала заполнилась до конца — костёр получает новый уровень, и шкала РАСШИРЯЕТСЯ на следующую ступень
   // (1 ур.: 20 делений → заполнили → 2 ур.: 20 + 30 = 50 делений, из них 20 заполнены, 30 пусты).
   // Топливо постоянно прогорает; достигнутый уровень сохраняется.
-  FIRE_LEVEL_STEPS: [20, 30, 45, 60], // Размер ступеней шкалы: 1 ур. = 20, 2 ур. = +30, 3 ур. = +45, 4 ур. = +60
+  FIRE_LEVEL_STEPS: [20, 90, 135, 180], // Размер ступеней шкалы: 1 ур. = 20, 2 ур. = +90, 3 ур. = +135, 4 ур. = +180
+                              // (со 2-го уровня ступени втрое больше прежних 30/45/60 — прокачка костра заметно дольше)
+  FIRE_LIGHT_FULL: 30,        // При скольких делениях топлива костёр светит в полную силу (не зависит от длины шкалы)
   FUEL_VALUES: { wood: 1, coal: 30 }, // Сколько делений даёт единица топлива (бревно = 1, уголь = 30 бревен)
   FIRE_FUEL_START: 12,        // Топливо главного костра в начале игры
   FIRE_BURN_RATE: 0.05,       // Прогорание: делений в секунду (0.05 = 1 деление за 20 секунд)
@@ -775,7 +938,8 @@ window.CONFIG = {
    * следующего рассвета, кухня и лесопилка работают вполовину.                         */
   START_COINS: 5,
   // Монеты с монстров [мин, макс]; глубоко в лесу больше (DEPTH_COINS — множитель на краю карты)
-  COIN_DROP: { wolf: [0, 1], ghoul: [0, 2], shade: [0, 1], spider: [0, 1], alpha: [2, 4], spitter: [1, 2], brute: [3, 6], skeleton: [0, 1], zombie: [0, 2], archer: [1, 2], lich: [2, 4], boss: [20, 30] },
+  COIN_DROP: { wolf: [0, 1], ghoul: [0, 2], shade: [0, 1], spider: [0, 1], alpha: [2, 4], spitter: [1, 2], brute: [3, 6], skeleton: [0, 1], zombie: [0, 2], archer: [1, 2], lich: [2, 4], boss: [20, 30],
+    bandit: [1, 3], robber: [1, 3], alien: [1, 2], bonewolf: [0, 1], crone: [2, 4], shroom: [0, 2], bear: [2, 4] },
   DEPTH_COINS: 2,
   // Содержание в день (монет): за постройку и за каждый её уровень выше первого
   UPKEEP: {

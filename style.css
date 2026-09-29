@@ -216,3 +216,33 @@ body.touch .kbdhint { display: none !important; }
   .skills.four { grid-template-columns: repeat(2, 1fr); }
   .profs { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* ---------- снаряжение ---------- */
+.gearpanel { position: relative; max-width: 640px; }
+.gearbody { display: flex; gap: 18px; margin-top: 8px; align-items: flex-start; }
+.doll { position: relative; width: 212px; height: 214px; flex: none; }
+.doll canvas { position: absolute; left: 46px; top: 58px; width: 120px; height: 150px; }
+.gslot { position: absolute; width: 50px; height: 50px; border-radius: 10px; border: 2px dashed rgba(170,200,160,0.3); background: rgba(0,0,0,0.35); cursor: pointer; display: grid; place-items: center; }
+.gslot.full { border-style: solid; }
+.gslot img, .gcell img { width: 42px; height: 42px; pointer-events: none; }
+.gslot .gl { position: absolute; bottom: -15px; left: 50%; transform: translateX(-50%); font-size: 10px; color: var(--muted); white-space: nowrap; }
+.gslot.sel, .gcell.sel { outline: 2px solid #fff2b0; outline-offset: 1px; }
+.gside { flex: 1; min-width: 0; }
+.gwd { display: grid; grid-template-columns: repeat(5, 50px); gap: 6px; margin: 6px 0 10px; }
+.gcell { width: 50px; height: 50px; border-radius: 10px; border: 2px solid rgba(170,200,160,0.18); background: rgba(0,0,0,0.3); display: grid; place-items: center; cursor: pointer; position: relative; }
+.gcell.up::after { content: '▲'; position: absolute; right: 3px; top: 1px; font-size: 10px; color: #8fe08a; }
+.ginfo { min-height: 96px; font-size: 13px; line-height: 1.45; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; background: rgba(0,0,0,0.25); }
+.ginfo .gname { font-weight: 800; font-size: 14.5px; }
+.ginfo .gsub { color: var(--muted); font-size: 11.5px; margin-bottom: 4px; }
+.ginfo .up { color: #8fe08a; } .ginfo .down { color: #ff8a7a; }
+.ginfo .gbtns { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.ginfo .btn { padding: 7px 12px; font-size: 13px; }
+.gstats { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: #d8e4d4; }
+.gstats b { color: #fff; }
+@media (max-height: 520px), (max-width: 700px) {
+  .gearbody { gap: 10px; }
+  .doll { transform: scale(0.85); transform-origin: top left; margin-right: -30px; margin-bottom: -30px; }
+  .gwd { grid-template-columns: repeat(5, 44px); gap: 5px; }
+  .gcell { width: 44px; height: 44px; } .gcell img { width: 36px; height: 36px; }
+}
+@media (max-width: 560px) { .gearbody { flex-direction: column; align-items: center; } }

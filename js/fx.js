@@ -4,7 +4,7 @@
   const TAU = Math.PI * 2;
   const rnd = (a, b) => a + Math.random() * (b - a);
 
-  FX.reset = function () { FX.parts = []; FX.toasts = []; FX.shake = 0; FX.flash = 0; };
+  FX.reset = function () { FX.parts = []; FX.toasts = []; FX.shake = 0; FX.flash = 0; FX.lightF = 0; };
 
   FX.add = function (p) {
     if (FX.parts.length >= window.CONFIG.PARTICLES_MAX) FX.parts.shift();
@@ -28,7 +28,7 @@
     if (FX.toasts.length > 5) FX.toasts.shift();
   };
 
-  const BLOOD = { wolf: ['#8e1c1c', '#b3302a', '#5e1010'], alpha: ['#8e1c1c', '#b3302a', '#5e1010'], ghoul: ['#4c6b2a', '#2f4a1a', '#7a8f3a'], shade: ['#6a3fa0', '#9b6ad8', '#2a1840'], brute: ['#6a1c1c', '#3a4a1a', '#8e2c1c'], skeleton: ['#ddd6c2', '#b8b09a', '#8a8474'], zombie: ['#6f8a4a', '#465c2a', '#2e4020'], archer: ['#ddd6c2', '#b8b09a', '#8a8474'], lich: ['#9b6ad8', '#5a3f8a', '#2a1840'] };
+  const BLOOD = { wolf: ['#8e1c1c', '#b3302a', '#5e1010'], alpha: ['#8e1c1c', '#b3302a', '#5e1010'], ghoul: ['#4c6b2a', '#2f4a1a', '#7a8f3a'], shade: ['#6a3fa0', '#9b6ad8', '#2a1840'], brute: ['#6a1c1c', '#3a4a1a', '#8e2c1c'], skeleton: ['#ddd6c2', '#b8b09a', '#8a8474'], zombie: ['#6f8a4a', '#465c2a', '#2e4020'], archer: ['#ddd6c2', '#b8b09a', '#8a8474'], lich: ['#9b6ad8', '#5a3f8a', '#2a1840'], bandit: ['#8e1c1c', '#b3302a', '#5e1010'], robber: ['#8e1c1c', '#b3302a', '#5e1010'], alien: ['#6aff9a', '#2ac870', '#c8ffe0'], bonewolf: ['#ddd6c2', '#b8b09a', '#8a8474'], crone: ['#9b6ad8', '#6a8a4a', '#2a1840'], shroom: ['#efe2c0', '#d0402a', '#e8a0c0'], bear: ['#8e1c1c', '#6a4428', '#5e1010'] };
 
   FX.play = function (ev) {
     const near = (ev.x === undefined) ? 1 : AB.clamp(1 - AB.dist(ev.x, ev.y, FX.listener.x, FX.listener.y) / 900, 0, 1);
@@ -103,6 +103,20 @@
         FX.add({ t: 'strike', x: ev.x, y: ev.y, z: 0, vx: 0, vy: 0, vz: 0, g: 0, life: 0.4, sh: ev.sh, r: ev.r, a: ev.a, len: ev.len, w: ev.w, fr: ev.fr });
         burst(ev.x, ev.y, 14, ev.fr ? ['#ffd24a', '#ff8a2a'] : ['#8a7a60', '#5e5040', '#c0a080'], 220);
         FX.shake = Math.min(14, FX.shake + (near > 0.6 ? 7 : 2)); Sound.play('boom', near); break;
+      case 'lightning': {
+        const pts = [[ev.x + (Math.random() - 0.5) * 80, ev.y - 520]];
+        for (let i = 1; i < 6; i++) pts.push([ev.x + (Math.random() - 0.5) * 60 * (1 - i / 6), ev.y - 520 + i * 104]);
+        pts.push([ev.x, ev.y + 10]);
+        FX.add({ t: 'bolt', x: ev.x, y: ev.y, z: 0, vx: 0, vy: 0, vz: 0, g: 0, life: 0.35, pts, c: 0 });
+        FX.add({ t: 'ring', x: ev.x, y: ev.y, z: 0, vx: 0, vy: 0, vz: 0, g: 0, life: 0.45, size: ev.r, c: '#dfe8ff' });
+        burst(ev.x, ev.y, 18, ['#ffffff', '#bfe0ff', '#8fb0ff'], 220, { type: 'spark', g: 60, life: 0.6 });
+        FX.add({ t: 'smoke', x: ev.x, y: ev.y, z: 0, vx: 0, vy: 0, vz: 0, g: 0, life: 1.1, size: 30, c: 'rgba(60,60,70,' });
+        FX.lightF = Math.max(FX.lightF || 0, 0.35 + near * 0.5); FX.shake = Math.min(14, FX.shake + 5 * near); Sound.play('boom', Math.max(0.35, near)); break;
+      }
+      case 'gear':
+        burst(ev.x, ev.y - 20, 22, [ev.c || '#ffd24a', '#ffffff'], 140, { type: 'spark', g: -50, life: 1.1 });
+        if (ev.pid === FX.myId) Sound.play('chest', 0.8);
+        break;
       case 'howl': FX.add({ t: 'ring', x: ev.x, y: ev.y, z: 0, vx: 0, vy: 0, vz: 0, g: 0, life: 0.6, size: 160, c: '#ff5a4a' }); Sound.play('night', near); break;
       case 'blink': burst(ev.x, ev.y, 24, ['#9b6ad8', '#6a3fa0', '#e0c0ff'], 160, { type: 'spark', g: -30, life: 0.8 }); break;
       case 'shit': burst(ev.x, ev.y, 4, ['#8a5a30', '#c8a06a'], 90); break;

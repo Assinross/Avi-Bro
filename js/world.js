@@ -52,52 +52,67 @@
     // скрытые логова — из дальней половины, через одно
     const hiddenSet = new Set();
     for (let i = n - 1, k = 0; i >= Math.floor(n * 0.35) && k < (cfg.HIDDEN_SITES || 0); i -= 2, k++) hiddenSet.add(i);
-    const GUARDS = [
-      [['ghoul', 'wolf', 'wolf'], ['wolf', 'wolf', 'spider', 'spider']],
-      [['ghoul', 'ghoul', 'wolf', 'alpha'], ['alpha', 'wolf', 'wolf', 'spider']],
-      [['alpha', 'ghoul', 'ghoul', 'spitter'], ['brute', 'wolf', 'archer', 'ghoul'], ['alpha', 'archer', 'ghoul', 'spitter']],
-      [['brute', 'alpha', 'ghoul', 'spitter'], ['brute', 'brute', 'archer', 'alpha'], ['brute', 'archer', 'alpha', 'spitter']],
-    ];
+    // вид каждой локации: каждый вид (кроме руин) хотя бы SITE_KIND_MIN раз, остальное — случайно
+    const KINDS = cfg.SITE_KINDS, kindKeys = Object.keys(KINDS);
+    const bag = [];
+    kindKeys.filter(k => k !== 'ruins').forEach(k => { for (let j = 0; j < (cfg.SITE_KIND_MIN || 1); j++) bag.push(k); });
+    const openN = n - hiddenSet.size;
+    while (bag.length < openN) bag.push(kindKeys[r.int(0, kindKeys.length - 1)]);
+    for (let i = bag.length - 1; i > 0; i--) { const j = r.int(0, i); [bag[i], bag[j]] = [bag[j], bag[i]]; }
+    const GR = (cfg.SITE_GROW && cfg.SITE_GROW.radius) || [cfg.LOOT_SITE_RADIUS];
+    const SRmax = GR[GR.length - 1];
+    W.sgl = new Uint8Array(N * N);   // с какого уровня костра тайл становится частью поляны (0 — никогда)
+    W.skind = new Uint8Array(N * N); // вид локации на тайле (индекс в SITE_KINDS + 1) — для рисунка земли
+    W.blockers = [];                 // крупные непроходимые предметы локаций (тарелка, избушка, берлога)
+    const grow = new Uint8Array(N * N); // зона роста поляны: без воды и залежей
     const IR = cfg.IRON || {};
+    const mhp = (t) => (cfg.MONSTERS[t] || { hp: 50 }).hp, mdmg = (t) => (cfg.MONSTERS[t] || { damage: 10 }).damage;
+    let bi = 0;
     siteList.forEach((s, i) => {
       const hidden = hiddenSet.has(i);
       const tier = Math.min(3, Math.floor((i / Math.max(1, n)) * 4));
-      const pool = GUARDS[tier];
+      const kind = hidden ? 'ruins' : bag[bi++] || 'ruins';
+      const K = KINDS[kind];
+      const pool = K.packs[tier];
       let guards = pool[r.int(0, pool.length - 1)].slice();
       if (hidden) guards = ['brute', 'alpha', 'archer', 'spitter', 'ghoul', 'alpha'];
-      const loot = {};
-      const ns = r.int(cfg.CHEST_SEEDS[0], cfg.CHEST_SEEDS[1]);
-      for (let k = 0; k < ns; k++) {
-        const key = (tier >= 2 && r() < 0.6) || (tier === 1 && r() < 0.25) ? 'seed_pumpkin' : 'seed_carrot';
-        loot[key] = (loot[key] || 0) + 1;
+      // одиночный босс лагеря вместо группы
+      let elite = null;
+      if (!hidden && r() < (cfg.ELITE_CHANCE || 0)) {
+        const E = cfg.ELITE, hpSum = guards.reduce((a, t) => a + mhp(t), 0), dAvg = guards.reduce((a, t) => a + mdmg(t), 0) / guards.length;
+        elite = { type: K.boss, name: K.bossName, hp: Math.max(1.5, hpSum * E.hpOfPack / mhp(K.boss)), dmg: Math.max(1.2, dAvg * E.dmgMult / mdmg(K.boss)), n: guards.length };
+        guards = [K.boss];
       }
-      const cc = cfg.CHEST_COAL; loot.coal = r.int(cc[0], cc[1]) + (tier >= 2 ? 1 : 0);
-      loot.meat = r.int(0, 1 + (tier >> 1));
-      if (!loot.meat) delete loot.meat;
-      const cx2 = cfg.CHEST_XP; loot.xp = Math.round(r.int(cx2[0], cx2[1]) * (1 + 0.5 * tier) * (hidden ? 2 : 1));
-      const co = cfg.CHEST_COINS; loot.coin = r.int(co[0], co[1]) * (tier + 1);
-      if (r() < cfg.CHEST_BAG_CHANCE || hidden) loot.bag = cfg.CHEST_BAG_BASE + tier;
-      if (hidden && IR.hidden) loot.iron = r.int(IR.hidden[0], IR.hidden[1]);
-      else if (tier === 3 && IR.tier3) loot.iron = r.int(IR.tier3[0], IR.tier3[1]);
-      else if (tier === 2 && r() < (IR.tier2Chance || 0)) loot.iron = 1;
+      // сундук: монеты, опыт и одежда (сама вещь создаётся при открытии — её сила зависит от уровня костра)
+      const L = K.loot || {};
+      const loot = {};
+      const cx2 = cfg.CHEST_XP; loot.xp = Math.round(r.int(cx2[0], cx2[1]) * (1 + 0.5 * tier) * (hidden ? 2 : 1) * (L.xp || 1) * (elite ? 1.3 : 1));
+      const co = cfg.CHEST_COINS; loot.coin = Math.round(r.int(co[0], co[1]) * (tier + 1) * (L.coin || 1) * (elite ? 1.3 : 1));
+      const CG = cfg.CHEST_GEAR || [1, 1];
+      loot.gear = r.int(CG[0], CG[1]) + (elite || hidden ? 1 : 0);
       W.sites.push({
-        id: i, tx: s.tx, ty: s.ty, x: s.tx * T + T / 2, y: s.ty * T + T / 2, tier, hidden, guards,
+        id: i, tx: s.tx, ty: s.ty, x: s.tx * T + T / 2, y: s.ty * T + T / 2, tier, hidden, guards, kind, elite,
         power: hidden ? cfg.HIDDEN_GUARD_POWER : cfg.GUARD_POWER[tier],
         loot, opened: false,
       });
-      const SR = cfg.LOOT_SITE_RADIUS;
-      for (let y = s.ty - SR - 1; y <= s.ty + SR + 1; y++) for (let x = s.tx - SR - 1; x <= s.tx + SR + 1; x++) {
+      const ki = kindKeys.indexOf(kind) + 1;
+      for (let y = Math.floor(s.ty - SRmax - 2); y <= s.ty + SRmax + 2; y++) for (let x = Math.floor(s.tx - SRmax - 2); x <= s.tx + SRmax + 2; x++) {
         if (!inb(x, y)) continue;
+        const j = idx(x, y);
         const d = Math.hypot(x - s.tx, y - s.ty) + (AB.noise(x * 0.5, y * 0.5, seed + 9) - 0.5) * 2;
-        if (d < SR) { W.ground[idx(x, y)] = AB.G_SITE; reserved[idx(x, y)] = 1; }
-        else if (d < SR + 1.5) reserved[idx(x, y)] = 1;
+        let lv = 0;
+        for (let q = 0; q < GR.length; q++) if (d < GR[q]) { lv = q + 1; break; }
+        if (lv) { W.sgl[j] = lv; W.skind[j] = ki; grow[j] = 1; }
+        if (lv === 1) { W.ground[j] = AB.G_SITE; reserved[j] = 1; }
+        else if (d < GR[0] + 0.6) reserved[j] = 1;
+        else if (d < SRmax + 1.5) grow[j] = 1;
       }
     });
     // кольцо сплошного леса вокруг скрытых логов
     const ring = new Uint8Array(N * N);
     W.sites.forEach((s) => {
       if (!s.hidden) return;
-      const R0 = cfg.LOOT_SITE_RADIUS + 1.5, R1 = R0 + cfg.HIDDEN_RING;
+      const R0 = SRmax + 1.5, R1 = R0 + cfg.HIDDEN_RING;
       for (let y = Math.floor(s.ty - R1 - 1); y <= s.ty + R1 + 1; y++) for (let x = Math.floor(s.tx - R1 - 1); x <= s.tx + R1 + 1; x++) {
         if (!inb(x, y)) continue;
         const d = Math.hypot(x - s.tx, y - s.ty);
@@ -130,7 +145,7 @@
       const i = idx(x, y);
       W.forest[i] = AB.fbm(x / 14, y / 14, seed + 101, 4);
       const edge = Math.min(x, y, N - 1 - x, N - 1 - y);
-      if (reserved[i] || ring[i] || edge < cfg.BORDER_TILES + 1) continue;
+      if (reserved[i] || ring[i] || grow[i] || edge < cfg.BORDER_TILES + 1) continue;
       const w = AB.fbm(x / 20, y / 20, seed + 202, 4);
       if (w > cfg.WATER_LEVEL) { W.ground[i] = AB.G_WATER; W.solid[i] = AB.S_WATER; }
     }
@@ -153,6 +168,7 @@
       const TH = cfg.THICKET;
       if (TH && AB.fbm(x / TH.scale, y / TH.scale, seed + 303, 3) > TH.level) dens = Math.max(dens, TH.density);
       if (h < dens) addTree(x, y, px, py, false);
+      else if (grow[i]) continue; // на земле, куда вырастет поляна, — только деревья
       else if (h < dens + cfg.ROCK_DENSITY) {
         W.rockAt[i] = W.rocks.length;
         W.rocks.push({ x: px, y: py, tx: x, ty: y, v: Math.floor(AB.hash2(x, y, seed + 10) * 3), s: 0.8 + AB.hash2(x, y, seed + 11) * 0.5, kind: 'rock' });
@@ -169,23 +185,52 @@
       W.solid[i] = AB.S_TREE;
     }
 
-    // ---- руины вокруг сундуков
+    // ---- убранство локаций: у каждого вида своё. lv — с какого уровня костра предмет появляется
+    //      (локация растёт вместе с костром: новые предметы встают на отвоёванной у леса земле)
+    const PROPS = {
+      ruins:     { core: [], ring: ['rubble', 'crate', 'ruinD', 'bones'] },
+      bandits:   { core: [['btent', -58, -40], ['btent', 52, -46], ['bfire', 0, 44], ['barrel', 40, 30]], ring: ['palisade', 'btent', 'barrel', 'sack', 'wanted', 'palisade'] },
+      ufo:       { core: [['saucer', 0, -62, 46], ['crater', 0, -50]], ring: ['crystal', 'debris', 'crystal', 'debris'] },
+      graveyard: { core: [['skull', -52, -30], ['grave', 40, -44], ['grave', 58, 10], ['ribcage', -40, 36]], ring: ['grave', 'bonepile', 'grave', 'skull'] },
+      witch:     { core: [['hut', 0, -64, 40], ['cauldron', 46, 20]], ring: ['jack', 'totem', 'jack', 'herbs'] },
+      mushrooms: { core: [['gmush', -56, -34], ['gmush', 50, -44], ['fring', 0, 0], ['smush', 30, 40]], ring: ['gmush', 'smush', 'gmush', 'smush'] },
+      bears:     { core: [['den', 0, -66, 44], ['fishbones', -36, 30]], ring: ['hive', 'logpile', 'fishbones', 'hive'] },
+    };
     W.sites.forEach((s) => {
-      const cnt = 5 + s.tier;
-      for (let k = 0; k < cnt; k++) {
-        const a = (k / cnt) * Math.PI * 2 + r() * 0.4;
-        const d = (cfg.LOOT_SITE_RADIUS - 1.2) * T;
-        const x = s.x + Math.cos(a) * d, y = s.y + Math.sin(a) * d;
-        const tx = Math.floor(x / T), ty = Math.floor(y / T), i = idx(tx, ty);
-        if (r() < 0.75) {
-          W.rockAt[i] = W.rocks.length;
-          W.rocks.push({ x, y, tx, ty, v: Math.floor(r() * 3), s: 1, kind: 'ruin', broken: r() });
-          W.solid[i] = AB.S_ROCK;
-        } else W.decor.push({ x, y, kind: 'rubble', v: r() });
+      const P = PROPS[s.kind] || PROPS.ruins;
+      if (s.kind === 'ruins') {
+        // каменные обломки по кругу (как раньше) + следы разграбленного лагеря
+        const cnt = 5 + s.tier;
+        for (let k = 0; k < cnt; k++) {
+          const a = (k / cnt) * Math.PI * 2 + r() * 0.4;
+          const d = (GR[0] - 1.2) * T;
+          const x = s.x + Math.cos(a) * d, y = s.y + Math.sin(a) * d;
+          const tx = Math.floor(x / T), ty = Math.floor(y / T), i = idx(tx, ty);
+          if (r() < 0.75) {
+            W.rockAt[i] = W.rocks.length;
+            W.rocks.push({ x, y, tx, ty, v: Math.floor(r() * 3), s: 1, kind: 'ruin', broken: r() });
+            W.solid[i] = AB.S_ROCK;
+          } else W.decor.push({ x, y, kind: 'rubble', v: r(), lv: 1 });
+        }
+        W.decor.push({ x: s.x + 30, y: s.y + 22, kind: 'bones', v: r(), lv: 1 });
+        for (let k = 0; k < 2 + (s.tier >> 1); k++) { const a = r() * Math.PI * 2, d = 40 + r() * 40; W.decor.push({ x: s.x + Math.cos(a) * d, y: s.y + Math.sin(a) * d * 0.7, kind: 'crate', v: r(), lv: 1 }); }
       }
-      W.decor.push({ x: s.x + 30, y: s.y + 22, kind: 'bones', v: r() });
-      // ящики и тряпичные палатки — следы разграбленного лагеря
-      for (let k = 0; k < 2 + (s.tier >> 1); k++) { const a = r() * Math.PI * 2, d = 40 + r() * 40; W.decor.push({ x: s.x + Math.cos(a) * d, y: s.y + Math.sin(a) * d * 0.7, kind: 'crate', v: r() }); }
+      for (const c of P.core) {
+        const x = s.x + c[1], y = s.y + c[2];
+        W.decor.push({ x, y, kind: c[0], v: r(), lv: 1, site: s.id });
+        if (c[3]) W.blockers.push({ x, y: y - 6, r: c[3] });
+      }
+      // кольца предметов для 2-го, 3-го и 4-го уровня костра
+      for (let L = 2; L <= GR.length; L++) {
+        const cnt = 3 + L + (s.tier >> 1);
+        const rin = (GR[L - 2] + 0.3) * T, rout = (GR[L - 1] - 0.6) * T;
+        for (let k = 0; k < cnt; k++) {
+          const a = (k / cnt) * Math.PI * 2 + r() * 0.5 + L;
+          const d = rin + r() * Math.max(4, rout - rin);
+          const kind = P.ring[(k + L) % P.ring.length];
+          W.decor.push({ x: s.x + Math.cos(a) * d, y: s.y + Math.sin(a) * d, kind, v: r(), lv: L, site: s.id, a });
+        }
+      }
     });
 
     // ---- лагерь: костёр и грядки
@@ -218,7 +263,7 @@
         for (let y = ty - 1; y <= ty + 1 && ok; y++) for (let x = tx - 1; x <= tx + 1; x++) {
           if (!inb(x, y)) { ok = false; break; }
           const j = idx(x, y);
-          if (W.ground[j] !== AB.G_GRASS || W.treeAt[j] >= 0 || W.rockAt[j] >= 0 || reserved[j] || ring[j]) { ok = false; break; }
+          if (W.ground[j] !== AB.G_GRASS || W.treeAt[j] >= 0 || W.rockAt[j] >= 0 || reserved[j] || ring[j] || grow[j]) { ok = false; break; }
         }
         if (!ok || W.ores.some(o => Math.abs(o.tx - tx) + Math.abs(o.ty - ty) < 6)) continue;
         const i = idx(tx, ty);
@@ -231,6 +276,26 @@
       }
     }
     return W;
+  };
+
+  // Рост локаций: при уровне костра lv поляны расширяются — деревья на новой земле исчезают, земля становится площадкой.
+  // Возвращает список изменённых тайлов (для перерисовки земли и миникарты).
+  AB.growSites = function (W, lv) {
+    if (!W.sgl) return [];
+    const done = W.grownLv || 1;
+    if (lv <= done) return [];
+    const changed = [];
+    for (let i = 0; i < W.sgl.length; i++) {
+      const g = W.sgl[i];
+      if (!g || g <= done || g > lv) continue;
+      if (W.ground[i] === AB.G_WATER) continue;
+      W.ground[i] = AB.G_SITE;
+      const ti = W.treeAt[i];
+      if (ti >= 0) { const t = W.trees[ti]; t.gone = true; t.dead = true; W.treeAt[i] = -1; if (W.solid[i] === AB.S_TREE) W.solid[i] = AB.S_NONE; }
+      changed.push(i);
+    }
+    W.grownLv = lv;
+    return changed;
   };
 
   // Проходим ли тайл
@@ -265,6 +330,13 @@
         }
       }
     }
+    // крупные предметы локаций (тарелка, избушка, берлога)
+    for (const b of (W.blockers || [])) {
+      const dx = x - b.x, dy = y - b.y, m = rad + b.r;
+      if (Math.abs(dx) > m || Math.abs(dy) > m) continue;
+      const d = Math.hypot(dx, dy);
+      if (d < m) { if (d > 0.001) { x = b.x + (dx / d) * m; y = b.y + (dy / d) * m; } else y = b.y + m; }
+    }
     // здания (постройки игроков, кухня, лесопилка, костры, торговец)
     const G = W.G;
     if (G) {
@@ -289,6 +361,7 @@
   // Можно ли тут стоять (для появления монстров и построек)
   AB.freeSpot = function (W, x, y, rad) {
     const T = W.T;
+    for (const b of (W.blockers || [])) if (AB.dist2(x, y, b.x, b.y) < (rad + b.r) ** 2) return false;
     for (let ty = Math.floor((y - rad) / T); ty <= Math.floor((y + rad) / T); ty++)
       for (let tx = Math.floor((x - rad) / T); tx <= Math.floor((x + rad) / T); tx++) {
         const s = AB.tileSolid(W, tx, ty);
