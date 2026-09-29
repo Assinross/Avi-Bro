@@ -1006,9 +1006,27 @@
   }
 
   /* ============================ ЦИКЛ ============================ */
+  // Облегчённая графика: включается сама, если кадры долгие (слабый ПК, энергосбережение в браузере)
+  function setLowQ(on, manual) {
+    AB.Render.lowQ = !!on; App.lowQManual = manual && !on; AB.Render.resize();
+    try { localStorage.setItem('avibro-lowq', on ? '1' : manual ? '0' : ''); } catch (e) { /* */ }
+    const cb = $('optLowQ'); if (cb) cb.checked = !!on;
+  }
+  try { const v = localStorage.getItem('avibro-lowq'); if (v === '1') AB.Render.lowQ = true; App.lowQManual = v === '0'; } catch (e) { /* */ }
+  const perf = { t: 0, n: 0, sum: 0 };
+  function watchPerf(rawDt) {
+    if (AB.Render.lowQ || App.lowQManual || App.state !== 'play' || App.paused || document.hidden) { perf.t = perf.n = perf.sum = 0; return; }
+    if (rawDt > 0.5) return;                       // вкладка была свёрнута
+    perf.t += rawDt; perf.n++; perf.sum += rawDt;
+    if (perf.t < 6) return;
+    const fps = perf.n / perf.sum; perf.t = perf.n = perf.sum = 0;
+    if (App.playT > 8 && fps < 40) { setLowQ(true); AB.FX.toast('Игра тормозит — включена облегчённая графика (меню паузы)', '#9fd3ff'); }
+  }
   let last = performance.now();
   function frame(now) {
     let dt = (now - last) / 1000; last = now;
+    App.playT = App.state === 'play' ? (App.playT || 0) + dt : 0;
+    watchPerf(dt);
     if (dt > 0.05) dt = 0.05;
     try { tick(dt); } catch (e) { console.error(e); }
     requestAnimationFrame(frame);
@@ -1018,7 +1036,7 @@
     const G = App.G;
     if (!G) return;
     const R = AB.Render;
-    R.bakeIdle(1);
+    R.bakeIdle(2, 4);
     if (App.mode === 'attract') {
       G.clock += dt * 2;
       const ti = AB.Sim.timeInfo(G.clock); G.nightF = ti.nightF;
@@ -1150,17 +1168,31 @@
     bind('btnPickWs', () => { sendCmd('pickcraft', 0); App.wsSig = null; });
     try { App.autoPick = localStorage.getItem('avibro-autopick') === null ? !!C().AUTO_PICKUP : localStorage.getItem('avibro-autopick') === '1'; } catch (e) { App.autoPick = !!C().AUTO_PICKUP; }
     $('optAutoPick').checked = App.autoPick;
+    $('optLowQ').checked = !!AB.Render.lowQ;
+    $('optLowQ').addEventListener('change', (e) => setLowQ(e.target.checked, true));
     $('optAutoPick').addEventListener('change', (e) => setAutoPick(e.target.checked));
     document.querySelectorAll('[data-ex]').forEach(b => b.addEventListener('click', () => { AB.Sound.play('click', 1); const [c, v] = b.dataset.ex.split(':'); sendCmd(c, v === 'all' ? 'all' : +v); App.exSig = null; }));
     bind('btnCoop', () => { show('coop'); $('coopErr').textContent = ''; $('peerWarn').classList.toggle('hidden', AB.Net.available() || !!AB.Net.server); setupCoopScreen(); });
     bind('btnLanCopy', () => { const t = $('lanLink').textContent; try { navigator.clipboard.writeText(t); } catch (e) { /* */ } $('btnLanCopy').textContent = 'Скопировано!'; setTimeout(() => $('btnLanCopy').textContent = 'Копировать', 1500); });
     bind('btnSrvGo', () => { let u = $('srvUrl').value.trim(); if (!u) return; if (!/^https?:\/\//.test(u)) u = 'http://' + u; try { localStorage.setItem('avibro-srv', u); } catch (e) { /* */ } location.href = u; });
     bind('btnUpdate', () => {
+      if (!$('btnUpdate').dataset.t) $('btnUpdate').dataset.t = $('btnUpdate').textContent;
       $('btnUpdate').textContent = 'Скачиваю обновление…'; $('btnUpdate').disabled = true;
       fetch('/update', { cache: 'no-store' }).then(r => r.json()).then(j => {
-        if (j.ok) { $('btnUpdate').textContent = `Обновлено (${j.files} файлов). Перезапуск…`; setTimeout(() => location.reload(), 4000); }
+        if (j.ok && !j.files) { const b = $('btnUpdate'); b.textContent = 'Уже последняя версия ✓'; setTimeout(() => { b.textContent = b.dataset.t || 'Обновить игру'; b.disabled = false; }, 2500); }
+        else if (j.ok) { $('btnUpdate').textContent = `Обновлено (изменено файлов: ${j.files}). Перезапуск…`; setTimeout(() => location.reload(), 4000); }
         else { $('btnUpdate').textContent = 'Не удалось: ' + (j.error || 'ошибка'); $('btnUpdate').disabled = false; }
       }).catch(() => { $('btnUpdate').textContent = 'Сервер перезапускается…'; setTimeout(() => location.reload(), 4000); });
+    });
+    bind('btnStop', () => {
+      const b = $('btnStop');
+      if (!b.dataset.arm) { b.dataset.arm = 1; b.textContent = 'Точно остановить? Нажмите ещё раз'; setTimeout(() => { delete b.dataset.arm; if (!b.disabled) b.textContent = 'Остановить сервер'; }, 3000); return; }
+      b.disabled = true; clearTimeout(App.roomsT);
+      fetch('/stop', { cache: 'no-store' }).catch(() => { /* */ }).finally(() => {
+        b.textContent = 'Сервер остановлен. Запуск — значком «Avi-Bro сервер»';
+        $('roomsList').innerHTML = '<span class="note">Сервер выключен.</span>';
+        $('btnHost').disabled = true; $('btnUpdate').disabled = true;
+      });
     });
     bind('btnHelp', () => show('help'));
     bind('btnHost', () => chooseProf(startHost, 'coop'));

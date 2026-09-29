@@ -4,8 +4,9 @@
   const TAU = Math.PI * 2;
   const C = () => window.CONFIG;
   const S = () => AB.Sprites;
-  const CHUNK = 512;
-  let chunks = new Map(), bakeQueue = [], worldRef = null;
+  const CHUNK = 256;                       // мелкие куски земли: каждый печётся за пару мс, без рывков
+  let chunks = new Map(), bakeQueue = [], stale = [], worldRef = null, lastView = null;
+  const ckey = (cx, cy) => cy * 4096 + cx;
 
   R.init = function (canvas) {
     R.cv = canvas; R.ctx = canvas.getContext('2d');
@@ -15,22 +16,23 @@
     window.addEventListener('resize', R.resize);
   };
   R.resize = function () {
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const dpr = R.lowQ ? 1 : Math.min(window.devicePixelRatio || 1, 2);
     R.dpr = dpr;
     R.w = window.innerWidth; R.h = window.innerHeight;
     R.cv.width = Math.floor(R.w * dpr); R.cv.height = Math.floor(R.h * dpr);
     R.cv.style.width = R.w + 'px'; R.cv.style.height = R.h + 'px';
-    R.fogC.width = R.darkC.width = Math.ceil(R.w / 3); R.fogC.height = R.darkC.height = Math.ceil(R.h / 3);
+    const fs = R.lowQ ? 4 : 3;
+    R.fogC.width = R.darkC.width = Math.ceil(R.w / fs); R.fogC.height = R.darkC.height = Math.ceil(R.h / fs);
   };
 
   R.setWorld = function (W) {
-    worldRef = W; chunks = new Map(); bakeQueue = [];
+    worldRef = W; chunks = new Map(); bakeQueue = []; stale = []; lastView = null;
     const n = Math.ceil(W.size / CHUNK);
     for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) bakeQueue.push([x, y]);
     const cx = W.camp.x / CHUNK, cy = W.camp.y / CHUNK;
     bakeQueue.sort((a, b) => Math.hypot(b[0] - cx, b[1] - cy) - Math.hypot(a[0] - cx, a[1] - cy));
     // карта большая: заранее печём только окрестности лагеря, остальное — по мере надобности
-    bakeQueue = bakeQueue.filter(q => Math.hypot(q[0] - cx, q[1] - cy) < 5.5);
+    bakeQueue = bakeQueue.filter(q => Math.hypot(q[0] - cx, q[1] - cy) < 6.5);
     buildMinimap(W);
     if (AB.Bld) AB.Bld.warm();
   };
@@ -105,8 +107,8 @@
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(small, 0, 0, CHUNK, CHUNK);
     // детали
-    const T = W.T, t0x = cx * 16, t0y = cy * 16;
-    for (let ty = t0y; ty < t0y + 16; ty++) for (let tx = t0x; tx < t0x + 16; tx++) {
+    const T = W.T, TPC = CHUNK / T, t0x = cx * TPC, t0y = cy * TPC;
+    for (let ty = t0y; ty < t0y + TPC; ty++) for (let tx = t0x; tx < t0x + TPC; tx++) {
       if (tx >= W.N || ty >= W.N) continue;
       const g = W.ground[ty * W.N + tx];
       const lx = (tx - t0x) * T, ly = (ty - t0y) * T;
@@ -175,7 +177,7 @@
     for (const st of W.sites) {
       const rr = 10 * W.T;
       for (let cy = Math.floor((st.y - rr) / CHUNK); cy <= Math.floor((st.y + rr) / CHUNK); cy++)
-        for (let cx = Math.floor((st.x - rr) / CHUNK); cx <= Math.floor((st.x + rr) / CHUNK); cx++) { const key = cx + ',' + cy; if (!seen.has(key)) { seen.add(key); chunks.delete(key); } }
+        for (let cx = Math.floor((st.x - rr) / CHUNK); cx <= Math.floor((st.x + rr) / CHUNK); cx++) { const key = ckey(cx, cy); if (!seen.has(key) && chunks.has(key)) { seen.add(key); stale.push(key); } }
     }
     if (!mini) return;
     for (let i = 0; i < W.sgl.length; i++) {
@@ -211,21 +213,51 @@
     }
   }
   function getChunk(W, cx, cy) {
-    const key = cx + ',' + cy;
+    const key = ckey(cx, cy);
     let c = chunks.get(key);
     if (!c) { c = bakeChunk(W, cx, cy); chunks.set(key, c); }
     return c;
   }
-  R.bakeIdle = function (n) {
+  // Фоновая выпечка земли в пределах бюджета кадра: сначала окрестности лагеря,
+  // потом куски, которые скоро попадут в кадр (с запасом по ходу движения), и перерисовка выросших полян.
+  let prevCam = null;
+  R.bakeIdle = function (n, budget) {
     if (!worldRef) return;
-    while (n-- > 0 && bakeQueue.length) { const q = bakeQueue.pop(); getChunk(worldRef, q[0], q[1]); }
+    const W = worldRef, t0 = performance.now(), ms = budget || 4;
+    const more = () => performance.now() - t0 < ms;
+    while (n-- > 0 && bakeQueue.length) { const q = bakeQueue.pop(); getChunk(W, q[0], q[1]); if (!more()) return; }
+    if (!lastView) return;
+    const v = lastView, nC = Math.ceil(W.size / CHUNK);
+    // упреждение: смотрим туда, куда движется камера
+    let ax = 0, ay = 0;
+    if (prevCam) { ax = AB.clamp((v.cx - prevCam.x) * 40, -CHUNK * 1.5, CHUNK * 1.5); ay = AB.clamp((v.cy - prevCam.y) * 40, -CHUNK * 1.5, CHUNK * 1.5); }
+    prevCam = { x: v.cx, y: v.cy };
+    const m = CHUNK * 1.2;
+    const x0 = Math.max(0, Math.floor((Math.min(v.x0, v.x0 + ax) - m) / CHUNK)), x1 = Math.min(nC - 1, Math.floor((Math.max(v.x1, v.x1 + ax) + m) / CHUNK));
+    const y0 = Math.max(0, Math.floor((Math.min(v.y0, v.y0 + ay) - m) / CHUNK)), y1 = Math.min(nC - 1, Math.floor((Math.max(v.y1, v.y1 + ay) + m) / CHUNK));
+    const fx = v.cx + ax, fy = v.cy + ay;
+    for (let guard = 0; guard < 6 && more(); guard++) {
+      let best = null, bd = Infinity;
+      for (let cy = y0; cy <= y1; cy++) for (let cx = x0; cx <= x1; cx++) {
+        if (chunks.has(ckey(cx, cy))) continue;
+        const d = ((cx + 0.5) * CHUNK - fx) ** 2 + ((cy + 0.5) * CHUNK - fy) ** 2;
+        if (d < bd) { bd = d; best = [cx, cy]; }
+      }
+      if (best) { getChunk(W, best[0], best[1]); continue; }
+      // выросшие поляны: перепекаем по одному куску, старый остаётся на экране до готовности
+      if (!stale.length) break;
+      const key = stale.pop();
+      if (chunks.has(key)) chunks.set(key, bakeChunk(W, key % 4096, Math.floor(key / 4096)));
+    }
   };
   R.bakeProgress = function () { const t = Math.pow(Math.ceil(worldRef.size / CHUNK), 2); return 1 - bakeQueue.length / t; };
-  // Далёкие куски земли выбрасываем из памяти (на большой карте их сотни)
+  // Далёкие куски земли выбрасываем из памяти (на большой карте их тысячи)
   function evictChunks(cam) {
-    if (chunks.size <= 56) return;
-    const ccx = cam.x / CHUNK, ccy = cam.y / CHUNK;
-    for (const key of chunks.keys()) { const [a, b] = key.split(',').map(Number); if (Math.abs(a + 0.5 - ccx) > 3.5 || Math.abs(b + 0.5 - ccy) > 3.5) chunks.delete(key); }
+    if (chunks.size <= 240) return;
+    const ccx = cam.x / CHUNK, ccy = cam.y / CHUNK, keep = [];
+    for (const key of chunks.keys()) { const a = key % 4096 + 0.5, b = Math.floor(key / 4096) + 0.5; keep.push([key, Math.max(Math.abs(a - ccx), Math.abs(b - ccy))]); }
+    keep.sort((p, q) => q[1] - p[1]);
+    for (let i = 0; i < keep.length && chunks.size > 170; i++) if (keep[i][1] > 5) chunks.delete(keep[i][0]);
   }
 
   /* =========================== МИНИКАРТА =========================== */
@@ -1783,6 +1815,7 @@
       for (let cx = Math.max(0, Math.floor(x0 / CHUNK)); cx <= Math.min(Math.ceil(W.size / CHUNK) - 1, Math.floor(x1 / CHUNK)); cx++)
         ctx.drawImage(getChunk(W, cx, cy), cx * CHUNK, cy * CHUNK);
     ctx.imageSmoothingEnabled = true;
+    lastView = { x0, x1, y0, y1, cx: cam.x, cy: cam.y };
     evictChunks(cam);
     // блики на воде
     const T = W.T;
@@ -2042,7 +2075,7 @@
       // зрение не проникает сквозь лес: лучи от игрока останавливаются в листве
       const wr = vr / s / z, poly = visionPoly(W, me.x, me.y - 6, wr, VB);
       fctx.save();
-      fctx.filter = `blur(${Math.max(1.5, 5 * s * z).toFixed(1)}px)`;
+      if (!R.lowQ) fctx.filter = `blur(${Math.max(1.5, 5 * s * z).toFixed(1)}px)`;
       const g = fctx.createRadialGradient(center[0], center[1], vr * (1 - soft), center[0], center[1], vr);
       g.addColorStop(0, 'rgba(0,0,0,1)'); g.addColorStop(1, 'rgba(0,0,0,0)');
       fctx.fillStyle = g; fctx.beginPath();

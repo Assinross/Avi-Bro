@@ -16,7 +16,10 @@ Avi-Bro — локальный сервер для игры вдвоём в од
 import asyncio, os, sys, hashlib, base64, json, mimetypes, socket, struct, io, shutil, threading, time, zipfile, urllib.request
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
-PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8080
+ARGS = [a for a in sys.argv[1:] if not a.startswith('--')]
+PORT = int(ARGS[0]) if ARGS else 8080
+MAX_ROOMS = 30          # защита от мусора: не больше комнат
+MAX_MSG = 16 * 1024 * 1024  # и не больше 16 МБ в одном сообщении
 GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'
 rooms = {}  # код комнаты -> {'host': WS, 'guest': WS | None, 'name': имя хоста, 'prof': профессия}
 REPO_ZIP = os.environ.get('AVIBRO_ZIP', 'https://github.com/Assinross/Avi-Bro/archive/refs/heads/main.zip')
@@ -30,21 +33,64 @@ def host_links():
     return name, links
 
 
+MANIFEST = os.path.join(ROOT, '.avibro-files.json')  # какие файлы положило обновление — чтобы убирать устаревшие
+
+
 def update_from_github():
-    """Скачать последнюю версию игры с GitHub и разложить поверх текущей папки."""
+    """Скачать последнюю версию игры с GitHub. Пишет только изменившиеся файлы,
+    удаляет файлы, которых больше нет в игре, и не оставляет временных файлов.
+    Возвращает число изменённых/удалённых файлов (0 — уже последняя версия)."""
     data = urllib.request.urlopen(REPO_ZIP, timeout=60).read()
     z = zipfile.ZipFile(io.BytesIO(data))
     top = z.namelist()[0].split('/')[0]
-    n = 0
+    n, files = 0, []
     for info in z.infolist():
         rel = info.filename[len(top) + 1:]
-        if not rel or info.is_dir() or rel.startswith('.git'):
+        if not rel or info.is_dir() or rel.startswith('.git') or '..' in rel.split('/'):
             continue
+        files.append(rel)
         dst = os.path.join(ROOT, rel)
+        new = z.read(info)
+        try:
+            with open(dst, 'rb') as f:
+                if f.read() == new:
+                    continue  # файл не изменился — не трогаем
+        except OSError:
+            pass
         os.makedirs(os.path.dirname(dst), exist_ok=True)
-        with z.open(info) as src, open(dst, 'wb') as out:
-            shutil.copyfileobj(src, out)
+        tmp = dst + '.part'
+        with open(tmp, 'wb') as out:
+            out.write(new)
+        os.replace(tmp, dst)  # подмена целиком: файл никогда не бывает «наполовину записан»
         n += 1
+    # мусор: файлы прошлой версии, которых в новой нет
+    try:
+        with open(MANIFEST, encoding='utf-8') as f:
+            old = json.load(f)
+    except (OSError, ValueError):
+        old = []
+    keep = set(files)
+    for rel in old:
+        if rel in keep or '..' in rel.split('/'):
+            continue
+        p = os.path.join(ROOT, rel)
+        if os.path.isfile(p):
+            os.remove(p)
+            n += 1
+            d = os.path.dirname(p)
+            while d != ROOT and os.path.isdir(d) and not os.listdir(d):
+                os.rmdir(d)
+                d = os.path.dirname(d)
+    with open(MANIFEST, 'w', encoding='utf-8') as f:
+        json.dump(sorted(files), f)
+    # недокачанные остатки прошлых обновлений
+    for dp, _, fns in os.walk(ROOT):
+        for fn in fns:
+            if fn.endswith('.part'):
+                try:
+                    os.remove(os.path.join(dp, fn))
+                except OSError:
+                    pass
     return n
 
 
@@ -52,7 +98,8 @@ def restart_soon():
     """Перезапустить сервер (новая версия server.py подхватится сама)."""
     def go():
         time.sleep(1.2)
-        os.execv(sys.executable, [sys.executable] + sys.argv)
+        args = [a for a in sys.argv if a != '--restarted']
+        os.execv(sys.executable, [sys.executable] + args + ['--restarted'])
     threading.Thread(target=go, daemon=True).start()
 
 
@@ -107,6 +154,8 @@ class WS:
                 n = struct.unpack('>H', await self.r.readexactly(2))[0]
             elif n == 127:
                 n = struct.unpack('>Q', await self.r.readexactly(8))[0]
+            if n > MAX_MSG or len(buf) + n > MAX_MSG:
+                raise ConnectionError('слишком большое сообщение')
             mask = await self.r.readexactly(4) if masked else None
             payload = await self.r.readexactly(n)
             if mask and n:
@@ -134,11 +183,19 @@ async def ws_session(ws):
             if text is None:
                 break
             if text.startswith('{"t":"_'):
-                msg = json.loads(text)
-                t, code = msg.get('t'), str(msg.get('code', ''))
+                try:
+                    msg = json.loads(text)
+                except ValueError:
+                    continue
+                t, code = msg.get('t'), str(msg.get('code', ''))[:12]
                 if t == '_host':
                     r = rooms.get(code)
                     if r and r['host'] and not r['host'].closed:
+                        await ws.send('{"t":"_taken"}')
+                        continue
+                    for c in [c for c, v in rooms.items() if not v['host'] or v['host'].closed]:
+                        rooms.pop(c, None)  # брошенные комнаты
+                    if len(rooms) >= MAX_ROOMS:
                         await ws.send('{"t":"_taken"}')
                         continue
                     rooms[code] = {'host': ws, 'guest': None, 'name': str(msg.get('name', 'Игрок'))[:16], 'prof': str(msg.get('prof', ''))[:16], 't': time.time()}
@@ -190,7 +247,7 @@ async def ws_session(ws):
 
 async def handle(reader, writer):
     try:
-        head = await reader.readuntil(b'\r\n\r\n')
+        head = await asyncio.wait_for(reader.readuntil(b'\r\n\r\n'), 15)  # зависшие/мусорные подключения не держим
     except Exception:
         writer.close()
         return
@@ -216,6 +273,19 @@ async def handle(reader, writer):
         await ws_session(WS(reader, writer))
         return
 
+    if path == '/stop':
+        body = json.dumps({'ok': True}).encode()
+        writer.write((f'HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {len(body)}\r\n'
+                      'Connection: close\r\n\r\n').encode() + body)
+        try:
+            await writer.drain()
+        except Exception:
+            pass
+        writer.close()
+        print('\nСервер остановлен кнопкой в игре. Это окно можно закрыть.')
+        asyncio.get_event_loop().call_later(0.3, lambda: os._exit(0))
+        return
+
     if path == '/info':
         name, links = host_links()
         body = json.dumps({'server': 'avibro', 'ips': lan_ips(), 'port': PORT, 'host': name, 'links': links}).encode()
@@ -231,8 +301,11 @@ async def handle(reader, writer):
         try:
             n = await asyncio.get_event_loop().run_in_executor(None, update_from_github)
             body = json.dumps({'ok': True, 'files': n}).encode()
-            print(f'  игра обновлена с GitHub ({n} файлов), перезапуск…')
-            restart_soon()
+            if n:
+                print(f'  игра обновлена с GitHub (изменено файлов: {n}), перезапуск…')
+                restart_soon()
+            else:
+                print('  обновлений нет — уже последняя версия')
         except Exception as e:
             body = json.dumps({'ok': False, 'error': str(e)}, ensure_ascii=False).encode()
         ctype, status = 'application/json', '200 OK'
@@ -257,9 +330,37 @@ async def handle(reader, writer):
     writer.close()
 
 
+def already_running():
+    """На этом порту уже работает наш сервер?"""
+    try:
+        with urllib.request.urlopen(f'http://127.0.0.1:{PORT}/info', timeout=2) as r:
+            return json.loads(r.read().decode()).get('server') == 'avibro'
+    except Exception:
+        return False
+
+
 async def main():
     mimetypes.add_type('application/javascript', '.js')
-    server = await asyncio.start_server(handle, '0.0.0.0', PORT)
+    # второй экземпляр не запускаем. После обновления старый процесс может ещё держать порт — ждём его
+    tries = 25 if '--restarted' in sys.argv else 1
+    for k in range(tries):
+        try:
+            server = await asyncio.start_server(handle, '0.0.0.0', PORT)
+            break
+        except OSError:
+            if k + 1 < tries:
+                await asyncio.sleep(0.4)
+                continue
+            if already_running():
+                print(f'\nСервер Avi-Bro уже запущен (http://localhost:{PORT}) — второй не нужен.')
+                try:
+                    import webbrowser
+                    webbrowser.open(f'http://localhost:{PORT}')
+                except Exception:
+                    pass
+                sys.exit(0)
+            print(f'\nПорт {PORT} занят другой программой. Запустите с другим портом: python3 server.py 8090')
+            sys.exit(1)
     print('\n=== Avi-Bro: локальный сервер запущен ===')
     name, links = host_links()
     print(f'  ПОСТОЯННАЯ ССЫЛКА для обоих компьютеров:  {links[0]}')
@@ -269,12 +370,19 @@ async def main():
     print('  Если второй компьютер не открывает страницу — разрешите порт в брандмауэре:')
     print(f'    Linux:   sudo ufw allow {PORT}')
     print('    Windows: разрешите Python в «Брандмауэр Защитника Windows»')
-    print('  Остановить сервер: Ctrl+C\n')
+    print('  Остановить сервер: кнопка «Остановить сервер» в игре, Ctrl+C или просто закройте это окно\n')
     async with server:
         await server.serve_forever()
 
 
 if __name__ == '__main__':
+    if '--update' in sys.argv:  # только обновить файлы (так делает start-server при запуске)
+        try:
+            k = update_from_github()
+            print(f'  изменено файлов: {k}' if k else '  уже последняя версия')
+        except Exception as e:
+            print(f'  не удалось скачать обновление ({e}) — запускаю версию, что уже есть')
+        sys.exit(0)
     try:
         asyncio.run(main())
     except KeyboardInterrupt:

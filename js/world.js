@@ -423,7 +423,7 @@
       }
     }
     // крупные предметы локаций (тарелка, избушка, берлога)
-    for (const b of (W.blockers || [])) {
+    for (const b of AB.blockersNear(W, x, y)) {
       const dx = x - b.x, dy = y - b.y, m = rad + b.r;
       if (Math.abs(dx) > m || Math.abs(dy) > m) continue;
       const d = Math.hypot(dx, dy);
@@ -450,10 +450,30 @@
     return [x, y];
   };
 
+  // Сетка крупных препятствий: столкновения проверяют только ближайшие, а не все сотни на карте
+  const BG = 128, BG_M = 72;
+  const NONE = [];
+  AB.blockersNear = function (W, x, y) {
+    const bl = W.blockers;
+    if (!bl || !bl.length) return NONE;
+    let g = W._bgrid;
+    if (!g || g.n !== bl.length) {
+      g = W._bgrid = { n: bl.length, m: new Map() };
+      for (const b of bl) {
+        const r = b.r + BG_M;
+        for (let cy = Math.floor((b.y - r) / BG); cy <= Math.floor((b.y + r) / BG); cy++)
+          for (let cx = Math.floor((b.x - r) / BG); cx <= Math.floor((b.x + r) / BG); cx++) {
+            const k = cy * 65536 + cx; let a = g.m.get(k); if (!a) g.m.set(k, a = []); a.push(b);
+          }
+      }
+    }
+    return g.m.get(Math.floor(y / BG) * 65536 + Math.floor(x / BG)) || NONE;
+  };
+
   // Можно ли тут стоять (для появления монстров и построек)
   AB.freeSpot = function (W, x, y, rad) {
     const T = W.T;
-    for (const b of (W.blockers || [])) if (AB.dist2(x, y, b.x, b.y) < (rad + b.r) ** 2) return false;
+    for (const b of (rad < BG_M ? AB.blockersNear(W, x, y) : (W.blockers || []))) if (AB.dist2(x, y, b.x, b.y) < (rad + b.r) ** 2) return false;
     for (let ty = Math.floor((y - rad) / T); ty <= Math.floor((y + rad) / T); ty++)
       for (let tx = Math.floor((x - rad) / T); tx <= Math.floor((x + rad) / T); tx++) {
         const s = AB.tileSolid(W, tx, ty);

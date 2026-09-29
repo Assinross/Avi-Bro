@@ -1,13 +1,22 @@
 #!/usr/bin/env bash
 # Avi-Bro: скачать последнюю версию игры и запустить сервер для игры вдвоём.
-# Первый запуск: bash start-server.sh — дальше на рабочем столе появится значок «Avi-Bro сервер».
+# Первый запуск: bash start-server.sh — дальше запускайте «Avi-Bro сервер» из меню приложений.
 # Постоянная ссылка для обоих компьютеров: http://<имя-этого-компьютера>.local:8080
 set -e
 DIR="$HOME/avi-bro-server"
 PORT="${AVIBRO_PORT:-8080}"
 ZIP="${AVIBRO_ZIP:-https://github.com/Assinross/Avi-Bro/archive/refs/heads/main.zip}"
 mkdir -p "$DIR"
-echo "=== Avi-Bro: скачиваю последнюю версию игры… ==="
+# уже запущен? второй сервер не нужен — просто открываем игру
+if python3 -c "import urllib.request,sys; sys.exit(0 if b'avibro' in urllib.request.urlopen('http://127.0.0.1:$PORT/info', timeout=2).read() else 1)" 2>/dev/null; then
+  echo "Сервер Avi-Bro уже запущен — открываю игру."
+  xdg-open "http://localhost:$PORT" >/dev/null 2>&1 || true
+  exit 0
+fi
+echo "=== Avi-Bro: проверяю обновление игры… ==="
+if [ -f "$DIR/server.py" ]; then
+  AVIBRO_ZIP="$ZIP" python3 "$DIR/server.py" --update || true
+else
 python3 - "$DIR" "$ZIP" <<'PY' || echo "Не удалось скачать обновление — запускаю версию, что уже есть."
 import io, os, sys, zipfile, urllib.request, shutil
 dst, url = sys.argv[1], sys.argv[2]
@@ -19,14 +28,21 @@ for info in z.infolist():
     if not rel or info.is_dir() or rel.startswith('.git'):
         continue
     p = os.path.join(dst, rel)
+    new = z.read(info)
+    try:
+        if open(p, 'rb').read() == new:
+            continue
+    except OSError:
+        pass
     os.makedirs(os.path.dirname(p), exist_ok=True)
-    with z.open(info) as a, open(p, 'wb') as b:
-        shutil.copyfileobj(a, b)
+    with open(p, 'wb') as b:
+        b.write(new)
     n += 1
-print(f"  обновлено файлов: {n}")
+print(f"  изменено файлов: {n}" if n else "  уже последняя версия")
 PY
+fi
 chmod +x "$DIR/start-server.sh" 2>/dev/null || true
-# значок на рабочем столе и в меню приложений (один раз)
+# значок в меню приложений (один раз); со стола убираем, если остался от старой версии
 APP="$HOME/.local/share/applications/avi-bro-server.desktop"
 if [ ! -f "$APP" ] && [ -f "$DIR/start-server.sh" ]; then
   mkdir -p "$(dirname "$APP")"
@@ -41,11 +57,11 @@ Terminal=true
 Categories=Game;
 DESK
   chmod +x "$APP"
-  for D in "$(xdg-user-dir DESKTOP 2>/dev/null)" "$HOME/Desktop" "$HOME/Рабочий стол"; do
-    if [ -n "$D" ] && [ -d "$D" ]; then cp "$APP" "$D/"; chmod +x "$D/avi-bro-server.desktop"; gio set "$D/avi-bro-server.desktop" metadata::trusted true 2>/dev/null || true; break; fi
-  done
-  echo "  На рабочем столе появился значок «Avi-Bro сервер» — дальше запускайте им."
+  echo "  В меню приложений появился значок «Avi-Bro сервер» — дальше запускайте им."
 fi
+for D in "$(xdg-user-dir DESKTOP 2>/dev/null)" "$HOME/Desktop" "$HOME/Рабочий стол"; do
+  [ -n "$D" ] && rm -f "$D/avi-bro-server.desktop" 2>/dev/null || true
+done
 # открыть порт в брандмауэре, если он включён (спросит пароль один раз)
 if command -v ufw >/dev/null 2>&1 && sudo -n true 2>/dev/null; then sudo ufw allow $PORT >/dev/null 2>&1 || true; fi
 cd "$DIR"

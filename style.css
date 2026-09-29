@@ -282,3 +282,4 @@ body.touch #trader { justify-content: flex-end; align-items: flex-end; padding-b
 .srvbox { border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; background: rgba(0,0,0,0.18); }
 .srvbox code { background: rgba(0,0,0,0.4); padding: 1px 5px; border-radius: 5px; }
 .srvbox .row a.btn { text-decoration: none; text-align: center; flex: 1; }
+#btnUpdate,#btnStop{width:100%;white-space:normal}

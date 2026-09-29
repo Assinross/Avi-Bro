@@ -48,7 +48,7 @@
       <!-- игра открыта из интернета: свой сервер в один клик -->
       <div id="srvBox" class="srvbox hidden">
         <div class="mchead">Свой сервер (надёжно, без интернета)</div>
-        <p class="note left">Один раз скачайте и запустите файл на компьютере, где будет сервер. Он сам скачает последнюю версию игры, запустит сервер и откроет игру. Потом на рабочем столе будет значок «Avi-Bro сервер» — запуск в один клик, обновление каждый раз.</p>
+        <p class="note left">Один раз скачайте и запустите файл на компьютере, где будет сервер. Он сам скачает последнюю версию игры, запустит сервер и откроет игру. Потом в меню приложений («Пуск» на Windows) будет значок «Avi-Bro сервер» — запуск в один клик, обновление каждый раз.</p>
         <div class="row wrap"><a class="btn small" href="start-server.sh" download>Скачать для Linux</a><a class="btn small" href="start-server.bat" download>Скачать для Windows</a></div>
         <p class="note left">Linux: <code>bash ~/Загрузки/start-server.sh</code> · Windows: двойной клик по файлу.</p>
         <label class="field">Адрес сервера
@@ -61,6 +61,7 @@
         <div class="mchead">Комнаты в сети</div>
         <div id="roomsList" class="rooms"><span class="note">Ищем…</span></div>
         <button id="btnUpdate" class="btn ghost">Обновить игру до последней версии</button>
+        <button id="btnStop" class="btn ghost">Остановить сервер</button>
       </div>
       <div id="codeBox">
       <div class="sep"><span>или</span></div>
@@ -310,6 +311,7 @@
       <div class="settings">
         <div class="mchead">Настройки</div>
         <label class="opt"><input type="checkbox" id="optAutoPick"> <span>Автоподбор предметов <kbd class="kbdhint">F</kbd><br><small>Включён — предметы поднимаются сами. Монеты и опыт подбираются всегда.</small></span></label>
+        <label class="opt"><input type="checkbox" id="optLowQ"> <span>Облегчённая графика<br><small>Для слабых ПК и браузеров с режимом энергосбережения: меньше разрешение и без размытия тумана. Включается сама, если игра тормозит.</small></span></label>
       </div>
       <button id="btnResume" class="btn gold">Продолжить</button>
       <button id="btnPauseBuild" class="btn ghost touchonly">Моя сборка</button>
