@@ -1960,7 +1960,6 @@
   /* ======================= КОМАНДЫ ======================= */
   Sim.buildCost = function (p, base) { return Math.max(1, Math.round(base * (1 - Math.min(80, p.st.buildCost || 0) / 100))); };
   // Цена нового костра: общая скидка на постройки и отдельная скидка на костёр складываются
-  Sim.fireCost = function (p) { return Math.max(1, Math.round(C().CAMPFIRE_COST * (1 - Math.min(80, p.st.buildCost || 0) / 100) * (1 - Math.min(80, p.st.fireCost || 0) / 100))); };
 
   function placeOk(G, p, x, y, rad) {
     const W = G.W, gi = Math.floor(y / W.T) * W.N + Math.floor(x / W.T);
@@ -2078,14 +2077,13 @@
       p.inv[seedKey]--;
       best.crop = seedKey === 'seed_carrot' ? 'carrot' : 'pumpkin'; best.t = 0; best.ready = false;
       Sim.fx(G, { k: 'plant', x: best.x, y: best.y });
-    } else if (c === 'bed' || c === 'fire') {
-      const cost = c === 'bed' ? Sim.buildCost(p, cfg.GARDEN_BED_COST) : Sim.fireCost(p);
+    } else if (c === 'bed') { // новые костры строить нельзя — только грядки
+      const cost = Sim.buildCost(p, cfg.GARDEN_BED_COST);
       if (Sim.woodOf(G, p) < cost) { pay(G, p, cost); return; }
       if (G.players.some(q => !q.dead && AB.dist(q.x, q.y, bx, by) < cfg.PLAYER_RADIUS + 18)) { Sim.msg(G, 'Нельзя строить на игроке — отойдите или выберите другое место', p.id, '#ff9d7a'); return; }
       if (!placeOk(G, p, bx, by, 16)) return;
       pay(G, p, cost);
-      if (c === 'bed') G.plots.push({ id: G.plots.length, x: bx, y: by, crop: null, t: 0, ready: false, mod: false });
-      else G.fires.push({ id: G.fires.length, x: bx, y: by, fuel: cfg.FIRE_FUEL_MAX * 0.5, main: false, lvl: 1, mod: false, lm: 1, cap: cfg.FIRE_FUEL_MAX });
+      G.plots.push({ id: G.plots.length, x: bx, y: by, crop: null, t: 0, ready: false, mod: false });
       Sim.fx(G, { k: 'build', x: bx, y: by });
     } else if (c === 'build1' || c === 'build2') {
       // T / Y: действие зависит от профессии

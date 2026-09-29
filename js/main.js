@@ -39,8 +39,8 @@
     const me = App.me();
     App.cam.x = me ? me.x : G.W.camp.x; App.cam.y = me ? me.y : G.W.camp.y;
     show(null);
-    AB.FX.toast('Выживите 99 ночей! Собирайте голубые шарики опыта — они открывают боевые навыки', '#ffe7a8');
-    AB.FX.toast('Движение: левый клик / стрелки. Оружие бьёт само, топор сам рубит деревья', '#cfe0ff');
+    AB.FX.toast(App.touch ? 'Выживите 99 ночей! Голубые шарики — опыт' : 'Выживите 99 ночей! Собирайте голубые шарики опыта — они открывают боевые навыки', '#ffe7a8');
+    AB.FX.toast(App.touch ? 'Джойстик слева, тап — идти или взять. Оружие бьёт само' : 'Движение: левый клик / стрелки. Оружие бьёт само, топор сам рубит деревья', '#cfe0ff');
     App.pendingDump = null;
     App.pendingPlant = null;
     App.lvOpen = false; App.aoRef = null; App.aoWasOpen = false;
@@ -50,7 +50,18 @@
     App.mcSig = null; App.exSig = null; App.wsSig = null; App.bpSig = null;
     App.keys.clear(); App.mouse.down = false; App.clickMark = null;
     setAutoPick(App.autoPick, true);
+    // мобильное состояние
+    App.mobPanel = null; App.joy = null; App.tw = {}; App.tapSlot = null; App.lp = null;
+    if (App.touch) {
+      App.goFull();
+      if (innerHeight > innerWidth) AB.FX.toast('Удобнее играть, повернув телефон горизонтально', '#ffe7a8');
+    }
   }
+  // Полноэкранный режим (на телефоне прячет адресную строку)
+  App.goFull = function () {
+    const d = document.documentElement;
+    try { if (!document.fullscreenElement && d.requestFullscreen) d.requestFullscreen({ navigationUI: 'hide' }).catch(() => {}); } catch (e) { /* */ }
+  };
   // Автоподбор предметов (у каждого игрока свой, по умолчанию выключен)
   function setAutoPick(on, silent) {
     App.autoPick = !!on;
@@ -226,7 +237,11 @@
     cv.addEventListener('mouseleave', () => { App.mouse.onCanvas = false; });
     cv.addEventListener('mousedown', (e) => {
       AB.Sound.unlock();
-      if (e.button === 2 && App.state === 'play' && App.G) {
+      if (e.button === 2 && App.state === 'play' && App.G) { secondaryAt(); return; }
+      if (e.button !== 0 || App.state !== 'play' || App.paused) return;
+      primaryAt(e.clientX, e.clientY, false);
+    });
+    function secondaryAt() {
         // в режиме стройки ПКМ отменяет его
         if (App.buildMode) { App.buildMode = null; return; }
         const mw = mouseWorld();
@@ -262,17 +277,14 @@
         App.selRef = ref;
         App.bpSig = null;
         if (App.selRef) AB.Sound.play('click', 1);
-        return;
-      }
-      if (e.button !== 0 || App.state !== 'play' || App.paused) return;
-      if (slotAt(e.clientX, e.clientY) >= 0) return;
+    }
+    App.secondaryAt = secondaryAt;
+    // Левый клик / касание: интерфейс, стройка, подбор предмета, иначе — идти (tap: к точке касания)
+    function primaryAt(cx, cy, tap) {
+      if (slotAt(cx, cy) >= 0) return;
       // клики по интерфейсу (рюкзак, еда, выбор навыка, стройка)
-      for (const c of (AB.Render.clicks || [])) {
-        if (e.clientX >= c.x && e.clientX <= c.x + c.w && e.clientY >= c.y && e.clientY <= c.y + c.h) {
-          clickBtn(c);
-          return;
-        }
-      }
+      const hit = uiHit(cx, cy);
+      if (hit) { clickBtn(hit); return; }
       // режим стройки с верхней панели: клик по земле ставит постройку
       if (App.buildMode) { command(App.buildMode); if (App.buildMode === 'build3') App.buildMode = null; return; }
       // клик по предмету на земле
@@ -284,24 +296,117 @@
         return;
       }
       App.pendingPick = null; App.pendingDump = null; App.pendingPlant = null;
-      App.mouse.down = true;
-    });
+      if (tap) { const mw = mouseWorld(); App.moveTarget = { x: mw.x, y: mw.y }; App.clickMark = { x: mw.x, y: mw.y, t: 1 }; }
+      else App.mouse.down = true;
+    }
+    App.primaryAt = primaryAt;
+    setupTouch(cv);
     // клик колесом (средняя кнопка) — съесть
     cv.addEventListener('mousedown', (e) => {
       if (!(e.button === 1 && App.state === 'play' && App.G && !App.paused)) return;
       e.preventDefault();
       AB.Sound.unlock();
-      for (const c of (AB.Render.clicks || [])) {
-        if (e.clientX >= c.x && e.clientX <= c.x + c.w && e.clientY >= c.y && e.clientY <= c.y + c.h) {
-          clickBtn(c);
-          return;
-        }
-      }
+      const hit = uiHit(e.clientX, e.clientY);
+      if (hit) { clickBtn(hit); return; }
       command('eat');
     });
     window.addEventListener('mouseup', (e) => { if (e.button === 0) App.mouse.down = false; });
     cv.addEventListener('contextmenu', (e) => e.preventDefault());
   }
+  function uiHit(x, y) {
+    for (const c of (AB.Render.clicks || [])) if (x >= c.x && x <= c.x + c.w && y >= c.y && y <= c.y + c.h) return c;
+    return null;
+  }
+
+  /* ============================ СЕНСОРНОЕ УПРАВЛЕНИЕ ============================
+   * Левая часть экрана — плавающий джойстик (коснуться и вести палец).
+   * Короткое касание земли — идти туда / поднять предмет / поставить постройку.
+   * Долгое касание (≈0,45 с) — как правый клик: меню здания, бревна в костёр, шкуры на склад, посадка.
+   * Ведение пальцем по правой части — идти за пальцем. */
+  const LONG_PRESS = 0.45;
+  App.tw = {}; App.joy = null;
+  function setTouchMode(on) {
+    App.touch = !!on; AB.Render.touch = App.touch;
+    document.body.classList.toggle('touch', App.touch);
+  }
+  App.setTouchMode = setTouchMode;
+  function setupTouch(cv) {
+    const opt = { passive: false };
+    const now = () => performance.now() / 1000;
+    cv.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      AB.Sound.unlock();
+      if (!App.touch) setTouchMode(true);
+      if (App.state !== 'play' || App.paused) return;
+      for (const t of e.changedTouches) {
+        const x = t.clientX, y = t.clientY;
+        const hit = uiHit(x, y);
+        if (hit) { clickBtn(hit); continue; }
+        const si = slotAt(x, y);
+        if (si >= 0) { App.tapSlot = si; App.tapSlotT = 2.5; continue; }
+        if (!App.joy && x < AB.Render.w * 0.42 && y > AB.Render.h * 0.22) { App.joy = { id: t.identifier, ox: x, oy: y, x, y, t0: now(), moved: false }; continue; }
+        App.tw[t.identifier] = { x0: x, y0: y, x, y, t0: now(), long: false, drag: false };
+      }
+    }, opt);
+    cv.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      for (const t of e.changedTouches) {
+        const x = t.clientX, y = t.clientY;
+        if (App.joy && App.joy.id === t.identifier) { App.joy.x = x; App.joy.y = y; if (Math.hypot(x - App.joy.ox, y - App.joy.oy) > 10) App.joy.moved = true; continue; }
+        const w = App.tw[t.identifier]; if (!w) continue;
+        w.x = x; w.y = y;
+        if (!w.long && Math.hypot(x - w.x0, y - w.y0) > 14) w.drag = true;
+        if (w.drag) { App.mouse.x = x; App.mouse.y = y; App.mouse.down = true; App.pendingPick = null; }
+      }
+    }, opt);
+    const end = (e) => {
+      e.preventDefault();
+      for (const t of e.changedTouches) {
+        const x = t.clientX, y = t.clientY;
+        if (App.joy && App.joy.id === t.identifier) {
+          const J = App.joy; App.joy = null;
+          if (!J.moved && now() - J.t0 < 0.3 && e.type === 'touchend') tapWorld(x, y, false);
+          continue;
+        }
+        const w = App.tw[t.identifier]; if (!w) continue;
+        delete App.tw[t.identifier];
+        if (w.drag) { App.mouse.down = false; App.moveTarget = null; continue; }
+        if (!w.long && e.type === 'touchend') tapWorld(x, y, false);
+      }
+    };
+    cv.addEventListener('touchend', end, opt);
+    cv.addEventListener('touchcancel', end, opt);
+  }
+  // касание по миру в экранных координатах: long=false — как левый клик, true — как правый
+  function tapWorld(x, y, long) {
+    if (App.state !== 'play' || App.paused || !App.G) return;
+    // открытая панель (кроме карты) закрывается касанием мимо неё
+    if (!long && App.mobPanel && App.mobPanel !== 'map') { App.mobPanel = null; return; }
+    App.mouse.x = x; App.mouse.y = y; App.mouse.onCanvas = true;
+    if (long) secondaryAtRef(); else App.primaryAt(x, y, true);
+    App.mouse.onCanvas = false;
+  }
+  const secondaryAtRef = () => App.secondaryAt();
+  function touchTick(dt) {
+    if (App.tapSlotT > 0) { App.tapSlotT -= dt; if (App.tapSlotT <= 0) App.tapSlot = -1; }
+    const t = performance.now() / 1000;
+    App.lp = null;
+    // джойстик, который держат не двигая, — тоже долгое нажатие (иначе в левой части экрана нельзя открыть здание)
+    const J = App.joy;
+    if (J && !J.moved) {
+      const held = t - J.t0, need = LONG_PRESS + 0.15;
+      if (held > 0.2) App.lp = { x: J.x, y: J.y, f: (held - 0.2) / (need - 0.2) };
+      if (held >= need) { App.joy = null; App.lp = null; if (navigator.vibrate) try { navigator.vibrate(15); } catch (e) { /* */ } tapWorld(J.x, J.y, true); }
+    }
+    for (const id in App.tw) {
+      const w = App.tw[id];
+      if (w.long || w.drag) continue;
+      const held = t - w.t0;
+      if (held > 0.12) App.lp = { x: w.x, y: w.y, f: (held - 0.12) / (LONG_PRESS - 0.12) };
+      if (held >= LONG_PRESS) { w.long = true; App.lp = null; if (navigator.vibrate) try { navigator.vibrate(15); } catch (e) { /* */ } tapWorld(w.x, w.y, true); }
+    }
+  }
+
   // Ячейка панели навыков под курсором (для подсказки)
   function slotAt(mx, my) {
     const R = AB.Render, k = R.hudK || 1;
@@ -325,9 +430,16 @@
     AB.Sound.play('click', 1);
     if (c.c === 'abopen') { App.abDefer = false; App.lvOpen = false; App.lvSig = null; return; }
     if (c.c === 'lvopen') { App.lvOpen = true; App.lvSig = null; return; }
+    if (c.c === 'buildno') { AB.FX.toast(c.v, '#ff9d7a'); return; }
+    if (c.c === 'm:pause') { togglePause(); return; }
+    if (c.c === 'm:panel') { App.mobPanel = App.mobPanel === c.v ? null : c.v; return; }
+    if (c.c === 'm:nop') return;
+    if (c.c === 'm:cancelbuild') { App.buildMode = null; return; }
+    if (c.c === 'eat' && !c.v) { command('eat'); return; }
     if (c.c === 'buildmode') {
       App.buildMode = (App.buildMode === c.v) ? null : c.v;
-      if (App.buildMode) AB.FX.toast('Режим стройки: клик по земле — построить, ПКМ/Esc — отмена', '#ffe7a8');
+      if (App.touch) App.mobPanel = null; // на телефоне панель прячем, чтобы коснуться земли
+      if (App.buildMode && !App.touch) AB.FX.toast('Режим стройки: клик по земле — построить, ПКМ/Esc — отмена', '#ffe7a8');
       return;
     }
     sendCmd(c.c, c.v);
@@ -335,7 +447,8 @@
   function dropUnderMouse() {
     if (!App.G || !App.mouse.onCanvas) return null;
     const mw = mouseWorld();
-    let best = null, bd = 22 * 22;
+    const r = App.touch ? 34 : 22;
+    let best = null, bd = r * r;
     for (const d of App.G.drops) { const dd = AB.dist2(mw.x, mw.y, d.x, d.y - 6); if (dd < bd) { bd = dd; best = d; } }
     return best;
   }
@@ -648,6 +761,8 @@
     if (K.has('ArrowRight') || K.has('KeyD')) dx += 1;
     if (K.has('ArrowUp') || K.has('KeyW')) dy -= 1;
     if (K.has('ArrowDown') || K.has('KeyS')) dy += 1;
+    // сенсорный джойстик
+    if (App.joy && App.joy.moved) { const jx = App.joy.x - App.joy.ox, jy = App.joy.y - App.joy.oy; if (Math.hypot(jx, jy) > 8) { dx = jx; dy = jy; App.pendingPick = null; App.pendingDump = null; App.pendingPlant = null; } }
     const mw = mouseWorld();
     if (dx || dy) App.moveTarget = null;
     else {
@@ -754,7 +869,11 @@
       if (!App.aoWasOpen) { App.abDefer = true; App.lvSig = null; }
     } else if (!me || !me.ao) App.aoRef = null;
     const lvPlus = me && !me.dead && me.offers && !App.lvOpen && App.state === 'play' ? me.queue.length : 0;
-    R.hud(G, me, { mouse: App.mouse.onCanvas ? App.mouse : null, hoverSlot: App.hoverSlot, lvPlus, buildMode: App.buildMode });
+    // доски кончились во время стройки — выходим из режима сами (не нужно жать Esc)
+    if (App.buildMode && AB.Render.buildBlocked === App.buildMode) { App.buildMode = null; AB.FX.toast('Не хватает досок — режим стройки выключен', '#ff9d7a'); }
+    if (App.touch) touchTick(dt);
+    R.hud(G, me, { mouse: App.mouse.onCanvas && !App.touch ? App.mouse : null, hoverSlot: App.hoverSlot, lvPlus, buildMode: App.buildMode,
+      touch: App.touch, mobPanel: App.mobPanel, joy: App.joy, lp: App.lp, tapSlot: App.tapSlot, showJoyHint: G.clock < 60 });
     AB.Render.hoverDrop = (dropUnderMouse() || {}).id;
     updateLevelUI(me);
     updateMerchantUI(me);
@@ -810,6 +929,11 @@
     AB.Sprites.init();
     AB.Render.init($('game'));
     setupInput();
+    { // телефон: по грубому указателю или ?mobile=1 / ?mobile=0
+      const qs = new URLSearchParams(location.search);
+      let t = false; try { t = matchMedia('(pointer: coarse)').matches; } catch (e) { /* */ }
+      setTouchMode(qs.has('mobile') ? qs.get('mobile') !== '0' : t);
+    }
     try { $('name').value = $('name2').value = localStorage.getItem('avibro-name') || ''; } catch (e) { /* */ }
     $('name').addEventListener('input', () => $('name2').value = $('name').value);
     $('name2').addEventListener('input', () => $('name').value = $('name2').value);
@@ -834,6 +958,9 @@
     bind('btnCopy', () => { const i = $('roomLink'); i.select(); try { navigator.clipboard.writeText(i.value); } catch (e) { document.execCommand('copy'); } $('btnCopy').textContent = 'Скопировано!'; setTimeout(() => $('btnCopy').textContent = 'Копировать', 1500); });
     bind('btnSoloFromLobby', () => { AB.Net.close(); startSolo(); });
     bind('btnResume', togglePause);
+    bind('btnPauseBuild', () => { togglePause(); toggleBuild(); });
+    bind('btnFull', () => App.goFull());
+    bind('btnBuildClose', () => { if (App.showBuild) toggleBuild(); });
     bind('btnQuit', () => endToMenu());
     bind('btnMenu', () => endToMenu());
     bind('btnRetry', () => chooseProf(startSolo, 'menu'));

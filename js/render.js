@@ -1137,7 +1137,9 @@
     const ctx = R.ctx, W = G.W, cfg = C();
     R.time += dt;
     const t = R.time;
-    const z = R.h / cfg.VIEW_HEIGHT;
+    // масштаб: по высоте экрана; на узком (вертикальном) экране — ещё и по ширине, чтобы мир не превращался в щель
+    const viewH = R.touch ? (cfg.VIEW_HEIGHT_MOBILE || cfg.VIEW_HEIGHT) : cfg.VIEW_HEIGHT;
+    const z = Math.min(R.h / viewH, R.w / (viewH * 1.2));
     R.zoom = z;
     const shx = (Math.random() - 0.5) * AB.FX.shake, shy = (Math.random() - 0.5) * AB.FX.shake;
     ctx.setTransform(R.dpr, 0, 0, R.dpr, 0, 0);
@@ -1498,6 +1500,7 @@
   function heart(ctx, x, y, s, c) { ctx.fillStyle = c; ctx.beginPath(); ctx.moveTo(x, y + s * 0.35); ctx.bezierCurveTo(x, y, x - s * 0.55, y, x - s * 0.55, y + s * 0.3); ctx.bezierCurveTo(x - s * 0.55, y + s * 0.6, x, y + s * 0.8, x, y + s); ctx.bezierCurveTo(x, y + s * 0.8, x + s * 0.55, y + s * 0.6, x + s * 0.55, y + s * 0.3); ctx.bezierCurveTo(x + s * 0.55, y, x, y, x, y + s * 0.35); ctx.fill(); }
 
   R.hud = function (G, me, ui) {
+    if (ui && ui.touch) return hudMobile(G, me, ui);
     const ctx = R.ctx, cfg = C();
     ctx.save(); ctx.setTransform(R.dpr, 0, 0, R.dpr, 0, 0);
     const k = AB.clamp(Math.min(R.w / 1400, R.h / 800), 0.7, 1.25);
@@ -1604,6 +1607,7 @@
         const st = me.st || {};
         const bc2 = (v) => Math.max(1, Math.round(v * (1 - Math.min(80, st.buildCost || 0) / 100)));
         const woodHave = AB.Sim.woodOf(G, me);
+        R.buildBlocked = null;
         const pal = [{ cmd: 'bed', key: 'G', name: 'Грядка', cost: bc2(cfg.GARDEN_BED_COST) }];
         if (st.structBuild > 0) { pal.push({ cmd: 'build1', key: 'T', name: 'Частокол', cost: bc2(cfg.STRUCTURES.wall.cost) }); pal.push({ cmd: 'build2', key: 'Y', name: 'Вышка', cost: bc2(cfg.STRUCTURES.tower.cost) }); }
         else if (st.turretBuild > 0) pal.push({ cmd: 'build1', key: 'T', name: 'Турель', cost: bc2(cfg.STRUCTURES.turret.cost) });
@@ -1630,7 +1634,9 @@
           ctx.fillStyle = ok ? '#e0c08a' : '#7d847d'; ctx.fillText(`${it.cost} д`, px + bw / 2, py + 47);
           ctx.globalAlpha = 1;
           if (sel) { ctx.strokeStyle = '#ffd24a'; ctx.lineWidth = 2; roundRect(ctx, px - 1, py - 1, bw + 2, bh + 2, 8); ctx.stroke(); }
-          click(px, py, bw, bh, 'buildmode', it.cmd);
+          // неактивную иконку выбрать нельзя: клик только подсказывает, сколько не хватает
+          if (ok) click(px, py, bw, bh, 'buildmode', it.cmd); else click(px, py, bw, bh, 'buildno', `${it.name}: не хватает досок (нужно ${it.cost}, есть ${woodHave})`);
+          if (sel && !ok) R.buildBlocked = it.cmd;
           px += bw + gp;
         });
         if (ui && ui.buildMode) {
@@ -1831,12 +1837,276 @@
     }
   };
 
-  function minimap(ctx, G, me, SW, SH) {
+  /* ===================== МОБИЛЬНЫЙ ИНТЕРФЕЙС (телефон, планшет) =====================
+   * Всегда видно: здоровье, сытость, время, панель навыков, кнопка «Съесть», джойстик.
+   * Остальное спрятано за иконками справа сверху (открыта одна панель за раз):
+   * постройки, рюкзак (ресурсы, еда), карта, цели. Меню паузы — первая иконка. */
+  function mIcon(ctx, kind, x, y, s, on, badge) {
+    ctx.fillStyle = on ? 'rgba(255,210,74,0.95)' : 'rgba(10,18,15,0.82)';
+    roundRect(ctx, x, y, s, s, 9); ctx.fill();
+    ctx.strokeStyle = on ? '#fff2b0' : 'rgba(160,190,150,0.35)'; ctx.lineWidth = 1.2; ctx.stroke();
+    const c = on ? '#1a1206' : '#e8eee6', cx = x + s / 2, cy = y + s / 2;
+    ctx.fillStyle = c; ctx.strokeStyle = c; ctx.lineWidth = 2.2; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    if (kind === 'pause') { ctx.fillRect(cx - 6, cy - 7, 4, 14); ctx.fillRect(cx + 2, cy - 7, 4, 14); }
+    else if (kind === 'build') { ctx.save(); ctx.translate(cx + 1, cy + 1); ctx.rotate(-0.75); ctx.fillRect(-1.6, -3, 3.2, 12); ctx.fillRect(-7, -8, 14, 5.5); ctx.restore(); }
+    else if (kind === 'bag') { roundRect(ctx, cx - 7, cy - 3, 14, 11, 3); ctx.fill(); ctx.beginPath(); ctx.arc(cx, cy - 3, 4, Math.PI, 0); ctx.stroke(); }
+    else if (kind === 'map') { ctx.beginPath(); ctx.arc(cx, cy, 8, 0, TAU); ctx.stroke(); ctx.beginPath(); ctx.moveTo(cx, cy - 6); ctx.lineTo(cx + 3.5, cy + 4); ctx.lineTo(cx - 3.5, cy + 4); ctx.closePath(); ctx.fill(); }
+    else if (kind === 'goals') { ctx.beginPath(); ctx.moveTo(cx - 7, cy); ctx.lineTo(cx - 2, cy + 5); ctx.lineTo(cx + 7, cy - 6); ctx.stroke(); }
+    if (badge) {
+      ctx.font = 'bold 10px "Nunito", system-ui'; const bw = Math.max(15, ctx.measureText(badge).width + 8);
+      ctx.fillStyle = '#e0503a'; roundRect(ctx, x + s - bw + 4, y - 5, bw, 15, 7.5); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.fillText(badge, x + s - bw / 2 + 4, y + 2.5);
+    }
+  }
+  function hudMobile(G, me, ui) {
+    const ctx = R.ctx, cfg = C(), panelOpen = ui.mobPanel || null;
+    ctx.save(); ctx.setTransform(R.dpr, 0, 0, R.dpr, 0, 0);
+    const k = AB.clamp(Math.min(R.w, R.h) / 400, 0.75, 1.4);
+    R.hudK = k; ctx.scale(k, k);
+    const SW = R.w / k, SH = R.h / k;
+    const ti = AB.Sim.timeInfo(G.clock);
+    R.clicks = []; R.slots = [];
+    const click = (x, y, w, h, c, v) => R.clicks.push({ x: x * k, y: y * k, w: w * k, h: h * k, c, v });
+    ctx.textBaseline = 'middle';
+    // --- состояние (слева сверху)
+    panel(ctx, 8, 8, 196, 64, 12);
+    ctx.textAlign = 'left'; ctx.font = 'bold 14px "Nunito", system-ui'; ctx.fillStyle = '#fff';
+    ctx.fillText(`${ti.isNight ? 'Ночь' : 'День'} ${ti.day}/${cfg.NIGHTS_TO_WIN}`, 16, 21);
+    ctx.textAlign = 'right'; ctx.font = '600 11px "Nunito", system-ui'; ctx.fillStyle = ti.isNight ? '#9fb8ff' : '#ffd98a';
+    ctx.fillText(`${ti.isNight ? 'до рассвета' : 'до ночи'} ${Math.ceil(ti.phaseLeft)} с`, 196, 21);
+    if (me) {
+      bar(ctx, 16, 33, 180, 14, me.hp / (me.mhp || cfg.PLAYER_MAX_HP), '#ff5a5a', '#b82a3a', `${Math.ceil(me.hp)} / ${Math.round(me.mhp || cfg.PLAYER_MAX_HP)}`);
+      const starving = me.food / cfg.PLAYER_MAX_FOOD < (cfg.HUNGER_BLINK || 0.1) && !me.dead;
+      if (starving) { ctx.save(); ctx.globalAlpha = 0.4 + 0.4 * Math.sin(performance.now() / 110); ctx.fillStyle = '#ff3a2a'; roundRect(ctx, 12, 49, 188, 20, 8); ctx.fill(); ctx.restore(); }
+      bar(ctx, 16, 52, 180, 14, me.food / cfg.PLAYER_MAX_FOOD, starving ? '#ff6a4a' : '#ffae4a', starving ? '#b82a1a' : '#c8641a', starving ? 'ГОЛОД — съешьте что-нибудь' : `сытость ${Math.ceil(me.food)}`);
+    }
+    // напарник — одной строкой под состоянием
+    let leftY = 78;
+    if (me && G.players.length > 1) {
+      const o = G.players.find(p => p !== me);
+      if (o) {
+        panel(ctx, 8, leftY, 196, 22, 9);
+        ctx.textAlign = 'left'; ctx.font = '600 11px "Nunito", system-ui'; ctx.fillStyle = outfitOf(o).tag;
+        ctx.fillText(o.dead ? `${o.name}: возрождение ${Math.ceil(o.rs)} с` : o.name, 14, leftY + 11);
+        if (!o.dead) bar(ctx, 100, leftY + 6, 96, 10, o.hp / (o.mhp || cfg.PLAYER_MAX_HP), '#ff5a5a', '#b82a3a');
+        leftY += 28;
+      }
+    }
+    // --- иконки справа сверху
+    const is = SW < 440 ? 32 : 38, ig = SW < 440 ? 4 : 6; // на узком экране иконки поменьше, чтобы не наезжать на состояние
+    const bagCap = me ? AB.Sim.bagCap(me) : 0, bagUsed = me ? AB.Sim.bagUsed(me) : 0;
+    const icons = [['pause', null], ['build', null], ['bag', me && bagUsed >= bagCap ? '!' : null], ['map', null], ['goals', null]];
+    let ix = SW - 8 - icons.length * (is + ig) + ig;
+    icons.forEach(([kind, badge]) => {
+      mIcon(ctx, kind, ix, 8, is, kind !== 'pause' && panelOpen === kind, badge);
+      click(ix - 3, 5, is + 6, is + 6, kind === 'pause' ? 'm:pause' : 'm:panel', kind);
+      ix += is + ig;
+    });
+    // казна и доски — всегда видны одной строкой под иконками
+    {
+      const txt = `${G.coins || 0} $   ·   досок ${G.store ? G.store.planks : 0}`;
+      ctx.font = 'bold 12px "Nunito", system-ui'; const w = ctx.measureText(txt).width + 20;
+      panel(ctx, SW - 8 - w, is + 14, w, 22, 9);
+      ctx.textAlign = 'right'; ctx.fillStyle = G.debt > 0 ? '#ff8a6a' : '#ffd24a'; ctx.fillText(txt, SW - 18, is + 25.5);
+    }
+    const py0 = is + 44; // верх выпадающих панелей
+    const fit = (t, maxW) => { if (ctx.measureText(t).width <= maxW) return t; while (t.length > 4 && ctx.measureText(t + '…').width > maxW) t = t.slice(0, -1); return t + '…'; };
+    const swallow = (x, y, w, h) => click(x, y, w, h, 'm:nop', 0); // фон панели ловит касания
+    R.buildBlocked = null;
+    if (me) {
+      const st = me.st || {}, bc2 = (v) => Math.max(1, Math.round(v * (1 - Math.min(80, st.buildCost || 0) / 100)));
+      const woodHave = AB.Sim.woodOf(G, me);
+      const pal = [{ cmd: 'bed', name: 'Грядка', cost: bc2(cfg.GARDEN_BED_COST) }];
+      if (st.structBuild > 0) { pal.push({ cmd: 'build1', name: 'Частокол', cost: bc2(cfg.STRUCTURES.wall.cost) }); pal.push({ cmd: 'build2', name: 'Вышка', cost: bc2(cfg.STRUCTURES.tower.cost) }); }
+      else if (st.turretBuild > 0) pal.push({ cmd: 'build1', name: 'Турель', cost: bc2(cfg.STRUCTURES.turret.cost) });
+      else if (st.moduleBuild > 0) pal.push({ cmd: 'build1', name: 'Модуль', cost: cfg.MODULE_COST });
+      const eb = cfg.ECON_BUILDINGS[me.prof];
+      const ebShort = { shop: 'Лавка', exchange: 'Биржа', workshop: 'Мастерская', townhall: 'Ратуша' };
+      if (eb && !G.structs.some(q => q.kind === eb && q.owner === me.id)) pal.push({ cmd: 'build3', name: ebShort[eb] || cfg.STRUCTURES[eb].name, cost: bc2(cfg.STRUCTURES[eb].cost) });
+      const bm = pal.find(it => it.cmd === ui.buildMode);
+      if (bm && woodHave < bm.cost) R.buildBlocked = bm.cmd;
+      if (panelOpen === 'build') {
+      const bw = 70, bh = 50, gp = 6, totw = pal.length * (bw + gp) - gp;
+      let px = SW - 8 - totw;
+      ctx.textAlign = 'center';
+      pal.forEach(it => {
+        const ok = woodHave >= it.cost;
+        ctx.globalAlpha = ok ? 1 : 0.45; panel(ctx, px, py0, bw, bh, 10);
+        ctx.fillStyle = ok ? '#fff' : '#9aa39a'; ctx.font = 'bold 12px "Nunito", system-ui'; ctx.fillText(it.name, px + bw / 2, py0 + 18);
+        ctx.fillStyle = ok ? '#e0c08a' : '#7d847d'; ctx.font = '600 11px "Nunito", system-ui'; ctx.fillText(`${it.cost} досок`, px + bw / 2, py0 + 35);
+        ctx.globalAlpha = 1;
+        if (ok) click(px, py0, bw, bh, 'buildmode', it.cmd); else click(px, py0, bw, bh, 'buildno', `${it.name}: не хватает досок (нужно ${it.cost}, есть ${woodHave})`);
+        px += bw + gp;
+      });
+      ctx.font = '600 11px "Nunito", system-ui'; ctx.textAlign = 'right'; ctx.fillStyle = '#cfd8cc';
+      ctx.fillText('Выберите постройку, затем коснитесь земли', SW - 10, py0 + bh + 12);
+      swallow(SW - 8 - totw, py0, totw, bh);
+      }
+    }
+    if (me && panelOpen === 'bag') {
+      const cells = [];
+      ['wood', 'hide', 'coal', 'iron', 'stone'].forEach(kk => { for (let i = 0; i < (me.inv[kk] || 0); i++) cells.push(kk); });
+      const per = 7, cs = 34, rows = Math.max(1, Math.ceil(bagCap / per));
+      const foods = AB.ITEM_KEYS.filter(kk => !AB.Sim.bagItem(kk) && kk !== 'coin' && (me.inv[kk] || 0) > 0);
+      const pw = per * (cs + 4) + 16, ph = 30 + rows * (cs + 4) + (foods.length ? 58 : 0) + 34;
+      const px = Math.max(8, SW - 8 - pw), py = py0;
+      panel(ctx, px, py, pw, ph, 12);
+      ctx.textAlign = 'left'; ctx.font = 'bold 13px "Nunito", system-ui'; ctx.fillStyle = bagUsed >= bagCap ? '#ff8a6a' : '#fff';
+      ctx.fillText(`Рюкзак ${bagUsed}/${bagCap}`, px + 12, py + 15);
+      ctx.textAlign = 'right'; ctx.font = '600 10px "Nunito", system-ui'; ctx.fillStyle = '#aab4aa'; ctx.fillText('коснитесь — выбросить', px + pw - 12, py + 15);
+      for (let i = 0; i < bagCap; i++) {
+        const cx = px + 8 + (i % per) * (cs + 4), cy = py + 28 + Math.floor(i / per) * (cs + 4);
+        ctx.fillStyle = 'rgba(0,0,0,0.45)'; roundRect(ctx, cx, cy, cs, cs, 6); ctx.fill();
+        if (cells[i]) { ctx.drawImage(S().icons[cells[i]], cx + 3, cy + 3, cs - 6, cs - 6); click(cx, cy, cs, cs, 'dropk', cells[i]); }
+      }
+      let yy = py + 30 + rows * (cs + 4);
+      if (foods.length) {
+        ctx.textAlign = 'left'; ctx.font = '600 11px "Nunito", system-ui'; ctx.fillStyle = '#cfd8cc'; ctx.fillText('Еда и семена (коснитесь еды — съесть):', px + 12, yy + 6);
+        foods.slice(0, 7).forEach((it, i) => {
+          const x = px + 8 + i * (cs + 4), y = yy + 16;
+          ctx.fillStyle = 'rgba(0,0,0,0.35)'; roundRect(ctx, x, y, cs, cs, 6); ctx.fill();
+          ctx.drawImage(S().icons[it], x + 4, y + 2, cs - 8, cs - 8);
+          ctx.textAlign = 'right'; ctx.font = 'bold 11px "Nunito", system-ui'; ctx.fillStyle = '#fff'; ctx.fillText(me.inv[it], x + cs - 3, y + cs - 6);
+          if (cfg.FOOD[it]) click(x, y, cs, cs, 'eatk', it);
+        });
+        yy += 58;
+      }
+      // общий склад
+      const ir = AB.Sim.ironOf(G, me), stn = AB.Sim.stoneOf(G, me);
+      ctx.textAlign = 'left'; ctx.font = '600 11px "Nunito", system-ui'; ctx.fillStyle = '#e0c08a';
+      ctx.fillText(fit(`Склад: доски ${G.store ? G.store.planks : 0} · железо ${ir} · камень ${stn}${G.store && G.store.coal ? ` · уголь ${G.store.coal}` : ''}`, pw - 20), px + 12, yy + 8);
+      ctx.fillStyle = '#c8b890'; ctx.fillText(fit(`Лесопилка ${G.store ? G.store.logs : 0}/${cfg.MILL.queueMax} · содержание ${AB.Sim.upkeepTotal(G)} $/день`, pw - 20), px + 12, yy + 24);
+      swallow(px, py, pw, ph);
+    }
+    if (panelOpen === 'map') { const sz = Math.min(200, SH - py0 - 150, SW - 24); minimap(ctx, G, me, SW, SH, { x: SW - 14 - sz, y: py0 + 6, sz }); swallow(SW - 20 - sz, py0, sz + 12, sz + 12); }
+    if (me && panelOpen === 'goals') {
+      const opened = G.W.sites.filter(s => s.opened).length;
+      const lines = [[`Пережито ночей: ${Math.max(0, ti.day - 1)} из ${cfg.NIGHTS_TO_WIN}`], [`Боевые навыки: ${AB.Sim.abLearned(me)} / ${cfg.ABILITY_MAX}`], [`Сундуки: ${opened} / ${G.W.sites.length}`], [`Грядок засажено: ${G.plots.filter(p => p.crop).length}`], [`Монстров убито: ${G.stats.kills}`], [`Умений: ${(me.skills || []).length} · костёр ур. ${G.fireLevel || 1}`]];
+      const pw = 230, ph = 18 + lines.length * 20;
+      panel(ctx, SW - 8 - pw, py0, pw, ph, 12);
+      ctx.textAlign = 'left'; ctx.font = '600 12px "Nunito", system-ui'; ctx.fillStyle = '#e0ecdc';
+      lines.forEach((l, i) => ctx.fillText(l[0], SW - pw + 6, py0 + 18 + i * 20));
+      swallow(SW - 8 - pw, py0, pw, ph);
+    }
+    // --- панель навыков снизу по центру
+    if (me) {
+      const sz = 46, gap = 6, tools = me.pick ? 2 : 1;
+      const abList = (me.ab || []).slice();
+      const startAb = abList.find(a => { const d = AB.Sim.abDef(a.id); return d && d.start; });
+      const learnedAb = abList.filter(a => a !== startAb);
+      const nslot = tools + 1 + cfg.ABILITY_MAX, tw = nslot * (sz + gap) - gap;
+      const hx = SW / 2 - tw / 2, hy = SH - sz - 10;
+      let sx0 = hx;
+      const slot = (sel, tool) => { const x = sx0; sx0 += sz + gap; ctx.fillStyle = tool ? 'rgba(30,24,16,0.85)' : sel ? 'rgba(20,40,60,0.9)' : 'rgba(10,18,15,0.8)'; roundRect(ctx, x, hy, sz, sz, 8); ctx.fill(); ctx.strokeStyle = tool ? 'rgba(224,192,138,0.45)' : sel ? '#6ac8ff' : 'rgba(160,190,150,0.25)'; ctx.lineWidth = sel ? 2 : 1; ctx.stroke(); return x; };
+      { const x = slot(false, true); ctx.drawImage(S().icons.axe, x + 6, hy + 4, sz - 12, sz - 12); R.slots.push({ x, y: hy, w: sz, h: sz, name: `Топор ур. ${me.axe || 1}`, desc: 'Сам рубит деревья рядом' }); }
+      if (me.pick) { const x = slot(false, true); ctx.drawImage(S().icons.pickaxe, x + 6, hy + 4, sz - 12, sz - 12); R.slots.push({ x, y: hy, w: sz, h: sz, name: 'Кирка', desc: 'Сама бьёт камень и железо' }); }
+      const abSlot = (a) => {
+        const def = a ? AB.Sim.abDef(a.id) : null;
+        const x = slot(!!def, false);
+        if (!def) { ctx.font = 'bold 18px system-ui'; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(160,190,150,0.25)'; ctx.fillText('+', x + sz / 2, hy + sz / 2); R.slots.push({ x, y: hy, w: sz, h: sz, name: 'Свободный слот', desc: 'Набирайте опыт' }); return; }
+        const pc = cfg.PROFESSIONS[def.prof].color;
+        ctx.font = 'bold 21px "DejaVu Sans", system-ui'; ctx.textAlign = 'center'; ctx.fillStyle = pc; ctx.fillText(def.icon, x + sz / 2, hy + sz / 2 - 3);
+        const cdLeft = me.abT ? me.abT[a.id] || 0 : 0, S0 = AB.Sim.abStats(G, me, def, a.lv);
+        if (cdLeft > 0.05 && S0.cd > 0.5 && !['orbit', 'aura', 'drone'].includes(def.kind)) { ctx.fillStyle = 'rgba(0,0,0,0.5)'; const k2 = Math.min(1, cdLeft / S0.cd); roundRect(ctx, x, hy + sz * (1 - k2), sz, sz * k2, 6); ctx.fill(); }
+        const nL = cfg.ABILITY_MAX_LEVEL, pw = (sz - 10) / nL;
+        for (let l = 0; l < nL; l++) { ctx.fillStyle = l < a.lv ? (l >= 5 ? '#ffd24a' : l >= 3 ? '#dfe8ee' : '#6ac8ff') : 'rgba(255,255,255,0.15)'; ctx.fillRect(x + 5 + l * pw, hy + sz - 7, pw - 1.2, 3.5); }
+        R.slots.push({ x, y: hy, w: sz, h: sz, name: `${def.name} · ур. ${a.lv}`, desc: def.desc });
+      };
+      abSlot(startAb);
+      for (let i = 0; i < cfg.ABILITY_MAX; i++) abSlot(learnedAb[i]);
+      // шкала опыта
+      const need = AB.Sim.xpNeed(me.xl || 1);
+      bar(ctx, hx, hy - 12, tw, 8, (me.xp || 0) / need, '#6ac8ff', '#2a78d0');
+      ctx.font = 'bold 10px "Nunito", system-ui'; ctx.textAlign = 'left'; ctx.fillStyle = '#bfe4ff'; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+      const lbl = `опыт ${me.xl || 1} · ${Math.floor(me.xp || 0)}/${need}`; ctx.strokeText(lbl, hx + 2, hy - 20); ctx.fillText(lbl, hx + 2, hy - 20);
+      // подсказка по нажатой ячейке
+      if (ui.tapSlot >= 0 && R.slots[ui.tapSlot]) {
+        const sl = R.slots[ui.tapSlot];
+        ctx.font = '600 11px "Nunito", system-ui'; const w = Math.min(SW - 16, Math.max(ctx.measureText(sl.desc).width, ctx.measureText(sl.name).width) + 20);
+        const bx = AB.clamp(sl.x + sz / 2 - w / 2, 8, SW - w - 8);
+        ctx.fillStyle = 'rgba(10,18,15,0.94)'; roundRect(ctx, bx, hy - 76, w, 40, 8); ctx.fill();
+        ctx.textAlign = 'left'; ctx.fillStyle = '#fff'; ctx.font = 'bold 12px "Nunito", system-ui'; ctx.fillText(sl.name, bx + 10, hy - 64); ctx.fillStyle = '#b8c8b4'; ctx.font = '600 11px "Nunito", system-ui'; ctx.fillText(sl.desc, bx + 10, hy - 47);
+      }
+      // «+ умение» / «+ навык» — над шкалой опыта
+      const pill = (x, y, w, txt, col, c) => { const bl = 0.65 + Math.sin(performance.now() / 140) * 0.35; ctx.globalAlpha = bl; ctx.fillStyle = col; roundRect(ctx, x, y, w, 28, 14); ctx.fill(); ctx.globalAlpha = 1; ctx.fillStyle = '#10160f'; ctx.textAlign = 'center'; ctx.font = 'bold 12px "Nunito", system-ui'; ctx.fillText(txt, x + w / 2, y + 14.5); click(x - 4, y - 4, w + 8, 36, c, 0); };
+      if (ui.lvPlus > 0) pill(hx, hy - 58, 120, `+${ui.lvPlus} умение`, '#ffd24a', 'lvopen');
+      if (me.aq > 0 && me.ao) pill(hx + tw - 130, hy - 58, 130, `+${me.aq} боевой навык`, '#6ac8ff', 'abopen');
+      // кнопка «Съесть» справа снизу
+      {
+        const r = 30, ex = SW - r - 14, ey = hy - r - 30;
+        const foodN = Object.keys(cfg.FOOD).reduce((acc, kk) => acc + (me.inv[kk] || 0), 0);
+        ctx.fillStyle = 'rgba(10,18,15,0.82)'; ctx.beginPath(); ctx.arc(ex, ey, r, 0, TAU); ctx.fill();
+        ctx.strokeStyle = foodN ? '#ffae4a' : 'rgba(160,190,150,0.3)'; ctx.lineWidth = 2; ctx.stroke();
+        ctx.globalAlpha = foodN ? 1 : 0.4; ctx.drawImage(S().icons.meat, ex - 17, ey - 17, 34, 34); ctx.globalAlpha = 1;
+        ctx.font = 'bold 11px "Nunito", system-ui'; ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.strokeText(`съесть · ${foodN}`, ex, ey + r + 9); ctx.fillText(`съесть · ${foodN}`, ex, ey + r + 9);
+        click(ex - r, ey - r, r * 2, r * 2, 'eat', null);
+      }
+    }
+    // режим стройки: плашка с отменой
+    if (ui.buildMode) {
+      const txt = 'Коснитесь земли, чтобы построить  ✕';
+      ctx.font = 'bold 13px "Nunito", system-ui'; const w = ctx.measureText(txt).width + 28, x = SW / 2 - w / 2, y = 82;
+      ctx.fillStyle = 'rgba(255,210,74,0.95)'; roundRect(ctx, x, y, w, 30, 15); ctx.fill();
+      ctx.fillStyle = '#1a1206'; ctx.textAlign = 'center'; ctx.fillText(txt, SW / 2, y + 15.5);
+      click(x, y, w, 30, 'm:cancelbuild', 0);
+    }
+    // --- сообщения
+    const boss = G.monsters.find(m => m.boss), bossDef = boss && cfg.BOSSES[boss.type];
+    let toastY = ui.buildMode ? 128 : 96;
+    if (boss && bossDef) {
+      const bw = Math.min(300, SW - 40), bx = SW / 2 - bw / 2, by = toastY - 12;
+      ctx.font = 'bold 12px "Nunito", system-ui'; ctx.textAlign = 'center'; ctx.fillStyle = '#ffb0a0'; ctx.fillText(`☠ ${bossDef.name}`, SW / 2, by);
+      bar(ctx, bx, by + 8, bw, 12, boss.hp / boss.maxHp, '#ff4a3a', '#8a1a14', `${Math.ceil(boss.hp)} / ${Math.round(boss.maxHp)}`);
+      toastY += 40;
+    }
+    ctx.font = 'bold 13px "Nunito", system-ui'; ctx.textAlign = 'center';
+    const maxW = Math.min(SW - 40, 520);
+    let ty = toastY;
+    AB.FX.toasts.slice(-3).forEach((ts) => {
+      // длинное сообщение переносим на вторую строку (не больше двух)
+      const words = String(ts.s).split(' '), lines = [''];
+      for (const wd of words) { const t = lines[lines.length - 1] ? lines[lines.length - 1] + ' ' + wd : wd; if (ctx.measureText(t).width > maxW && lines[lines.length - 1]) { if (lines.length === 2) { lines[1] = fit(lines[1] + ' ' + wd, maxW); break; } lines.push(wd); } else lines[lines.length - 1] = t; }
+      ctx.globalAlpha = Math.min(1, ts.t);
+      const w = Math.max(...lines.map(l => ctx.measureText(l).width)) + 22, h = 8 + lines.length * 17;
+      ctx.fillStyle = 'rgba(10,18,15,0.84)'; roundRect(ctx, SW / 2 - w / 2, ty - 12, w, h, 12); ctx.fill();
+      ctx.fillStyle = ts.c; lines.forEach((l, j) => ctx.fillText(l, SW / 2, ty + 0.5 + j * 17));
+      ctx.globalAlpha = 1;
+      ty += h + 4;
+    });
+    // --- смерть
+    if (me && me.dead && !G.over) {
+      ctx.fillStyle = 'rgba(40,0,0,0.35)'; ctx.fillRect(0, 0, SW, SH);
+      ctx.font = 'bold 30px "Nunito", system-ui'; ctx.textAlign = 'center'; ctx.fillStyle = '#ff8a8a'; ctx.fillText('Вы погибли', SW / 2, SH / 2 - 14);
+      ctx.font = '600 15px "Nunito", system-ui'; ctx.fillStyle = '#fff'; ctx.fillText(`Возрождение у костра через ${Math.ceil(me.rs)} с`, SW / 2, SH / 2 + 16);
+    }
+    ctx.restore();
+    // --- джойстик и долгое нажатие (в экранных координатах)
+    ctx.save(); ctx.setTransform(R.dpr, 0, 0, R.dpr, 0, 0);
+    const J = ui.joy;
+    if (J) {
+      const rr = 52 * k;
+      ctx.fillStyle = 'rgba(255,255,255,0.08)'; ctx.beginPath(); ctx.arc(J.ox, J.oy, rr, 0, TAU); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 2; ctx.stroke();
+      const dx = J.x - J.ox, dy = J.y - J.oy, d = Math.hypot(dx, dy), m = Math.min(d, rr);
+      const kx = J.ox + (d ? dx / d * m : 0), ky = J.oy + (d ? dy / d * m : 0);
+      ctx.fillStyle = 'rgba(255,231,168,0.55)'; ctx.beginPath(); ctx.arc(kx, ky, 22 * k, 0, TAU); ctx.fill();
+    } else if (me && !me.dead && ui.showJoyHint) {
+      ctx.fillStyle = 'rgba(255,255,255,0.05)'; ctx.beginPath(); ctx.arc(80 * k, R.h - 150 * k, 46 * k, 0, TAU); ctx.fill();
+      ctx.font = `600 ${Math.round(11 * k)}px "Nunito", system-ui`; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.fillText('джойстик', 80 * k, R.h - 150 * k);
+    }
+    if (ui.lp) {
+      const fr = AB.clamp(ui.lp.f, 0, 1);
+      ctx.strokeStyle = 'rgba(255,231,168,0.9)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(ui.lp.x, ui.lp.y, 26, -Math.PI / 2, -Math.PI / 2 + fr * TAU); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function minimap(ctx, G, me, SW, SH, opt) {
     if (!mini) return;
-    const cfg = C(), W = G.W, sz = cfg.MINIMAP_SIZE;
+    const cfg = C(), W = G.W, sz = opt ? opt.sz : cfg.MINIMAP_SIZE;
     mini.t -= 1 / 60;
     if (mini.dirty && mini.t <= 0) { mini.ctx.putImageData(mini.img, 0, 0); mini.dirty = false; mini.t = 0.3; }
-    const x = SW - sz - 18, y = SH - sz - 18, cx = x + sz / 2, cy = y + sz / 2;
+    const x = opt ? opt.x : SW - sz - 18, y = opt ? opt.y : SH - sz - 18, cx = x + sz / 2, cy = y + sz / 2;
     panel(ctx, x - 6, y - 6, sz + 12, sz + 12, 14);
     ctx.save(); roundRect(ctx, x, y, sz, sz, 10); ctx.clip();
     ctx.imageSmoothingEnabled = false;

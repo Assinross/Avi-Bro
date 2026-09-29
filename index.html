@@ -2,7 +2,9 @@
 <html lang="ru">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
   <title>Avi-Bro: 99 ночей в лесу</title>
   <meta name="description" content="Браузерная игра на выживание в лесу для одного или двух игроков.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -98,6 +100,14 @@
         <div>
           <h3>Цель</h3>
           <p>Продержитесь <b>99 ночей</b>. Днём исследуйте лес, рубите деревья и ищите сундуки в руинах. Ночью волки уходят, а лес наполняют нежить и тени: скелеты, зомби, лучники, личи — держитесь у костра, он жжёт нежить сильнее.</p>
+          <h3 class="touchonly">На телефоне</h3>
+          <ul class="touchonly">
+            <li><b>Левая половина экрана</b> — джойстик: коснитесь и ведите палец</li>
+            <li><b>Тап</b> по земле — идти туда, поднять предмет, поставить постройку</li>
+            <li><b>Долгое нажатие</b> (вокруг пальца заполняется кольцо) — как правый клик: меню здания, бревна в костёр, шкуры на склад, посадить семя</li>
+            <li>Иконки справа сверху: пауза, стройка, рюкзак, карта, цели. Тап по иконке открывает панель, повторный тап закрывает</li>
+            <li>Круглая кнопка справа снизу — съесть. Тап по навыку внизу — его описание</li>
+          </ul>
           <h3>Управление</h3>
           <ul>
             <li><kbd>ЛКМ</kbd> (удерживать или клик) — идти к курсору</li>
@@ -162,8 +172,8 @@
       <div id="lvCards" class="skills"></div>
       <div class="lvfoot">
         <button id="btnReroll" class="btn small ghost">Перебросить</button>
-        <button id="btnLater" class="btn small ghost hidden">Выбрать позже (K)</button>
-        <span class="note">Клавиши <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> · <kbd>Tab</kbd> — ваша сборка</span>
+        <button id="btnLater" class="btn small ghost hidden">Выбрать позже<span class="kbdhint"> (K)</span></button>
+        <span class="note kbdhint">Клавиши <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> · <kbd>Tab</kbd> — ваша сборка</span>
       </div>
     </div>
   </div>
@@ -224,6 +234,7 @@
   <!-- Сборка -->
   <div id="build" class="overlay side hidden">
     <div class="buildpanel">
+      <button id="btnBuildClose" class="xbtn touchonly" aria-label="Закрыть">✕</button>
       <div class="lvtitle small">Ваша сборка</div>
       <div id="buildSkills" class="bskills"></div>
       <div id="buildStats" class="bstats"></div>
@@ -237,9 +248,11 @@
       <p id="pauseNote" class="note"></p>
       <div class="settings">
         <div class="mchead">Настройки</div>
-        <label class="opt"><input type="checkbox" id="optAutoPick"> <span>Автоподбор предметов <kbd>F</kbd><br><small>Включён — предметы поднимаются сами. Монеты и опыт подбираются всегда.</small></span></label>
+        <label class="opt"><input type="checkbox" id="optAutoPick"> <span>Автоподбор предметов <kbd class="kbdhint">F</kbd><br><small>Включён — предметы поднимаются сами. Монеты и опыт подбираются всегда.</small></span></label>
       </div>
       <button id="btnResume" class="btn gold">Продолжить</button>
+      <button id="btnPauseBuild" class="btn ghost touchonly">Моя сборка</button>
+      <button id="btnFull" class="btn ghost touchonly">Во весь экран</button>
       <button id="btnQuit" class="btn ghost">Выйти в меню</button>
     </div>
   </div>
