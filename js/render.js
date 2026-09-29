@@ -1535,8 +1535,9 @@
       ctx.fillText(`${pd.name} · ур. ${me.level || 1}`, 56, 172);
       ctx.font = '600 12px "Nunito", system-ui, sans-serif'; ctx.fillStyle = '#b8c8b4';
       const fl = G.fireLevel || 1;
-      ctx.fillText(`Умений: ${(me.skills || []).length} · костёр ур. ${fl}`, 56, 189);
-      ctx.fillStyle = cfg.TIER_COLORS[fl - 1]; ctx.fillRect(56 + ctx.measureText(`Умений: ${(me.skills || []).length} · костёр ур. ${fl}`).width + 6, 185, 8, 8);
+      const infoTxt = `Умений: ${(me.skills || []).length} · костёр ${fl}`; // коротко, чтобы не залезать под плашку «+N ★»
+      ctx.fillText(infoTxt, 56, 189);
+      ctx.fillStyle = cfg.TIER_COLORS[fl - 1]; ctx.fillRect(56 + ctx.measureText(infoTxt).width + 6, 185, 8, 8);
       if (me.queue && me.queue.length) {
         const blink = 0.6 + Math.sin(performance.now() / 150) * 0.4;
         ctx.globalAlpha = blink; ctx.fillStyle = me.queue[0] === 's' ? '#ff7a5a' : '#8fe08a';
@@ -1603,7 +1604,7 @@
         const st = me.st || {};
         const bc2 = (v) => Math.max(1, Math.round(v * (1 - Math.min(80, st.buildCost || 0) / 100)));
         const woodHave = AB.Sim.woodOf(G, me);
-        const pal = [{ cmd: 'bed', key: 'Г', name: 'Грядка', cost: bc2(cfg.GARDEN_BED_COST) }];
+        const pal = [{ cmd: 'bed', key: 'G', name: 'Грядка', cost: bc2(cfg.GARDEN_BED_COST) }];
         if (st.structBuild > 0) { pal.push({ cmd: 'build1', key: 'T', name: 'Частокол', cost: bc2(cfg.STRUCTURES.wall.cost) }); pal.push({ cmd: 'build2', key: 'Y', name: 'Вышка', cost: bc2(cfg.STRUCTURES.tower.cost) }); }
         else if (st.turretBuild > 0) pal.push({ cmd: 'build1', key: 'T', name: 'Турель', cost: bc2(cfg.STRUCTURES.turret.cost) });
         else if (st.moduleBuild > 0) pal.push({ cmd: 'build1', key: 'T', name: 'Модуль', cost: cfg.MODULE_COST });
@@ -1612,7 +1613,10 @@
         if (eb && !G.structs.some(q => q.kind === eb && q.owner === me.id)) pal.push({ cmd: 'build3', key: 'H', name: ebShort[eb] || cfg.STRUCTURES[eb].name, cost: bc2(cfg.STRUCTURES[eb].cost) });
         const bw = 66, bh = 56, gp = 6;
         const totw = pal.length * (bw + gp) - gp;
-        let px = Math.round(SW / 2 - totw / 2); const py = 14;
+        // по центру, но не заезжая на панель ресурсов справа; если места нет — вторым рядом под ней
+        const resLeft = SW - w - 14;
+        let px = Math.round(Math.min(SW / 2 - totw / 2, resLeft - totw - 10)); let py = 14;
+        if (px < 296) { px = Math.round(resLeft + w - totw - 250); py = 68; }
         ctx.textAlign = 'center';
         pal.forEach(it => {
           const ok = woodHave >= it.cost, sel = ui && ui.buildMode === it.cmd;
@@ -1714,7 +1718,7 @@
         // перезарядка
         const cdLeft = me.abT ? me.abT[a.id] || 0 : 0, S0 = AB.Sim.abStats(G, me, def, a.lv);
         if (cdLeft > 0.05 && S0.cd > 0.5 && def.kind !== 'orbit' && def.kind !== 'aura' && def.kind !== 'drone') { ctx.fillStyle = 'rgba(0,0,0,0.5)'; const k2 = Math.min(1, cdLeft / S0.cd); roundRect(ctx, x, hy + sz * (1 - k2), sz, sz * k2, 6); ctx.fill(); }
-        for (let l = 0; l < cfg.ABILITY_MAX_LEVEL; l++) { ctx.fillStyle = l < a.lv ? (l >= 3 ? '#dfe8ee' : '#6ac8ff') : 'rgba(255,255,255,0.15)'; ctx.fillRect(x + 7 + l * 9.5, hy + sz - 8, 7, 4); }
+        { const nL = cfg.ABILITY_MAX_LEVEL, pw = (sz - 12) / nL; for (let l = 0; l < nL; l++) { ctx.fillStyle = l < a.lv ? (l >= 5 ? '#ffd24a' : l >= 3 ? '#dfe8ee' : '#6ac8ff') : 'rgba(255,255,255,0.15)'; ctx.fillRect(x + 6 + l * pw, hy + sz - 8, pw - 1.5, 4); } }
         R.slots.push({ x, y: hy, w: sz, h: sz, name: `${def.name} · ур. ${a.lv}${def.start ? ' (начальное оружие)' : ''}`, desc: `${def.desc} · урон ${Math.round(S0.dmg * 10) / 10}` });
       };
       abSlot(startAb, 'Начальное оружие');

@@ -131,8 +131,14 @@
           const p = App.G.players.find(q => q.id === 1);
           if (!p) return;
           if (m.t === 'in') {
-            // кламп против телепортов/лагов + игнор ушедшего
-            if (!p.dead && !p.left && m.tp === p.tp && AB.dist(p.x, p.y, m.x, m.y) < 80) { p.x = m.x; p.y = m.y; }
+            // защита от телепортов: допустимый шаг растёт со временем с прошлого пакета (лаг не «замораживает» гостя навсегда)
+            if (!p.dead && !p.left && m.tp === p.tp) {
+              const now = performance.now(), gap = Math.min(3, (now - (p._inT || now)) / 1000);
+              const lim = 80 + AB.playerSpeed(p) * gap * 1.5, d = AB.dist(p.x, p.y, m.x, m.y);
+              if (d <= lim) { p.x = m.x; p.y = m.y; }
+              else { p.x += (m.x - p.x) / d * lim; p.y += (m.y - p.y) / d * lim; }
+              p._inT = now;
+            }
             p.a = m.a; p.moving = !!m.mv;
           } else if (m.t === 'cmd') AB.Sim.command(App.G, 1, m.c, m.x, m.y);
         }
@@ -200,10 +206,11 @@
       const me0 = App.me();
       if (k.startsWith('Digit')) {
         const i = parseInt(k.slice(5), 10) - 1;
-        if (me0 && me0.offers && i < me0.offers.length) { pickSkill(i); return; }
+        // цифры выбирают только в ОТКРЫТОМ меню (иначе можно взять умение вслепую)
+        if (me0 && me0.offers && App.lvOpen && i < me0.offers.length) { pickSkill(i); return; }
         if (me0 && abShown(me0) && i < me0.ao.length) { pickAbility(i); return; }
       }
-      if (k === 'KeyK' && me0 && me0.ao) { App.abDefer = !App.abDefer; App.lvSig = null; }
+      if (k === 'KeyK' && me0 && me0.ao) { App.abDefer = !App.abDefer; if (!App.abDefer) App.lvOpen = false; App.lvSig = null; }
       if (k === 'KeyT') command('build1');
       if (k === 'KeyY') command('build2');
       if (k === 'KeyU') command('upnear');
@@ -267,7 +274,7 @@
         }
       }
       // режим стройки с верхней панели: клик по земле ставит постройку
-      if (App.buildMode) { command(App.buildMode); return; }
+      if (App.buildMode) { command(App.buildMode); if (App.buildMode === 'build3') App.buildMode = null; return; }
       // клик по предмету на земле
       const d = dropUnderMouse();
       if (d) {
@@ -301,7 +308,8 @@
     const x = mx / k, y = my / k;
     return (R.slots || []).findIndex(s => x >= s.x && x <= s.x + s.w && y >= s.y && y <= s.y + s.h);
   }
-  const abShown = (me) => me && me.ao && me.ao.length && !me.offers && !App.abDefer;
+  // меню боевого навыка: не мешает только открытое меню рассветного умения (невзятое умение больше не блокирует навыки)
+  const abShown = (me) => me && me.ao && me.ao.length && !(me.offers && App.lvOpen) && !App.abDefer;
   function pickAbility(i) {
     AB.Sound.play('click', 1);
     if (App.mode === 'guest') AB.Net.send({ t: 'cmd', c: 'apick', x: i, y: 0 });
@@ -315,7 +323,7 @@
   // клик по кнопке интерфейса: выбор режима стройки переключается, остальное — команды
   function clickBtn(c) {
     AB.Sound.play('click', 1);
-    if (c.c === 'abopen') { App.abDefer = false; App.lvSig = null; return; }
+    if (c.c === 'abopen') { App.abDefer = false; App.lvOpen = false; App.lvSig = null; return; }
     if (c.c === 'lvopen') { App.lvOpen = true; App.lvSig = null; return; }
     if (c.c === 'buildmode') {
       App.buildMode = (App.buildMode === c.v) ? null : c.v;

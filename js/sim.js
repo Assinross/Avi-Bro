@@ -926,7 +926,9 @@
     if (o.iron > Sim.ironOf(G, p)) { Sim.msg(G, `Нужно железа: ${o.iron} (у вас ${Sim.ironOf(G, p)}). Железо — в дальних и скрытых логовах`, p.id, '#ff9d7a'); return; }
     if (o.iron) Sim.spendIron(G, p, o.iron);
     const cur = p.ab.find(a => a.id === o.id);
-    if (cur) cur.lv = o.lv; else if (Sim.abLearned(p) < C().ABILITY_MAX) p.ab.push({ id: o.id, lv: 1 });
+    // устаревший вариант (уровень навыка уже изменился) — не понижаем, а предлагаем заново
+    if (cur && o.lv <= cur.lv) { p.ao = null; Sim.ensureAbOffers(G, p); return; }
+    if (cur) cur.lv = Math.min(C().ABILITY_MAX_LEVEL, o.lv); else if (Sim.abLearned(p) < C().ABILITY_MAX) p.ab.push({ id: o.id, lv: 1 });
     p.aq = Math.max(0, p.aq - 1); p.ao = null;
     const def = Sim.abDef(o.id);
     Sim.fx(G, { k: 'skill', x: p.x, y: p.y, pid: p.id, s: `${def.name}${o.lv > 1 ? ' ур. ' + o.lv : ''}`, t: Math.min(4, o.lv) });
@@ -1187,15 +1189,15 @@
   function updateShop(G, s, dt) {
     const cfg = C(), SH = cfg.SHOP;
     s.stock = s.stock || []; s.sellT = s.sellT || 0;
+    // шкуры из кладовой лавка забирает сама, без игрока рядом (их сдают у лесопилки)
+    if (SH.prices.hide && (G.store.hides || 0) > 0 && s === G.structs.find(q => q.kind === 'shop')) {
+      const nh = G.store.hides; G.store.hides = 0;
+      for (let i = 0; i < nh; i++) s.stock.push('hide');
+      Sim.msg(G, `Лавка забрала шкуры из кладовой: ×${nh}`, -1, '#ffd24a');
+    }
     for (const p of G.players) {
       if (p.dead || AB.dist2(p.x, p.y, s.x, s.y) > SH.depositRadius ** 2) continue;
       const got = [];
-      // шкуры со склада уходят в продажу первыми (их сдают ПКМ по лесопилке или подойдя к ней)
-      if (SH.prices.hide && (G.store.hides || 0) > 0) {
-        const nh = G.store.hides; G.store.hides = 0;
-        for (let i = 0; i < nh; i++) s.stock.push('hide');
-        got.push(`шкуры со склада ×${nh}`);
-      }
       let foodLeft = Object.keys(SH.prices).filter(k => cfg.FOOD[k]).reduce((a, k) => a + (p.inv[k] || 0), 0);
       for (const k in SH.prices) {
         let n = p.inv[k] || 0;
