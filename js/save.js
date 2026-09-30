@@ -83,6 +83,50 @@
     return G;
   };
 
+  // ---------- хранилище ----------
+  const LS = 'avibro-save-', IDX = 'avibro-saves';
+  const onServer = () => !!(AB.Net && AB.Net.server);
+  const head = (d) => ({ key: d.key, at: d.at, v: d.v, diff: d.diff, meta: d.meta });
+  const newest = (a) => a.sort((x, y) => (y.at || 0) - (x.at || 0));
+  function lsIndex() { try { return JSON.parse(localStorage.getItem(IDX) || '[]'); } catch (e) { return []; } }
+  function lsWrite(d) {
+    try {
+      localStorage.setItem(LS + d.key, JSON.stringify(d));
+      localStorage.setItem(IDX, JSON.stringify(lsIndex().filter(h => h.key !== d.key).concat([head(d)])));
+    } catch (e) { throw new Error('Не удалось сохранить в браузере: ' + ((e && e.name) || e)); }
+  }
+  function srvErr(r) { if (!r.ok) throw new Error('Не удалось сохранить на сервере: ответ ' + r.status); }
+
+  Save.list = function () {
+    if (onServer()) return fetch('/saves', { cache: 'no-store' }).then(r => (r.ok ? r.json() : [])).then(newest).catch(() => []);
+    return Promise.resolve(newest(lsIndex()));
+  };
+  Save.load = function (key) {
+    if (onServer()) return fetch('/saves/' + key, { cache: 'no-store' }).then(r => (r.ok ? r.json() : null)).catch(() => null);
+    return Promise.resolve().then(() => { const s = localStorage.getItem(LS + key); return s ? JSON.parse(s) : null; }).catch(() => null);
+  };
+  Save.write = function (d) {
+    if (onServer()) {
+      return fetch('/saves/' + d.key, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(d) })
+        .then(srvErr, () => { throw new Error('Не удалось сохранить: нет связи с сервером игры'); });
+    }
+    return Promise.resolve().then(() => lsWrite(d));
+  };
+  Save.remove = function (key) {
+    if (onServer()) return fetch('/saves/' + key, { method: 'DELETE' }).then(srvErr);
+    return Promise.resolve().then(() => {
+      localStorage.removeItem(LS + key);
+      localStorage.setItem(IDX, JSON.stringify(lsIndex().filter(h => h.key !== key)));
+    });
+  };
+  // При закрытии вкладки: без ожидания ответа. sendBeacon не отправит больше ~64 КБ - тогда остаётся сохранение рассвета.
+  Save.writeSync = function (d) {
+    try {
+      if (onServer()) navigator.sendBeacon('/saves/' + d.key, new Blob([JSON.stringify(d)], { type: 'application/json' }));
+      else lsWrite(d);
+    } catch (e) { /* */ }
+  };
+
   // ---------- для меню ----------
   Save.ok = (h) => !!h && !h.bad && h.v <= VER && !!h.meta;
   Save.label = function (h) {
