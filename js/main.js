@@ -1271,15 +1271,17 @@
     const bind = (id, fn) => $(id).addEventListener('click', () => { AB.Sound.unlock(); AB.Sound.play('click', 1); fn(); });
     try { App.prof = localStorage.getItem('avibro-prof') || 'hunter'; } catch (e) { App.prof = 'hunter'; }
     document.querySelectorAll('#diffBox .diff').forEach(b => b.addEventListener('click', () => { AB.Sound.play('click', 1); App.diff = b.dataset.diff; try { localStorage.setItem('avibro-diff', App.diff); } catch (e) { /* */ } showDiff(); }));
-    bind('btnSolo', () => {
+    // Один игрок: есть сохранение - выбор "Продолжить / Новая игра" (новая игра иначе молча заменит его на рассвете)
+    const soloEntry = (profChosen) => {
       // сервер должен быть уже определён - иначе сохранение ищется не в том хранилище
       App.netReady.then(() => AB.Save.load(AB.Save.keySolo())).then(d => {
-        if (!AB.Save.ok(d)) { chooseProf(startSolo, 'menu'); return; }
+        if (!AB.Save.ok(d)) { if (profChosen === true) startSolo(); else chooseProf(startSolo, 'menu'); return; }
         App.contData = d;
         $('contNote').textContent = AB.Save.label(d);
         show('cont');
       });
-    });
+    };
+    bind('btnSolo', soloEntry);
     bind('btnCont', () => { const d = App.contData; App.contData = null; if (d) continueSolo(d); });
     bind('btnNew', () => chooseProf(startSolo, 'cont'));
     bind('btnReroll', reroll);
@@ -1324,7 +1326,7 @@
     bind('btnJoin', () => { const code = $('code').value; if (code.replace(/\D/g, '').length < 3) { $('coopErr').textContent = 'Введите код комнаты'; return; } chooseProf(() => startJoin(code), 'coop', true); });
     document.querySelectorAll('[data-back]').forEach(b => b.addEventListener('click', () => { AB.Net.close(); show(b.dataset.back); }));
     bind('btnCopy', () => { const i = $('roomLink'); i.select(); try { navigator.clipboard.writeText(i.value); } catch (e) { document.execCommand('copy'); } $('btnCopy').textContent = 'Скопировано!'; setTimeout(() => $('btnCopy').textContent = 'Копировать', 1500); });
-    bind('btnSoloFromLobby', () => { AB.Net.close(); startSolo(); });
+    bind('btnSoloFromLobby', () => { AB.Net.close(); soloEntry(true); });
     bind('btnResume', togglePause);
     bind('btnPauseBuild', () => { togglePause(); toggleBuild(); });
     bind('btnPauseGear', () => { togglePause(); if (!App.showGear) toggleGear(); });
@@ -1335,7 +1337,7 @@
     bind('btnMenu', () => { saveGame(); endToMenu(); });
     bind('btnSave', () => saveGame(false, true));
     window.addEventListener('beforeunload', () => { if (App.state === 'play') saveGame(true); });
-    bind('btnRetry', () => chooseProf(startSolo, 'menu'));
+    bind('btnRetry', soloEntry);
     $('code').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('btnJoin').click(); });
 
     startAttract();
