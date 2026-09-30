@@ -115,7 +115,7 @@
     else if (what === 'pickaxe') p.pick = 1;
     else if (what === 'planks') G.store.planks += g.n;
     else if (what === 'iron' || what === 'stone' || what === 'coal') G.store[what] = (G.store[what] || 0) + g.n;
-    else if (what === 'xp') Sim.dropItem(G, 'xp', g.n, p.x, p.y + 10, 10);
+    else if (what === 'xp') Sim.dropItem(G, 'xp', g.n, p.x, p.y + 10, 10, p);
     else p.inv[what] = (p.inv[what] || 0) + g.n;
     if (g.once) st.once[p.id + ':' + what] = 1;
     G.tsDirty = true;
@@ -576,7 +576,13 @@
   Sim.hasMod = (o, id) => !!o && o.bmod === id;
   Sim.anyStructMod = (G, kind, id) => G.structs.some(s => s.kind === kind && s.bmod === id);
 
-  Sim.dropItem = function (G, k, n, x, y, spread) {
+  // Опыт, монеты и еда не падают на землю, а сразу у добытчика p (нет его - у ближайшего живого игрока).
+  // Остальное (дерево, шкуры, руда...) - на землю, как раньше; и еда тоже, если живых игроков нет
+  Sim.dropItem = function (G, k, n, x, y, spread, p) {
+    if (k === 'xp' || k === 'coin' || C().FOOD[k]) {
+      const to = p && !p.dead && !p.left ? p : (nearestPlayer(G, x, y) || {}).p;
+      if (to && giveItem(G, to, k, n)) { Sim.fx(G, { k: 'pick', x: to.x, y: to.y - 20, it: k, pid: to.id }); return; }
+    }
     if (k === 'xp') return dropXp(G, n, x, y, spread);
     for (let i = 0; i < n; i++) {
       const a = rnd() * TAU, s = (spread || 18) * (0.4 + rnd());
@@ -688,11 +694,11 @@
     let kept = 0; for (let i = 0; i < meat; i++) if (rnd() < (cfg.MEAT_DROP_MULT !== undefined ? cfg.MEAT_DROP_MULT : 1)) kept++;
     // бонус охотника — после мульта: гарантированный доп. кусок с шансом meatBonus (раньше съедался ×0.2)
     if (mb > 0 && rnd() * 100 < mb) kept++;
-    if (kept > 0) Sim.dropItem(G, 'meat', kept, m.x, m.y, 12);
+    if (kept > 0) Sim.dropItem(G, 'meat', kept, m.x, m.y, 12, p);
     const depth = Sim.depth(G, m.x, m.y);
     // опыт растёт с ночью (G.day = номер дня, ночь N идёт в день N): ночь 1 ≈ ×1.0
     const xv = (cfg.XP_DROP[m.type] || 1) * (m.xpk || 1) * (1 + (cfg.DEPTH_XP || 0) * depth) * (1 + (cfg.XP_NIGHT_GROWTH || 0) * (G.day - 1));
-    Sim.dropItem(G, 'xp', Math.max(1, Math.round(xv * (0.8 + rnd() * 0.4))), m.x, m.y, 14);
+    Sim.dropItem(G, 'xp', Math.max(1, Math.round(xv * (0.8 + rnd() * 0.4))), m.x, m.y, 14, p);
     if (m.type === 'brute' && depth > 0.5 && rnd() < (cfg.IRON.bruteChance || 0) * (1 + luck / 100)) { Sim.dropItem(G, 'iron', 1, m.x, m.y, 12); Sim.msg(G, 'Громила обронил железо!', -1, '#c8d4e0'); }
     if (def.hide && rnd() < def.hide * (1 + luck / 100)) Sim.dropItem(G, 'hide', 1, m.x, m.y, 12);
     dropCoins(G, m);
@@ -896,7 +902,7 @@
     for (const b of W.bushes) {
       if (b.berries > 0 && AB.dist2(p.x, p.y, b.x, b.y) < 900) {
         b.berries = 0; b.t = cfg.BERRY_REGROW_TIME; G.bushDirty.add(b.id);
-        Sim.dropItem(G, 'berry', cfg.BERRIES_PER_BUSH, b.x, b.y, 14);
+        Sim.dropItem(G, 'berry', cfg.BERRIES_PER_BUSH, b.x, b.y, 14, p);
         Sim.fx(G, { k: 'rustle', x: b.x, y: b.y });
       }
     }
@@ -918,7 +924,7 @@
         if (!v) continue;
         if (k === 'gear') { for (let i = 0; i < v; i++) { const it = Sim.makeItem(G, s); found.push(`«${it.n}»`); Sim.giveItem(G, p, it); } continue; }
         if (k === 'bag') { p.bagUp = (p.bagUp || 0) + v; found.push(`рюкзак +${v}`); Sim.fx(G, { k: 'skill', x: p.x, y: p.y, pid: p.id, s: `Рюкзак: ${Sim.bagCap(p)} мест`, t: 2 }); continue; }
-        Sim.dropItem(G, k, v, s.x, s.y + 14, 26);
+        Sim.dropItem(G, k, v, s.x, s.y + 14, 26, p);
         found.push(k === 'xp' ? `опыт ×${v}` : k === 'coin' ? `${v} $` : `${AB.itemName(k).toLowerCase()} ×${v}`);
       }
       if (s.loot.iron) Sim.msg(G, `Найдено железо ×${s.loot.iron}! Отнесите его на склад (лесопилка)`, -1, '#c8d4e0');

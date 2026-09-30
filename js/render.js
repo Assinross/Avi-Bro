@@ -2588,7 +2588,7 @@
         R.slots.push({ x, y: hy, w: sz, h: sz, name: `${def.name} · ур. ${a.lv}${def.start ? ' (начальное оружие)' : ''}`, desc: `${def.desc} · урон ${Math.round(S0.dmg * 10) / 10}` });
       };
       abSlot(startAb, 'Начальное оружие');
-      for (let i = 0; i < cfg.ABILITY_MAX; i++) abSlot(learnedAb[i], 'Наберите опыт (голубые шарики), чтобы выбрать навык');
+      for (let i = 0; i < cfg.ABILITY_MAX; i++) abSlot(learnedAb[i], 'Наберите опыт (побеждайте монстров), чтобы выбрать навык');
       if (ui && ui.hoverSlot >= 0 && R.slots[ui.hoverSlot]) {
         const sl = R.slots[ui.hoverSlot];
         ctx.font = 'bold 12px "Nunito", system-ui'; const t1 = sl.name; ctx.font = '600 11px "Nunito", system-ui'; const tw1 = Math.max(ctx.measureText(sl.desc).width, 90) + 20;
