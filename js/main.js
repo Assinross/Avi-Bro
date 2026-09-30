@@ -1335,9 +1335,9 @@
     bind('btnSaves', showSaves);
     bind('btnHost', () => chooseProf(startHost, 'coop'));
     bind('btnJoin', () => { const code = $('code').value; if (code.replace(/\D/g, '').length < 3) { $('coopErr').textContent = 'Введите код комнаты'; return; } chooseProf(() => startJoin(code), 'coop', true); });
-    document.querySelectorAll('[data-back]').forEach(b => b.addEventListener('click', () => { AB.Net.close(); show(b.dataset.back); }));
+    document.querySelectorAll('[data-back]').forEach(b => b.addEventListener('click', () => { AB.Net.close(); App.lobbyGuest = null; show(b.dataset.back); })); // lobbyGuest: поздний ответ load не запустит игру из меню
     bind('btnCopy', () => { const i = $('roomLink'); i.select(); try { navigator.clipboard.writeText(i.value); } catch (e) { document.execCommand('copy'); } $('btnCopy').textContent = 'Скопировано!'; setTimeout(() => $('btnCopy').textContent = 'Копировать', 1500); });
-    bind('btnSoloFromLobby', () => { AB.Net.close(); soloEntry(true); });
+    bind('btnSoloFromLobby', () => { AB.Net.close(); App.lobbyGuest = null; soloEntry(true); });
     bind('btnResume', togglePause);
     bind('btnPauseBuild', () => { togglePause(); toggleBuild(); });
     bind('btnPauseGear', () => { togglePause(); if (!App.showGear) toggleGear(); });

@@ -37,6 +37,7 @@ MANIFEST = os.path.join(ROOT, '.avibro-files.json')  # какие файлы п�
 SAVES = os.path.join(ROOT, 'saves')  # сохранения игр; обновление с GitHub эту папку не трогает
 SAVE_KEY = re.compile(r'^(solo|pair)-[a-z0-9-]{1,64}$')
 SAVE_MAX = 5 * 1024 * 1024  # больше не бывает: мир хранится как зерно + изменения
+MAX_SAVES = 200  # защита от мусора: не больше сохранений
 
 
 def saves_list():
@@ -48,13 +49,13 @@ def saves_list():
         return out
     for fn in names:
         key = fn[:-5]
-        if not fn.endswith('.json') or not SAVE_KEY.match(key):
+        if not fn.endswith('.json') or not SAVE_KEY.fullmatch(key):
             continue
         try:
             with open(os.path.join(SAVES, fn), encoding='utf-8') as f:
                 d = json.load(f)
             out.append({k: d.get(k) for k in ('key', 'at', 'v', 'diff', 'meta')})
-        except (OSError, ValueError):
+        except Exception:  # не JSON или не объект - показываем как повреждённое, чтобы можно было удалить
             out.append({'key': key, 'bad': True})
     return out
 
@@ -348,7 +349,7 @@ async def handle(reader, writer):
         try:
             if path == '/saves':
                 body = json.dumps(saves_list(), ensure_ascii=False).encode()
-            elif not SAVE_KEY.match(key):
+            elif not SAVE_KEY.fullmatch(key):
                 status, body = '400 Bad Request', b'{"ok":false,"error":"bad key"}'
             elif method == 'GET':
                 try:
@@ -362,7 +363,10 @@ async def handle(reader, writer):
                     status, body = '413 Payload Too Large', b'{"ok":false,"error":"size"}'
                 else:
                     data = await asyncio.wait_for(reader.readexactly(n), 30)
-                    json.loads(data)  # мусор не пишем
+                    if not isinstance(json.loads(data), dict):  # мусор не пишем
+                        raise ValueError('сохранение должно быть объектом')
+                    if not os.path.exists(os.path.join(SAVES, key + '.json')) and len(saves_list()) >= MAX_SAVES:
+                        raise ValueError(f'слишком много сохранений (больше {MAX_SAVES}) - удалите старые')
                     save_write(key, data)
             elif method == 'DELETE':
                 try:

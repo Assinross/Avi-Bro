@@ -91,10 +91,16 @@
   const newest = (a) => a.sort((x, y) => (y.at || 0) - (x.at || 0));
   function lsIndex() { try { return JSON.parse(localStorage.getItem(IDX) || '[]'); } catch (e) { return []; } }
   function lsWrite(d) {
+    let prev = null;
+    try { prev = localStorage.getItem(LS + d.key); } catch (e) { /* */ }
     try {
       localStorage.setItem(LS + d.key, JSON.stringify(d));
       localStorage.setItem(IDX, JSON.stringify(lsIndex().filter(h => h.key !== d.key).concat([head(d)])));
-    } catch (e) { throw new Error('Не удалось сохранить в браузере: ' + ((e && e.name) || e)); }
+    } catch (e) {
+      // индекс не записался - возвращаем как было, иначе сохранение не видно на экране "Сохранения"
+      try { if (prev === null) localStorage.removeItem(LS + d.key); else localStorage.setItem(LS + d.key, prev); } catch (e2) { /* */ }
+      throw new Error('Не удалось сохранить в браузере: ' + ((e && e.name) || e));
+    }
   }
   function srvErr(r) { if (!r.ok) throw new Error('Не удалось сохранить на сервере: ответ ' + r.status); }
 
