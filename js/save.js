@@ -9,7 +9,7 @@
 
   // Поля G, которые не сохраняем: мир строится из зерна, монстры появляются заново, остальное - мгновенное
   const SKIP_G = new Set(['W', 'mode', 'over', 'monsters', 'projs', 'eprojs', 'tele', 'bots', 'bolts', 'fxOut',
-    'treeDirty', 'bushDirty', 'oreDirty', 'tsDirty', 'team', 'saveReq', 'isNight', 'nightF']);
+    'treeDirty', 'bushDirty', 'oreDirty', 'tsDirty', 'team', 'saveReq', 'isNight', 'nightF', 'pxSent', 'pxT']);
   // Переходные поля игрока: сглаживание сети и ввод
   const SKIP_P = new Set(['tx', 'ty', '_inT', 'moving', 'run', 'left']);
   const TREE_F = ['id', 'x', 'y', 'tx', 'ty', 'v', 's', 'hp', 'dead', 'sap', 'sg', 'regrow', 'wild', 'border'];

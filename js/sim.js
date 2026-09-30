@@ -2634,15 +2634,31 @@
   function stCompact(st) { const o = {}; for (const k in st) if (st[k]) o[k] = Math.round(st[k] * 100) / 100; return o; }
   Sim.snapshot = function (G, full) {
     const W = G.W;
+    // гостю - только монстры и дропы рядом с ним (боссы - всегда: полоска и миникарта)
+    const far2 = (C().NET_FAR || 2000) ** 2, eyes = G.players.filter(p => p.id !== 0 && !p.left);
+    const near = (o) => eyes.some(p => AB.dist2(o.x, o.y, p.x, p.y) < far2);
+    if (!G.pxSent) G.pxSent = {};
+    G.pxT = (G.pxT || 0) + 1;
+    const refresh = G.pxT >= (C().NET_PX_REFRESH || 5) * (C().NET_SNAPSHOT_HZ || 15);
+    if (refresh) G.pxT = 0;
     const s = {
       t: 's', c: G.clock, o: G.over, k: G.stats.kills, fl: G.fireLevel, nb: G.nextBoss,
-      p: G.players.map(p => ({
-        id: p.id, n: p.name, pr: p.prof, x: r1(p.x), y: r1(p.y), a: r1(p.a), hp: r1(p.hp), mh: r1(p.mhp), f: r1(p.food), d: p.dead ? 1 : 0, rs: r1(p.rs),
-        inv: p.inv, sw: r1(p.sw), sk: p.sk, sa: r1(p.sa), tp: p.tp, h: r1(p.hurt), mv: p.moving ? 1 : 0,
-        ab: p.ab.map(a => [a.id, a.lv]), abt: p.ab.map(a => r1(Math.max(0, (p.abT && p.abT[a.id]) || 0))), xp: r1(p.xp), xl: p.xl, aq: p.aq, ao: p.ao, arr: p.arr || 0, sh: Math.round(p.sh || 0), lf: p.left ? 1 : 0,
-        sl: p.slowT > 0 ? p.slowPct : 0, mo: p.mo || [], ax: p.axe || 1, pk: p.pick || 0, bu: p.bagUp || 0, mg: p.mgBought || {}, lv: p.level, q: p.queue, of: p.offers, sks: p.skills.map(q => q.id + ':' + q.tier + ':' + (q.sup || 0)), st: stCompact(p.st), rr: p.rr, swl: p.swl, eq: p.eq || {}, wd: p.wd || [],
-      })),
-      m: G.monsters.map(m => [m.id, MON_TYPES.indexOf(m.type), r1(m.x), r1(m.y), r1(m.a), Math.round(m.hp), Math.round(m.maxHp), m.hurt > 0 ? 1 : 0,
+      p: G.players.map(p => {
+        const o = {
+          id: p.id, x: r1(p.x), y: r1(p.y), a: r1(p.a), hp: r1(p.hp), mh: r1(p.mhp), f: r1(p.food), d: p.dead ? 1 : 0, rs: r1(p.rs),
+          sw: r1(p.sw), sk: p.sk, sa: r1(p.sa), tp: p.tp, h: r1(p.hurt), mv: p.moving ? 1 : 0,
+          abt: p.ab.map(a => r1(Math.max(0, (p.abT && p.abT[a.id]) || 0))), xp: r1(p.xp), arr: p.arr || 0, sh: Math.round(p.sh || 0), lf: p.left ? 1 : 0, sl: p.slowT > 0 ? p.slowPct : 0,
+        };
+        // редко меняющееся (инвентарь, умения, снаряжение, предложения) - только при изменении и раз в NET_PX_REFRESH с
+        const px = {
+          n: p.name, pr: p.prof, inv: p.inv, ab: p.ab.map(a => [a.id, a.lv]), xl: p.xl, aq: p.aq, ao: p.ao,
+          mo: p.mo || [], ax: p.axe || 1, pk: p.pick || 0, bu: p.bagUp || 0, mg: p.mgBought || {}, lv: p.level, q: p.queue, of: p.offers, sks: p.skills.map(q => q.id + ':' + q.tier + ':' + (q.sup || 0)), st: stCompact(p.st), rr: p.rr, swl: p.swl, eq: p.eq || {}, wd: p.wd || [],
+        };
+        const js = JSON.stringify(px);
+        if (full || refresh || G.pxSent[p.id] !== js) { o.px = px; G.pxSent[p.id] = js; }
+        return o;
+      }),
+      m: G.monsters.filter(m => m.boss || near(m)).map(m => [m.id, MON_TYPES.indexOf(m.type), r1(m.x), r1(m.y), r1(m.a), Math.round(m.hp), Math.round(m.maxHp), m.hurt > 0 ? 1 : 0,
         (m.guard ? 1 : 0) | (m.hunter ? 2 : 0) | (m.st === 'chase' ? 4 : 0) | ((m.atk || 0) > 0 ? 8 : 0) | (m.burn ? 16 : 0) | (m.slowT > 0 ? 32 : 0) | (m.act ? 64 : 0) | (m.mark > 0 ? 128 : 0) | (m.nodrop ? 256 : 0),
         m.dying > 0 ? r1(m.dying) : 0, m.act ? m.act.k : 0, m.es ? [Math.round(m.es * 100) / 100, m.en] : 0, m.lv || 1, m.site >= 0 ? m.site : -1]),
       pr: G.projs.map(p => [p.id, p.k, r1(p.x), r1(p.y), Math.round(p.vx), Math.round(p.vy)]),
@@ -2652,7 +2668,7 @@
       mc: G.merchant ? [G.merchant.x, G.merchant.y] : 0,
       mn: G.mines.map(q => [r1(q.x), r1(q.y), q.look || 0]),
       bt: G.bots.map(b => [b.id, b.ab, r1(b.x), r1(b.y), r1(b.a), Math.round(b.life / b.max * 100) / 100]),
-      d: G.drops.map(d => d.v > 1 ? [d.id, d.k, r1(d.x), r1(d.y), d.v] : [d.id, d.k, r1(d.x), r1(d.y)]),
+      d: G.drops.filter(near).map(d => d.v > 1 ? [d.id, d.k, r1(d.x), r1(d.y), d.v] : [d.id, d.k, r1(d.x), r1(d.y)]),
       f: G.fires.map(f => [r1(f.x), r1(f.y), r1(f.fuel), f.main ? 1 : 0, f.lvl, f.mod ? 1 : 0, f.lm, f.cap || Sim.fireCap(G, f), f.bmod || 0, f.town === undefined ? -1 : f.town]),
       ch: W.sites.filter(s2 => s2.opened).map(s2 => s2.id),
       so: [G.store.x, G.store.y, G.store.logs, G.store.planks, G.store.lvl, G.store.up, (G.store.saws || []).map(v => Math.round(v)), G.store.coal || 0, G.store.bmod || 0, G.store.iron || 0, G.store.stone || 0, G.store.hides || 0],
@@ -2700,12 +2716,17 @@
       const mine = sp.id === myId;
       if (!mine || sp.tp !== p.tp || sp.d) { p.tx = sp.x; p.ty = sp.y; if (mine || p.x === undefined) { p.x = sp.x; p.y = sp.y; } }
       if (!mine) { p.a = sp.a; p.moving = !!sp.mv; }
-      p.name = sp.n; p.prof = sp.pr; p.hp = sp.hp; p.mhp = sp.mh; p.food = sp.f; p.dead = !!sp.d; p.rs = sp.rs; p.left = !!sp.lf;
-      p.inv = sp.inv; p.sw = sp.sw; p.sk = sp.sk; p.sa = sp.sa; p.tp = sp.tp; p.hurt = sp.h;
-      p.ab = sp.ab.map(a => ({ id: a[0], lv: a[1] })); p.abT = {}; p.ab.forEach((a, i) => p.abT[a.id] = sp.abt[i]); p.xp = sp.xp; p.xl = sp.xl; p.aq = sp.aq; p.ao = sp.ao; p.arr = sp.arr || 0; p.sh = sp.sh;
-      p.eq = sp.eq || {}; p.wd = sp.wd || []; p.mo = sp.mo; p.axe = sp.ax; p.pick = sp.pk || 0; p.bagUp = sp.bu; p.mgBought = sp.mg; p.slowT = sp.sl ? 1 : 0; p.slowPct = sp.sl || 0; p.level = sp.lv; p.queue = sp.q; p.offers = sp.of; p.rr = sp.rr; p.swl = sp.swl;
-      p.skills = sp.sks.map(x => { const a = x.split(':'); return { id: a[0], tier: +a[1], sup: +a[2] }; });
-      const st = {}; AB.Skills.statKeys().forEach(k => st[k] = sp.st[k] || 0); p.st = st;
+      p.hp = sp.hp; p.mhp = sp.mh; p.food = sp.f; p.dead = !!sp.d; p.rs = sp.rs; p.left = !!sp.lf;
+      p.sw = sp.sw; p.sk = sp.sk; p.sa = sp.sa; p.tp = sp.tp; p.hurt = sp.h;
+      p.xp = sp.xp; p.arr = sp.arr || 0; p.sh = sp.sh; p.slowT = sp.sl ? 1 : 0; p.slowPct = sp.sl || 0;
+      const x = sp.px; // редко меняющееся приходит, только когда изменилось
+      if (x) {
+        p.name = x.n; p.prof = x.pr; p.inv = x.inv; p.ab = x.ab.map(a => ({ id: a[0], lv: a[1] })); p.xl = x.xl; p.aq = x.aq; p.ao = x.ao;
+        p.eq = x.eq || {}; p.wd = x.wd || []; p.mo = x.mo; p.axe = x.ax; p.pick = x.pk || 0; p.bagUp = x.bu; p.mgBought = x.mg; p.level = x.lv; p.queue = x.q; p.offers = x.of; p.rr = x.rr; p.swl = x.swl;
+        p.skills = x.sks.map(q => { const a = q.split(':'); return { id: a[0], tier: +a[1], sup: +a[2] }; });
+        const st = {}; AB.Skills.statKeys().forEach(k => st[k] = x.st[k] || 0); p.st = st;
+      }
+      p.abT = {}; (p.ab || []).forEach((a, i) => p.abT[a.id] = sp.abt[i]);
     });
     const map = new Map(G.monsters.map(m => [m.id, m]));
     G.monsters = s.m.map(a => {
