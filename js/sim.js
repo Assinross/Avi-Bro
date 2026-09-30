@@ -43,7 +43,7 @@
   // Страж локации. Одиночный босс лагеря (s.elite) — крупный, с именем и суммарным здоровьем группы.
   function spawnGuard(G, s, type, a, d) {
     const cfg = C();
-    const m = Sim.spawnMonster(G, type, s.x + Math.cos(a) * d, s.y + Math.sin(a) * d + (s.elite ? 40 : 0), true, Sim.depth(G, s.x, s.y), s.power || 1);
+    const m = Sim.spawnMonster(G, type, s.x + Math.cos(a) * d, s.y + Math.sin(a) * d + (s.elite ? 40 : 0), true, 0, s.power || 1, Sim.monLevel(G, s.x, s.y, true)); // вся стража — уровня своей локации
     m.home = { x: s.x, y: s.y }; m.site = s.id;
     if (s.elite && type === s.elite.type && !G.monsters.some(q => q !== m && q.site === s.id && q.es)) {
       const E = cfg.ELITE, lv = G.fireLevel || 1, SG = cfg.SITE_GROW;
@@ -73,6 +73,8 @@
       for (let i = 0; i < SG.guardsPerLevel; i++) spawnGuard(G, s, pool[Math.floor(rnd() * pool.length)], rnd() * TAU, 70 + rnd() * 40);
     }
     Sim.msg(G, 'Лесные локации разрослись: больше стражи, но и сундуки богаче', -1, '#c8e0a0');
+    const R = Sim.fowRadius(G);
+    Sim.msg(G, R < Infinity ? `Туман войны отступил! В новых землях монстры ${G.day + (cfg.ZONE_LEVEL || 0) * (lv - 1)}+ уровня` : 'Туман войны рассеялся — открыт весь мир и поселения сторон света!', -1, '#9fd3ff');
   };
 
   /* ======================= ПОСЕЛЕНИЯ И ТОРГОВЦЫ ======================= */
@@ -252,17 +254,31 @@
   Sim.dmgMult = (d) => { const c = C(), n = d - 1; return 1 + c.MONSTER_DMG_GROWTH * n + c.MONSTER_DMG_GROWTH_SQ * n * n; };
 
   // Глубина леса 0..1 (0 — у границы территории, 1 — у края карты)
-  Sim.territory = (G) => C().TERRITORY_RADIUS[Math.min(3, (G.fireLevel || 1) - 1)];
+  Sim.territory = (G) => { const T = C().TERRITORY_RADIUS; return T[Math.min(T.length - 1, (G.fireLevel || 1) - 1)]; };
+  // Туман войны: радиус открытой земли вокруг лагеря (Infinity — открыт весь мир)
+  Sim.fowRadius = (G) => { const R = C().FOW_RADIUS || []; const i = (G.fireLevel || 1) - 1; return i < R.length ? R[i] : Infinity; };
+  // Зона 1..5: в каком кольце тумана войны стоит точка
+  Sim.zoneAt = function (G, x, y) {
+    const R = C().FOW_RADIUS || [], d = AB.dist(x, y, G.W.camp.x, G.W.camp.y);
+    let z = 1; for (const r of R) if (d > r) z++;
+    return z;
+  };
+  // Уровень монстра: ночь + надбавка зоны. Стража сундуков растёт с ночами медленнее.
+  Sim.monLevel = function (G, x, y, guard) {
+    const cfg = C(), nightPart = guard ? 1 + (G.day - 1) * (cfg.GUARD_NIGHT_LEVEL || 0.5) : G.day;
+    return Math.max(1, Math.round(nightPart + (cfg.ZONE_LEVEL || 0) * (Sim.zoneAt(G, x, y) - 1)));
+  };
   Sim.depth = function (G, x, y) {
     const W = G.W, d = AB.dist(x, y, W.camp.x, W.camp.y), t = Sim.territory(G);
     const core = (W.core || W.N) * W.T / 2; // 1 — край лесного ядра; дальше, в землях сторон света, ещё глубже
     return AB.clamp((d - t) / (core - t), 0, C().DEPTH_MAX || 1);
   };
-  Sim.spawnMonster = function (G, type, x, y, guard, depth, power) {
+  Sim.spawnMonster = function (G, type, x, y, guard, depth, power, lv) {
     const cfg = C(), def = AB.monDef(type);
-    depth = depth || 0; power = power || 1;
-    // стража логов крепнет с ночью: (1+hpMult)/2 — на 1-й ночи как раньше, к 99-й вдвое толще базы
-    const hm = (guard ? (1 + Sim.hpMult(G.day)) / 2 : Sim.hpMult(G.day)) * (1 + cfg.DEPTH_HP * depth) * power, dm = (guard ? (1 + Sim.dmgMult(G.day)) / 2 : Sim.dmgMult(G.day)) * (1 + cfg.DEPTH_DMG * depth) * Math.sqrt(power);
+    power = power || 1;
+    // сила по уровню: монстр N-го уровня как монстр N-й ночи (уровень = ночь + надбавка зоны тумана войны)
+    lv = lv || Sim.monLevel(G, x, y, guard);
+    const hm = Sim.hpMult(lv) * power, dm = Sim.dmgMult(lv) * Math.sqrt(power);
     const m = {
       id: G.nextId++, type, x, y, a: rnd() * TAU, hp: def.hp * hm, maxHp: def.hp * hm,
       dmg: def.damage * dm, speed: def.speed * cfg.MOVE_SPEED_MULT * cfg.MONSTER_SPEED_MULT * (0.92 + rnd() * 0.16), r: def.radius,
@@ -270,7 +286,7 @@
       st: 'idle', guard: !!guard, hunter: false, home: { x, y }, atkCd: 0, hurt: 0,
       wT: rnd() * 3, wx: x, wy: y, stuck: 0, side: rnd() < 0.5 ? 1 : -1, vx: 0, vy: 0,
       dying: 0, mark: 0, burn: null, slowT: 0, slowPct: 0, bladeT: 0, shotCd: 1 + rnd(), act: null, obT: {},
-      xpk: (guard ? cfg.GUARD_XP_MULT : 1) * Math.max(1, Math.sqrt(power)), pw: power,
+      xpk: (guard ? cfg.GUARD_XP_MULT : 1) * Math.max(1, Math.sqrt(power)), pw: power, lv,
     };
     if (AB.isBoss(type)) { m.boss = true; m.hunter = true; m.contact = def.contact * dm; m.st = 'chase'; }
     G.monsters.push(m);
@@ -314,6 +330,12 @@
     if (len < 0.01) { p.moving = false; return; }
     const sp = AB.playerSpeed(p);
     const r = AB.resolveCollision(W, p.x + (dx / len) * sp * dt, p.y + (dy / len) * sp * dt, C().PLAYER_RADIUS);
+    // туман войны: дальше открытой земли не пройти
+    const G = W.G, R = G ? Sim.fowRadius(G) : Infinity;
+    if (R < Infinity) {
+      const cx = W.camp.x, cy = W.camp.y, ex = r[0] - cx, ey = r[1] - cy, d = Math.hypot(ex, ey), lim = R - C().PLAYER_RADIUS;
+      if (d > lim) { r[0] = cx + ex / d * lim; r[1] = cy + ey / d * lim; p.fowHit = G.clock; }
+    }
     p.x = r[0]; p.y = r[1]; p.moving = true;
   };
 
@@ -416,7 +438,8 @@
       const x = p.x + Math.cos(a) * d, y = p.y + Math.sin(a) * d;
       if (x < 200 || y < 200 || x > G.W.size - 200 || y > G.W.size - 200) continue;
       if (!AB.freeSpot(G.W, x, y, 30) && t < 35) continue;
-      const m = Sim.spawnMonster(G, type, x, y, false);
+      if (AB.dist(x, y, G.W.camp.x, G.W.camp.y) > Sim.fowRadius(G) - 60 && t < 38) continue;
+      const m = Sim.spawnMonster(G, type, x, y, false, 0, 1, G.day); // босс — по номеру ночи
       const k = Sim.activeCount(G) > 1 ? cfg.BOSS_COOP_HP : 1;
       m.hp *= k; m.maxHp *= k;
       G.bossCount++;
@@ -883,6 +906,12 @@
     // сундуки
     for (const s of W.sites) {
       if (s.opened || AB.dist2(p.x, p.y, s.x, s.y) > cfg.CHEST_OPEN_RADIUS ** 2) continue;
+      // сундук заперт, пока жива его стража
+      const left = G.monsters.filter(m => m.site === s.id && !m.dying && !m.dead).length;
+      if (left) {
+        if (!(s.lockMsg > G.clock)) { s.lockMsg = G.clock + 3; Sim.msg(G, `Сундук заперт: сначала победите стражу (осталось ${left})`, p.id, '#ff9d7a'); }
+        continue;
+      }
       s.opened = true;
       Sim.fx(G, { k: 'chest', x: s.x, y: s.y, id: s.id });
       const found = [];
@@ -1690,7 +1719,7 @@
       Sim.fx(G, { k: 'howl', x: m.x, y: m.y });
       for (let i = 0; i < MV.wolves; i++) {
         const a = rnd() * TAU;
-        const w = Sim.spawnMonster(G, 'wolf', m.x + Math.cos(a) * 60, m.y + Math.sin(a) * 60, false);
+        const w = Sim.spawnMonster(G, 'wolf', m.x + Math.cos(a) * 60, m.y + Math.sin(a) * 60, false, 0, 1, m.lv);
         w.hunter = true; w.st = 'chase';
       }
     } else if (k === 'hex') {
@@ -2153,7 +2182,8 @@
       if (AB.dist(x, y, W.camp.x, W.camp.y) < terr + 80) continue;
       if (!G.isNight && AB.dist(x, y, W.camp.x, W.camp.y) < cfg.SAFE_CAMP_RADIUS * 2) continue;
       if ((W.towns || []).some(tn => AB.dist(x, y, tn.x, tn.y) < (cfg.TOWN_SAFE || 400))) continue; // у поселений спокойно
-      const depth = Sim.depth(G, x, y), effDay = G.day + cfg.DEPTH_NIGHTS * depth;
+      if (AB.dist(x, y, W.camp.x, W.camp.y) > Sim.fowRadius(G) - 40) continue;                      // из тумана войны не лезут
+      const depth = Sim.depth(G, x, y), effDay = Sim.monLevel(G, x, y, false); // виды монстров — по уровню места
       const table = cfg.SPAWN_TABLE.filter(e => e.from <= effDay && (G.isNight ? e.night !== false : e.day));
       if (!table.length) return;
       let r = rnd() * table.reduce((s, e) => s + e.weight, 0), k = 0;
@@ -2371,12 +2401,12 @@
       now = [`Топливо: ${Math.floor(o.fuel)}/${Sim.fireCap(G, o)}`];
     } else if (kind === 'fire') {
       title = 'Главный костёр'; desc = 'Лечит игроков, жжёт монстров, отпугивает теней. Уровень определяет территорию лагеря и редкость умений. Правый клик по костру с бревнами в рюкзаке — сразу отдать их все в огонь.';
-      now = [`Территория: ${Sim.territory(G)}`, `Редкость умений: ${cfg.TIER_NAMES[G.fireLevel - 1]}`];
-      const tr = cfg.TERRITORY_RADIUS[Math.min(3, G.fireLevel)];
+      now = [`Территория: ${Sim.territory(G)}`, `Редкость умений: ${cfg.TIER_NAMES[Math.min(3, G.fireLevel - 1)]}`, Sim.fowRadius(G) < Infinity ? `Туман войны: ${Sim.fowRadius(G)} от лагеря` : 'Открыт весь мир'];
+      const tr = cfg.TERRITORY_RADIUS[Math.min(cfg.TERRITORY_RADIUS.length - 1, G.fireLevel)];
       const cap = Sim.fireCap(G, o);
       desc += ' Подойдите с бревнами или углём — они сами уходят в огонь. Заполните шкалу до конца — костёр получит уровень, и шкала расширится.';
       now = [`Топливо: ${Math.floor(o.fuel)}/${cap} (прогорает ${cfg.FIRE_BURN_RATE}/с)`].concat(now);
-      push('fire', 'Шкала костра', G.fireLevel, Sim.fireMaxLevel(), cap, Math.floor(o.fuel), 'feed', G.fireLevel < Sim.fireMaxLevel() ? `шкала +${cfg.FIRE_LEVEL_STEPS[G.fireLevel]}, территория ${tr}, умения «${cfg.TIER_NAMES[Math.min(3, G.fireLevel)]}»` : 'максимальный уровень — поддерживайте огонь');
+      push('fire', 'Шкала костра', G.fireLevel, Sim.fireMaxLevel(), cap, Math.floor(o.fuel), 'feed', G.fireLevel < Sim.fireMaxLevel() ? `шкала +${cfg.FIRE_LEVEL_STEPS[G.fireLevel]}, ${G.fireLevel + 1 >= Sim.fireMaxLevel() ? 'туман войны исчезнет — откроется весь мир' : `туман войны отступит до ${cfg.FOW_RADIUS[G.fireLevel]}`}, умения «${cfg.TIER_NAMES[Math.min(3, G.fireLevel)]}»` : 'максимальный уровень — поддерживайте огонь');
     } else if (kind === 'kitchen') {
       title = 'Полевая кухня'; desc = 'Подойдите — сырая еда из рюкзака начнёт готовиться. Готовка идёт, пока горит главный костёр.';
       now = [`Готовит одновременно: ${o.lvl}`, `В очереди: ${o.queue ? o.queue.length : 0}`];
@@ -2481,7 +2511,7 @@
     const o = b.o;
     if (info.key === 'fire') {
       G.fireLevel++; o.fuel = cfg.FIRE_FUEL_MAX;
-      Sim.msg(G, `Костёр ур. ${G.fireLevel}! Территория расширена, новые умения: «${cfg.TIER_NAMES[G.fireLevel - 1]}»`, -1, cfg.TIER_COLORS[G.fireLevel - 1]);
+      Sim.msg(G, `Костёр ур. ${G.fireLevel}! Территория расширена, новые умения: «${cfg.TIER_NAMES[Math.min(3, G.fireLevel - 1)]}»`, -1, cfg.TIER_COLORS[Math.min(3, G.fireLevel - 1)]);
       Sim.fx(G, { k: 'fireup', x: o.x, y: o.y });
       Sim.onFireLevel(G);
       return;
@@ -2605,7 +2635,7 @@
       })),
       m: G.monsters.map(m => [m.id, MON_TYPES.indexOf(m.type), r1(m.x), r1(m.y), r1(m.a), Math.round(m.hp), Math.round(m.maxHp), m.hurt > 0 ? 1 : 0,
         (m.guard ? 1 : 0) | (m.hunter ? 2 : 0) | (m.st === 'chase' ? 4 : 0) | ((m.atk || 0) > 0 ? 8 : 0) | (m.burn ? 16 : 0) | (m.slowT > 0 ? 32 : 0) | (m.act ? 64 : 0) | (m.mark > 0 ? 128 : 0),
-        m.dying > 0 ? r1(m.dying) : 0, m.act ? m.act.k : 0, m.es ? [Math.round(m.es * 100) / 100, m.en] : 0]),
+        m.dying > 0 ? r1(m.dying) : 0, m.act ? m.act.k : 0, m.es ? [Math.round(m.es * 100) / 100, m.en] : 0, m.lv || 1, m.site >= 0 ? m.site : -1]),
       pr: G.projs.map(p => [p.id, p.k, r1(p.x), r1(p.y), Math.round(p.vx), Math.round(p.vy)]),
       ep: G.eprojs.map(e => [r1(e.x), r1(e.y), Math.round(e.vx), Math.round(e.vy), e.lk || 0]),
       te: G.tele.map(t => [t.sh, r1(t.x), r1(t.y), t.r || 0, r1(t.a || 0), t.len || 0, t.w || 0, Math.round(t.t / t.dur * 100) / 100, t.fr]),
@@ -2680,6 +2710,7 @@
       m.act = f & 64 ? { k: a[10] } : null;
       m.dying = a[9]; m.r = AB.monDef(m.type).radius; m.boss = AB.isBoss(m.type); m.lostT = m.lostT || 0;
       if (a[11]) { m.es = a[11][0]; m.en = a[11][1]; m.r *= m.es; m.guard = true; } else { m.es = 0; m.en = null; }
+      m.lv = a[12] || 1; m.site = a[13] >= 0 ? a[13] : undefined;
       return m;
     });
     G.projs = s.pr.map(a => ({ id: a[0], k: a[1], x: a[2], y: a[3], vx: a[4], vy: a[5] }));

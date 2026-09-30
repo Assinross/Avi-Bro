@@ -287,8 +287,10 @@
   R.explore = function (W, x, y, rad) {
     if (!mini) return;
     const N = W.N, T = W.T, tr = Math.ceil(rad / T), cx = Math.floor(x / T), cy = Math.floor(y / T);
+    const FR = W.G ? AB.Sim.fowRadius(W.G) : Infinity, fr2 = FR < Infinity ? (FR / T) ** 2 : Infinity, kx = W.camp.x / T, ky = W.camp.y / T;
     for (let ty = cy - tr; ty <= cy + tr; ty++) for (let tx = cx - tr; tx <= cx + tr; tx++) {
       if (tx < 0 || ty < 0 || tx >= N || ty >= N) continue;
+      if ((tx + 0.5 - kx) ** 2 + (ty + 0.5 - ky) ** 2 > fr2) continue; // за туманом войны не разведать
       const i = ty * N + tx;
       if (mini.explored[i]) continue;
       if ((tx - cx) * (tx - cx) + (ty - cy) * (ty - cy) > tr * tr) continue;
@@ -695,9 +697,10 @@
     if (m.slowT > 0) { ctx.strokeStyle = 'rgba(150,220,255,0.7)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.ellipse(x, y + 4, m.r + 3, (m.r + 3) * 0.45, 0, 0, TAU); ctx.stroke(); }
     if (m.mark > 0) { ctx.save(); ctx.translate(x, y - m.r * 2.4 - 24); ctx.rotate(t * 2); ctx.strokeStyle = '#ff5a4a'; ctx.lineWidth = 1.8; ctx.beginPath(); ctx.arc(0, 0, 5, 0, TAU); ctx.moveTo(-8, 0); ctx.lineTo(8, 0); ctx.moveTo(0, -8); ctx.lineTo(0, 8); ctx.stroke(); ctx.restore(); }
     if (m._inner) return;
-    // полоса здоровья
+    // полоса здоровья и уровень
+    const w = Math.max(24, m.r * 2.4), hy = y - m.r * 2.4 - 14;
+    if (!(m.dying > 0)) lvBadge(ctx, x - w / 2 - 3, hy + 1.5, m.lv);
     if (m.hp < m.maxHp || m.guard) {
-      const w = Math.max(24, m.r * 2.4), hy = y - m.r * 2.4 - 14;
       ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(x - w / 2 - 1, hy - 1, w + 2, 5);
       ctx.fillStyle = m.guard ? '#e04a3a' : '#c83a3a'; ctx.fillRect(x - w / 2, hy, w * AB.clamp(m.hp / m.maxHp, 0, 1), 3);
       if (m.guard && (m.type === 'brute' || m.type === 'alpha')) {
@@ -706,6 +709,18 @@
     }
   }
 
+
+  // Табличка уровня монстра. Цвет — насколько он опаснее обычных монстров этой ночи:
+  // серый — как у лагеря, жёлтый — зона дальше, оранжевый/красный — две и более зоны дальше.
+  function lvBadge(ctx, xr, yc, lv) {
+    if (!lv) return;
+    const d = lv - ((G_ref && G_ref.day) || 1), col = d <= 1 ? '#d8e0d0' : d <= 6 ? '#ffd24a' : d <= 12 ? '#ff9a3a' : '#ff5a4a';
+    const txt = String(lv);
+    ctx.font = 'bold 9px "Nunito", system-ui, sans-serif'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+    const tw = ctx.measureText(txt).width + 7;
+    ctx.fillStyle = 'rgba(0,0,0,0.72)'; ctx.fillRect(xr - tw, yc - 5.5, tw, 11);
+    ctx.fillStyle = col; ctx.fillText(txt, xr - 3.5, yc + 0.5);
+  }
 
   /* ===================== ОБИТАТЕЛИ ЛОКАЦИЙ ===================== */
   const BONE_PAL = { fur: '#d8d0bc', furL: '#f0ead8', furD: '#8a8474' };
@@ -869,6 +884,7 @@
     const w = Math.max(44, m.r * 2.6), hy = top + 6;
     ctx.fillStyle = 'rgba(0,0,0,0.75)'; ctx.fillRect(x - w / 2 - 1, hy - 1, w + 2, 6);
     ctx.fillStyle = '#ffb02a'; ctx.fillRect(x - w / 2, hy, w * AB.clamp(m.hp / m.maxHp, 0, 1), 4);
+    lvBadge(ctx, x - w / 2 - 3, hy + 2, m.lv);
     ctx.font = 'bold 10px "Nunito", system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,0.7)'; ctx.strokeText(m.en || '', x, top - 16); ctx.fillStyle = '#ffd98a'; ctx.fillText(m.en || '', x, top - 16);
     if (m.burn || m.slowT > 0 || m.mark > 0) { /* статусы уже нарисованы внутри */ }
@@ -1225,6 +1241,16 @@
   }
 
   /* ============================ ПОСТРОЙКИ ============================ */
+  // Замок на сундуке, пока жива стража
+  function drawLock(ctx, x, y) {
+    ctx.save();
+    ctx.strokeStyle = '#1a1206'; ctx.lineWidth = 3.4; ctx.beginPath(); ctx.arc(x, y - 3, 4, Math.PI, 0); ctx.stroke();
+    ctx.strokeStyle = '#c8c4b8'; ctx.lineWidth = 1.8; ctx.beginPath(); ctx.arc(x, y - 3, 4, Math.PI, 0); ctx.stroke();
+    ctx.fillStyle = '#1a1206'; ctx.fillRect(x - 6, y - 3.5, 12, 10);
+    ctx.fillStyle = '#d8a83a'; ctx.fillRect(x - 5, y - 2.5, 10, 8);
+    ctx.fillStyle = '#1a1206'; ctx.fillRect(x - 1, y, 2, 3.5);
+    ctx.restore();
+  }
   function hpBar(ctx, x, y, w, frac, col) {
     ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(x - w / 2 - 1, y - 1, w + 2, 5);
     ctx.fillStyle = col; ctx.fillRect(x - w / 2, y, w * AB.clamp(frac, 0, 1), 3);
@@ -1573,7 +1599,7 @@
     if (f.mod) drawModuleLight(ctx, x + 18, y - 4, t);
     if (f.main && (f.lvl || 1) > 1) {
       ctx.font = 'bold 10px "Nunito", system-ui'; ctx.textAlign = 'center';
-      const tc = C().TIER_COLORS[(f.lvl || 1) - 1];
+      const tc = C().TIER_COLORS[Math.min(3, (f.lvl || 1) - 1)];
       ctx.fillStyle = 'rgba(10,16,12,0.8)'; roundRect(ctx, x - 16, y + 22, 32, 13, 6); ctx.fill(); ctx.strokeStyle = tc; ctx.lineWidth = 1; ctx.stroke();
       ctx.fillStyle = tc; ctx.fillText('ур. ' + f.lvl, x, y + 29);
     }
@@ -1852,7 +1878,8 @@
     R.wxVis = R.wxVis || 1;
     const lightsNow = collectLights(G, cam, z, t); R._lights = lightsNow;
     const holes = seeCircles(G, me, cam, z, lightsNow);
-    const seen = (x, y, r) => { for (const h of holes) { const dx = x - h[0], dy = y - h[1], m = h[2] + r; if (dx * dx + dy * dy < m * m) return true; } return false; };
+    const FRw = AB.Sim.fowRadius(G), FR2 = FRw < Infinity ? FRw + 30 : Infinity;
+    const seen = (x, y, r) => { if (FR2 < Infinity) { const ex = x - W.camp.x, ey = y - W.camp.y, m = FR2 + r; if (ex * ex + ey * ey > m * m) return false; } for (const h of holes) { const dx = x - h[0], dy = y - h[1], m = h[2] + r; if (dx * dx + dy * dy < m * m) return true; } return false; };
     // плоские объекты
     const fLv = G.fireLevel || 1;
     for (const d of W.decor) if (!(d.lv > fLv) && d.x > x0 && d.x < x1 && d.y > y0 && d.y < y1 && seen(d.x, d.y, 80)) drawFlatDecor(ctx, d, t);
@@ -1895,7 +1922,7 @@
     for (const w of worms) if (w.x > x0 && w.x < x1 && w.y > y0 && w.y < y1) drawWorm(ctx, w, t);
     for (const f of G.fires) if (f.x > x0 && f.x < x1 && f.y > y0 && f.y < y1) vis.push({ y: f.y, k: 5, o: f });
     for (const d of G.drops) if (d.x > x0 && d.x < x1 && d.y > y0 && d.y < y1) vis.push({ y: d.y - 1, k: 6, o: d });
-    for (const m of G.monsters) if (m.x > x0 && m.x < x1 && m.y > y0 && m.y < y1) vis.push({ y: m.y, k: 7, o: m });
+    for (const m of G.monsters) if (m.x > x0 && m.x < x1 && m.y > y0 && m.y < y1 && seen(m.x, m.y - m.r, m.r * 3 + 40)) vis.push({ y: m.y, k: 7, o: m });
     for (const p of G.players) vis.push({ y: p.y, k: 8, o: p });
     vis.sort((a, b) => a.y - b.y);
     const sp = S();
@@ -1940,10 +1967,17 @@
           ctx.globalAlpha = 1;
           break;
         case 2: drawSprite(ctx, o.berries ? sp.bushBerries : sp.bush, o.x, o.y + 6); break;
-        case 3: drawSprite(ctx, o.opened ? sp.chestOpen : sp.chest, o.x, o.y + 8);
-          if (!o.opened && Math.sin(t * 2 + o.id) > 0.9) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; S().circle(ctx, o.x + 6, o.y - 12, 3, '#fff6c0'); ctx.restore(); }
-          if (!o.opened && me && AB.dist2(me.x, me.y, o.x, o.y) < 320 * 320) { const K = C().SITE_KINDS[o.kind]; if (K) label(ctx, o.elite ? `${K.name} · ${o.elite.name}` : K.name, o.x, o.y - 30, K.color); }
+        case 3: {
+          drawSprite(ctx, o.opened ? sp.chestOpen : sp.chest, o.x, o.y + 8);
+          const guards = o.opened ? 0 : G.monsters.filter(m => m.site === o.id && !(m.dying > 0)).length;
+          if (guards) drawLock(ctx, o.x, o.y - 4);
+          else if (!o.opened && Math.sin(t * 2 + o.id) > 0.9) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; S().circle(ctx, o.x + 6, o.y - 12, 3, '#fff6c0'); ctx.restore(); }
+          if (!o.opened && me && AB.dist2(me.x, me.y, o.x, o.y) < 320 * 320) {
+            const K = C().SITE_KINDS[o.kind];
+            if (K) label(ctx, (o.elite ? `${K.name} · ${o.elite.name}` : K.name) + (guards ? ` · стража: ${guards}` : ' · открыт'), o.x, o.y - 30, guards ? K.color : '#b8f28a');
+          }
           break;
+        }
         case 4: { const ob = DECOR_OCC[o.kind] || (AB.Towns && AB.Towns.OCC[o.kind]); see(ob && markAll(o.x, o.y, ob[0], ob[1])); drawDecor(ctx, o, t); ctx.globalAlpha = 1; break; }
         case 14: drawTrader(ctx, o, t, me); break;
         case 5: drawFire(ctx, o, t, o.main || (me && AB.dist2(me.x, me.y, o.x, o.y) < 140 * 140)); break;
@@ -2028,9 +2062,9 @@
 
   // Готовые «пятна» света вместо градиентов каждый кадр: рисуются одной drawImage, в разы дешевле
   const SPR = {};
-  function radSprite(key, stops, rgb) {
+  function radSprite(key, stops, rgb, size) {
     if (SPR[key]) return SPR[key];
-    const n = 128, c = AB.canvas(n, n), g = c.getContext('2d');
+    const n = size || 128, c = AB.canvas(n, n), g = c.getContext('2d');
     const gr = g.createRadialGradient(n / 2, n / 2, 0, n / 2, n / 2, n / 2);
     for (const [o, a] of stops) gr.addColorStop(o, `rgba(${rgb || '0,0,0'},${a})`);
     g.fillStyle = gr; g.fillRect(0, 0, n, n);
@@ -2043,7 +2077,7 @@
     W._ldN = W.decor.length;
     return (W._ld = W.decor.filter(d => d.kind === 'torch' || DECOR_LIGHT[d.kind] || (AB.Towns && AB.Towns.LIGHT[d.kind])));
   }
-  let visC = null;
+  let visC = null, warC = null;
   function collectLights(G, cam, z, t) {
     const W = G.W;
     const hw = R.w / z / 2 + 300, hh = R.h / z / 2 + 300;
@@ -2124,6 +2158,34 @@
     for (const st of G.structs) if (st.kind === 'tower') { const [sx, sy] = toS(st.x, st.y); cut(sx, sy, C().STRUCTURES.tower.vision * (st.bmod === 'light' ? 1.6 : 1) * z * s, 0.8); }
     for (const l of lights) { const [sx, sy] = toS(l[0], l[1]); cut(sx, sy, l[2] * z * s * 0.9, 0.85 * l[3]); }
     fctx.globalAlpha = 1; fctx.globalCompositeOperation = 'source-over';
+    // --- туман войны: за границей открытой земли — плотная клубящаяся пелена
+    const FR = AB.Sim.fowRadius(G);
+    if (FR < Infinity) {
+      const [cx, cy] = toS(W.camp.x, W.camp.y), rs = FR * z * s, far = Math.hypot(fw, fh);
+      const dd = Math.hypot(cx - fw / 2, cy - fh / 2);
+      if (dd + far > rs * 0.94) {                     // граница (или сам туман) видна в кадре
+        if (!warC) warC = AB.canvas(fw, fh);
+        if (warC.width !== fw || warC.height !== fh) { warC.width = fw; warC.height = fh; }
+        const wc = warC.getContext('2d');
+        wc.globalCompositeOperation = 'source-over'; wc.globalAlpha = 1;
+        const wcol = AB.mix([52, 60, 70], [10, 13, 22], nf);
+        wc.fillStyle = AB.rgb(wcol, 0.985); wc.fillRect(0, 0, fw, fh);
+        // клубы
+        wc.globalCompositeOperation = 'source-atop';
+        const WCL = radSprite('warclub', [[0, 1], [1, 0]], '150,165,180');
+        for (let i = 0; i < 7; i++) {
+          const ang = i * 0.9 + t * 0.03, rad = FR + 120 + (i % 3) * 160;
+          const wx = W.camp.x + Math.cos(ang) * rad + Math.sin(t * 0.2 + i) * 60, wy = W.camp.y + Math.sin(ang) * rad;
+          const [sx, sy] = toS(wx, wy); blot(wc, WCL, sx, sy, (240 + i * 25) * z * s, 0.18 * (1 - nf * 0.6));
+        }
+        // открытая земля
+        wc.globalCompositeOperation = 'destination-out';
+        const band = Math.min(0.2, 110 / FR);           // мягкий край ~110 пикселей мира при любом радиусе
+        blot(wc, radSprite('warcut' + FR, [[0, 1], [1 - band, 1], [1 - band * 0.5, 0.45], [1, 0]], null, 512), cx, cy, rs, 1);
+        wc.globalAlpha = 1; wc.globalCompositeOperation = 'source-over';
+        fctx.drawImage(warC, 0, 0);
+      }
+    }
     // --- тьма ночи: в том же маленьком холсте под туманом, на экран — одним слоем
     const dctx = R.darkC.getContext('2d');
     dctx.globalCompositeOperation = 'source-over'; dctx.globalAlpha = 1;
@@ -2342,7 +2404,7 @@
       const fl = G.fireLevel || 1;
       const infoTxt = `Умений: ${(me.skills || []).length} · костёр ${fl}`; // коротко, чтобы не залезать под плашку «+N ★»
       ctx.fillText(infoTxt, 56, 189);
-      ctx.fillStyle = cfg.TIER_COLORS[fl - 1]; ctx.fillRect(56 + ctx.measureText(infoTxt).width + 6, 185, 8, 8);
+      ctx.fillStyle = cfg.TIER_COLORS[Math.min(3, fl - 1)]; ctx.fillRect(56 + ctx.measureText(infoTxt).width + 6, 185, 8, 8);
       if (me.queue && me.queue.length) {
         const blink = 0.6 + Math.sin(performance.now() / 150) * 0.4;
         ctx.globalAlpha = blink; ctx.fillStyle = me.queue[0] === 's' ? '#ff7a5a' : '#8fe08a';
@@ -2607,7 +2669,7 @@
       const bw = Math.max(260, Math.min(520, SW - 620)), bx = SW / 2 - bw / 2, by = 82;
       panel(ctx, bx - 12, by - 8, bw + 24, 46);
       ctx.font = 'bold 14px "Nunito", system-ui'; ctx.textAlign = 'center'; ctx.fillStyle = '#ffb0a0';
-      ctx.fillText(`☠ ${bossDef.name}`, SW / 2, by + 4);
+      ctx.fillText(`☠ ${bossDef.name} · ур. ${boss.lv || G.day}`, SW / 2, by + 4);
       bar(ctx, bx, by + 14, bw, 14, boss.hp / boss.maxHp, '#ff4a3a', '#8a1a14', `${Math.ceil(boss.hp)} / ${Math.round(boss.maxHp)}`);
       toastY = 160;
     }
@@ -2863,7 +2925,7 @@
     let toastY = ui.buildMode ? 128 : 96;
     if (boss && bossDef) {
       const bw = Math.min(300, SW - 40), bx = SW / 2 - bw / 2, by = toastY - 12;
-      ctx.font = 'bold 12px "Nunito", system-ui'; ctx.textAlign = 'center'; ctx.fillStyle = '#ffb0a0'; ctx.fillText(`☠ ${bossDef.name}`, SW / 2, by);
+      ctx.font = 'bold 12px "Nunito", system-ui'; ctx.textAlign = 'center'; ctx.fillStyle = '#ffb0a0'; ctx.fillText(`☠ ${bossDef.name} · ур. ${boss.lv || G.day}`, SW / 2, by);
       bar(ctx, bx, by + 8, bw, 12, boss.hp / boss.maxHp, '#ff4a3a', '#8a1a14', `${Math.ceil(boss.hp)} / ${Math.round(boss.maxHp)}`);
       toastY += 40;
     }
@@ -2928,6 +2990,7 @@
       ctx.fillStyle = '#140c08'; ctx.fillRect(px - 4, py - 3, 8, 6);
       ctx.fillStyle = s.opened ? '#6d6a60' : ((C().SITE_KINDS[s.kind] || {}).color || '#ffd24a'); ctx.fillRect(px - 3, py - 2, 6, 4);
     }
+    { const FR = AB.Sim.fowRadius(G); if (FR < Infinity) { const [tx, ty] = P(W.camp.x, W.camp.y); ctx.fillStyle = 'rgba(12,16,24,0.55)'; ctx.beginPath(); ctx.rect(x, y, sz, sz); ctx.arc(tx, ty, FR * sc, 0, TAU); ctx.fill('evenodd'); ctx.strokeStyle = 'rgba(150,190,230,0.85)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(tx, ty, FR * sc, 0, TAU); ctx.stroke(); } }
     { const [tx, ty] = P(W.camp.x, W.camp.y); ctx.strokeStyle = 'rgba(255,210,120,0.8)'; ctx.lineWidth = 1.2; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.arc(tx, ty, AB.Sim.territory(G) * sc, 0, TAU); ctx.stroke(); ctx.setLineDash([]); }
     for (const f of G.fires) { if (f.town !== undefined) continue; const [px, py] = P(f.x, f.y); S().circle(ctx, px, py, 3, f.fuel > 0 ? '#ff9a2a' : '#555'); }
     for (const tn of (W.towns || [])) { // поселения: домик с флажком

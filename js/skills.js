@@ -63,7 +63,7 @@
     }
     const profs = new Set(G.players.map(q => q.prof));
     const pool = cfg.SKILLS.filter(s => (!s.prof || s.prof === p.prof) && (!s.partner || profs.has(s.partner)) && (!s.unique || !owned.has(s.id)));
-    const base = kind === 's' ? 4 : G.fireLevel;
+    const base = kind === 's' ? 4 : Math.min(4, G.fireLevel);
     const out = [];
     for (let i = 0; i < n; i++) {
       let tier = base;

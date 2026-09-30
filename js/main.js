@@ -950,6 +950,12 @@
   function controlLocal(me, dt) {
     // смерть чистит очередь действий, иначе после возрождения уводит
     if (!me || me.dead) { App.pendingDump = null; App.pendingPlant = null; App.pendingPick = null; App.moveTarget = null; return; }
+    // упёрлись в туман войны — подсказка (не чаще раза в 6 с)
+    if (me.fowHit && App.G && App.G.clock - me.fowHit < 0.2 && !(App.fowToast > performance.now())) {
+      App.fowToast = performance.now() + 6000;
+      const lv = App.G.fireLevel || 1;
+      AB.FX.toast(`Туман войны — дальше не пройти. Прокачайте костёр до ур. ${lv + 1}, чтобы он отступил`, '#9fd3ff');
+    }
     let dx = 0, dy = 0;
     const K = App.keys;
     if (K.has('ArrowLeft') || K.has('KeyA')) dx -= 1;
