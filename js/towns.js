@@ -243,7 +243,7 @@
   T.has = (kind) => !!S[kind];
   T.draw = function (ctx, d) {
     const sp = S[d.kind](d.v || 0);
-    ctx.drawImage(sp.c, d.x - sp.ox, d.y - sp.oy, sp.w, sp.h);
+    AB.blit(ctx, sp.c, d.x - sp.ox, d.y - sp.oy, sp.w, sp.h, sp.ox, sp.oy);
   };
   // Плоские детали: мостки
   T.drawFlat = function (ctx, d) {

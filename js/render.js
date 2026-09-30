@@ -9,14 +9,15 @@
   const ckey = (cx, cy) => cy * 4096 + cx;
 
   R.init = function (canvas) {
-    R.cv = canvas; R.ctx = canvas.getContext('2d');
+    R.cv = canvas; R.ctx = canvas.getContext('2d', { alpha: false }); // непрозрачный холст: браузеру не нужно смешивать его со страницей
     R.fogC = AB.canvas(8, 8); R.darkC = AB.canvas(8, 8);
     R.time = 0;
     R.resize();
     window.addEventListener('resize', R.resize);
   };
   R.resize = function () {
-    const dpr = R.lowQ ? 1 : Math.min(window.devicePixelRatio || 1, 2);
+    // облегчённая графика: холст меньше экрана, растягивает его сам браузер — все проходы рисования дешевле почти вдвое
+    const dpr = R.lowQ ? Math.max(0.7, Math.min(window.devicePixelRatio || 1, 2) * 0.5) : Math.min(window.devicePixelRatio || 1, 2);
     R.dpr = dpr;
     R.w = window.innerWidth; R.h = window.innerHeight;
     R.cv.width = Math.floor(R.w * dpr); R.cv.height = Math.floor(R.h * dpr);
@@ -1533,7 +1534,7 @@
   function drawSprite(ctx, sp, x, y, s, alpha) {
     s = (s || 1) / (sp.k || 1);
     if (alpha !== undefined) ctx.globalAlpha = alpha;
-    ctx.drawImage(sp.c, x - sp.ox * s, y - sp.oy * s, sp.c.width * s, sp.c.height * s);
+    AB.blit(ctx, sp.c, x - sp.ox * s, y - sp.oy * s, sp.c.width * s, sp.c.height * s, sp.ox * s, sp.oy * s);
     if (alpha !== undefined) ctx.globalAlpha = 1;
   }
   function drawFire(ctx, f, t, near) {
@@ -1802,9 +1803,11 @@
     const viewH = R.touch ? (cfg.VIEW_HEIGHT_MOBILE || cfg.VIEW_HEIGHT) : cfg.VIEW_HEIGHT;
     const z = Math.min(R.h / viewH, R.w / (viewH * 1.2));
     R.zoom = z;
+    { const zk = z * R.dpr; if (Math.abs(zk - (R._zk || 0)) > 1e-4) { R._zk = zk; AB.blitGen++; } } // новый масштаб — пересоздать уменьшенные копии спрайтов
     const shx = (Math.random() - 0.5) * AB.FX.shake, shy = (Math.random() - 0.5) * AB.FX.shake;
     ctx.setTransform(R.dpr, 0, 0, R.dpr, 0, 0);
-    ctx.fillStyle = '#0a120e'; ctx.fillRect(0, 0, R.w, R.h);
+    // фон нужен только у края мира — иначе его целиком закрывает земля (лишний проход по всему экрану)
+    { const hx = R.w / z / 2 + 8, hy = R.h / z / 2 + 8; if (cam.x - hx < 0 || cam.y - hy < 0 || cam.x + hx > W.size || cam.y + hy > W.size || AB.FX.shake > 0) { ctx.fillStyle = '#0a120e'; ctx.fillRect(0, 0, R.w, R.h); } }
     ctx.save();
     ctx.translate(R.w / 2 + shx, R.h / 2 + shy); ctx.scale(z, z); ctx.translate(-cam.x, -cam.y);
     const vw = R.w / z / 2 + 140, vh = R.h / z / 2 + 180;
@@ -1845,25 +1848,38 @@
       }
       ctx.restore();
     }
+    // что видно сквозь туман
+    R.wxVis = R.wxVis || 1;
+    const lightsNow = collectLights(G, cam, z, t); R._lights = lightsNow;
+    const holes = seeCircles(G, me, cam, z, lightsNow);
+    const seen = (x, y, r) => { for (const h of holes) { const dx = x - h[0], dy = y - h[1], m = h[2] + r; if (dx * dx + dy * dy < m * m) return true; } return false; };
     // плоские объекты
     const fLv = G.fireLevel || 1;
-    for (const d of W.decor) if (!(d.lv > fLv) && d.x > x0 && d.x < x1 && d.y > y0 && d.y < y1) drawFlatDecor(ctx, d, t);
-    // тени деревьев
+    for (const d of W.decor) if (!(d.lv > fLv) && d.x > x0 && d.x < x1 && d.y > y0 && d.y < y1 && seen(d.x, d.y, 80)) drawFlatDecor(ctx, d, t);
+    // тени деревьев (одним контуром — одна заливка на все деревья)
     const vis = [];
-    for (let ty = ty0; ty <= Math.min(W.N - 1, ty1 + 3); ty++) for (let tx = tx0; tx <= tx1; tx++) {
+    const ex0 = cam.x - R.w / z / 2, ex1 = cam.x + R.w / z / 2, ey0 = cam.y - R.h / z / 2, ey1 = cam.y + R.h / z / 2; // ровно экран
+    ctx.beginPath();
+    let shN = 0;
+    const qy0 = Math.max(0, Math.floor((ey0 - 14) / T)), qy1 = Math.min(W.N - 1, Math.floor((ey1 + 170) / T));
+    const qx0 = Math.max(0, Math.floor((ex0 - 80) / T)), qx1 = Math.min(W.N - 1, Math.floor((ex1 + 80) / T));
+    for (let ty = qy0; ty <= qy1; ty++) for (let tx = qx0; tx <= qx1; tx++) {
       const i = ty * W.N + tx;
       const ti = W.treeAt[i];
       if (ti >= 0) {
-        const tr = W.trees[ti];
-        if (!tr.dead) { S().ell(ctx, tr.x + 8, tr.y - 2, (tr.v < 3 ? 36 : 26) * tr.s, 13 * tr.s, 'rgba(5,15,8,0.3)'); }
-        vis.push({ y: tr.y, k: 0, o: tr });
+        const tr = W.trees[ti], ts = tr.s;
+        if (tr.y > ey0 - 12 && tr.y - 150 * ts < ey1 && tr.x + 70 * ts > ex0 && tr.x - 70 * ts < ex1 && seen(tr.x, tr.y - 60 * ts, 80 * ts)) {
+          if (!tr.dead) { const rx = (tr.v < 3 ? 36 : 26) * ts; ctx.moveTo(tr.x + 8 + rx, tr.y - 2); ctx.ellipse(tr.x + 8, tr.y - 2, rx, 13 * ts, 0, 0, TAU); shN++; }
+          vis.push({ y: tr.y, k: 0, o: tr });
+        }
       }
       const ri = W.rockAt[i];
-      if (ri >= 0) vis.push({ y: W.rocks[ri].y, k: 1, o: W.rocks[ri] });
+      if (ri >= 0) { const rk = W.rocks[ri]; if (rk.y > ey0 - 20 && rk.y - 70 < ey1 && seen(rk.x, rk.y - 10, 40)) vis.push({ y: rk.y, k: 1, o: rk }); }
     }
-    for (const b of W.bushes) if (b.x > x0 && b.x < x1 && b.y > y0 && b.y < y1) vis.push({ y: b.y, k: 2, o: b });
+    if (shN) { ctx.fillStyle = 'rgba(5,15,8,0.3)'; ctx.fill(); }
+    for (const b of W.bushes) if (b.x > ex0 - 40 && b.x < ex1 + 40 && b.y > ey0 - 10 && b.y < ey1 + 50 && seen(b.x, b.y - 8, 30)) vis.push({ y: b.y, k: 2, o: b });
     for (const s of W.sites) if (s.x > x0 && s.x < x1 && s.y > y0 && s.y < y1) vis.push({ y: s.y, k: 3, o: s });
-    for (const d of W.decor) if (!FLAT_DECOR.has(d.kind) && !(d.lv > fLv) && d.x > x0 && d.x < x1 && d.y > y0 && d.y < y1) vis.push({ y: d.y, k: 4, o: d });
+    for (const d of W.decor) if (!FLAT_DECOR.has(d.kind) && !(d.lv > fLv) && d.x > x0 && d.x < x1 && d.y > y0 && d.y < y1 && seen(d.x, d.y - 40, 130)) vis.push({ y: d.y, k: 4, o: d });
     for (const b of (G.bolts || [])) drawBoltWarn(ctx, b, t);
     if (ui && ui.sel) { const b = AB.Sim.buildingByRef(G, ui.sel); if (b) selRing(ctx, b.o.x, b.o.y, (b.o.r || 30) + 14, t); }
     for (const pl of G.plots) if (pl.x > x0 && pl.x < x1 && pl.y > y0 && pl.y < y1) { drawPlot(ctx, pl, t, me && AB.dist2(me.x, me.y, pl.x, pl.y) < 150 * 150); if (pl.mod) drawModuleLight(ctx, pl.x + 16, pl.y - 12, t); }
@@ -2010,6 +2026,55 @@
   }
   R.visionPoly = visionPoly;
 
+  // Готовые «пятна» света вместо градиентов каждый кадр: рисуются одной drawImage, в разы дешевле
+  const SPR = {};
+  function radSprite(key, stops, rgb) {
+    if (SPR[key]) return SPR[key];
+    const n = 128, c = AB.canvas(n, n), g = c.getContext('2d');
+    const gr = g.createRadialGradient(n / 2, n / 2, 0, n / 2, n / 2, n / 2);
+    for (const [o, a] of stops) gr.addColorStop(o, `rgba(${rgb || '0,0,0'},${a})`);
+    g.fillStyle = gr; g.fillRect(0, 0, n, n);
+    return (SPR[key] = c);
+  }
+  const blot = (c, spr, x, y, r, a) => { if (a <= 0.003 || r <= 0.5) return; c.globalAlpha = Math.min(1, a); c.drawImage(spr, x - r, y - r, r * 2, r * 2); };
+  // Источники света среди декора считаем один раз, а не перебираем весь декор мира каждый кадр
+  function lightDecor(W) {
+    if (W._ld && W._ldN === W.decor.length) return W._ld;
+    W._ldN = W.decor.length;
+    return (W._ld = W.decor.filter(d => d.kind === 'torch' || DECOR_LIGHT[d.kind] || (AB.Towns && AB.Towns.LIGHT[d.kind])));
+  }
+  let visC = null;
+  function collectLights(G, cam, z, t) {
+    const W = G.W;
+    const hw = R.w / z / 2 + 300, hh = R.h / z / 2 + 300;
+    const inView = (x, y) => Math.abs(x - cam.x) < hw && Math.abs(y - cam.y) < hh;
+    const lights = [];
+    for (const f of G.fires) if (f.fuel > 0 && inView(f.x, f.y)) lights.push([f.x, f.y, AB.fireLight(f) * (1 + Math.sin(t * 9 + f.x) * 0.03), 1]);
+    const fLv = G.fireLevel || 1;
+    for (const d of lightDecor(W)) {
+      if (!inView(d.x, d.y)) continue;
+      if (d.kind === 'torch') lights.push([d.x, d.y - 30, 120 * (1 + Math.sin(t * 13 + d.x) * 0.05), 0.8]);
+      else if (DECOR_LIGHT[d.kind]) { if (!(d.lv > fLv)) { const L = DECOR_LIGHT[d.kind]; lights.push([d.x, d.y + L[0], L[1] * (1 + Math.sin(t * 7 + d.x) * 0.05), L[2]]); } }
+      else { const L = AB.Towns.LIGHT[d.kind]; lights.push([d.x, d.y + L[0], L[1], L[2]]); }
+    }
+    // окна и фонари зданий
+    const LB = { townhall: [-10, -30, 95], workshop: [0, -24, 85], exchange: [0, -22, 80], shop: [0, -30, 60] };
+    for (const st of G.structs) { const l = LB[st.kind]; if (l && inView(st.x, st.y)) lights.push([st.x + l[0], st.y + l[1], l[2], 0.45]); }
+    if (G.kitchen) lights.push([G.kitchen.x - 10, G.kitchen.y - 20, 70, 0.4]);
+    if (G.store) lights.push([G.store.x, G.store.y - 20, 60, 0.3]);
+    if (G.merchant) lights.push([G.merchant.x + 60, G.merchant.y - 36, 75, 0.55]);
+    return lights;
+  }
+  // Где сквозь туман что-то видно: круг зрения игрока, вышки, огни. Остальное туман закрывает почти целиком —
+  // деревья и декор там не рисуем (экономит половину кадра ночью в лесу)
+  function seeCircles(G, me, cam, z, lights) {
+    if (!me || me.dead) return [[cam.x, cam.y, 1e9]];
+    const vrw = AB.visionRadius(R.w, R.h, G.nightF) * (R.wxVis || 1) / z;
+    const out = [[me.x, me.y - 6, vrw + 10]];
+    for (const st of G.structs) if (st.kind === 'tower') out.push([st.x, st.y, C().STRUCTURES.tower.vision * (st.bmod === 'light' ? 1.6 : 1) + 10]);
+    for (const l of lights) out.push([l[0], l[1], l[2] * 0.9 + 10]);
+    return out;
+  }
   function lighting(G, me, cam, z, t) {
     const ctx = R.ctx, cfg = C(), W = G.W;
     const nf = G.nightF;
@@ -2017,22 +2082,51 @@
     const toS = (wx, wy) => [((wx - cam.x) * z + R.w / 2) * s, ((wy - cam.y) * z + R.h / 2) * s];
     R.wxVis = AB.lerp(R.wxVis || 1, AB.WX ? AB.WX.vision : 1, 0.02);
     const vr = AB.visionRadius(R.w, R.h, nf) * s * R.wxVis;
-    const lights = [];
-    for (const f of G.fires) if (f.fuel > 0) lights.push([f.x, f.y, AB.fireLight(f) * (1 + Math.sin(t * 9 + f.x) * 0.03), 1]);
-    for (const d of W.decor) {
-      if (d.kind === 'torch') lights.push([d.x, d.y - 30, 120 * (1 + Math.sin(t * 13 + d.x) * 0.05), 0.8]);
-      else if (DECOR_LIGHT[d.kind] && !(d.lv > (G.fireLevel || 1))) { const L = DECOR_LIGHT[d.kind]; lights.push([d.x, d.y + L[0], L[1] * (1 + Math.sin(t * 7 + d.x) * 0.05), L[2]]); }
-      else if (AB.Towns && AB.Towns.LIGHT[d.kind]) { const L = AB.Towns.LIGHT[d.kind]; lights.push([d.x, d.y + L[0], L[1], L[2]]); }
+    const lights = R._lights || collectLights(G, cam, z, t);
+    const soft = cfg.FOG_EDGE_SOFTNESS;
+    const HOLE = radSprite('hole', [[0, 0.95], [0.5, 0.6], [1, 0]]);
+    const LIN = radSprite('lin', [[0, 1], [1, 0]]);
+    const CUT = radSprite('cut' + soft, [[0, 1], [1 - soft, 1], [1, 0]]);
+    // --- туман (маленький холст, потом растягивается на экран)
+    const fctx = R.fogC.getContext('2d');
+    fctx.globalCompositeOperation = 'source-over'; fctx.globalAlpha = 1;
+    fctx.clearRect(0, 0, fw, fh);
+    const fc = AB.mix(cfg.FOG_DAY_COLOR, cfg.FOG_NIGHT_COLOR, nf);
+    fctx.fillStyle = AB.rgb(fc, cfg.FOG_OPACITY); fctx.fillRect(0, 0, fw, fh);
+    // клубы тумана (текстура)
+    const CLUB = radSprite('club', [[0, 1], [1, 0]], '120,140,130');
+    for (let i = 0; i < 4; i++) {
+      const wx = cam.x + Math.sin(t * 0.05 + i * 1.7) * 600, wy = cam.y + Math.cos(t * 0.04 + i * 2.3) * 400;
+      const [sx, sy] = toS(wx, wy); blot(fctx, CLUB, sx, sy, (260 + i * 30) * z * s, 0.03 * (1 - nf * 0.7));
     }
-    // окна и фонари зданий
-    const LB = { townhall: [-10, -30, 95], workshop: [0, -24, 85], exchange: [0, -22, 80], shop: [0, -30, 60] };
-    for (const st of G.structs) { const l = LB[st.kind]; if (l) lights.push([st.x + l[0], st.y + l[1], l[2], 0.45]); }
-    if (G.kitchen) lights.push([G.kitchen.x - 10, G.kitchen.y - 20, 70, 0.4]);
-    if (G.store) lights.push([G.store.x, G.store.y - 20, 60, 0.3]);
-    if (G.merchant) lights.push([G.merchant.x + 60, G.merchant.y - 36, 75, 0.55]);
-    // --- тьма ночи
+    fctx.globalCompositeOperation = 'destination-out';
+    const cut = (sx, sy, r, str) => { if (sx > -r && sy > -r && sx < fw + r && sy < fh + r) blot(fctx, CUT, sx, sy, r, str); };
+    const center = me && !me.dead ? toS(me.x, me.y) : toS(cam.x, cam.y);
+    const VB = cfg.VISION_BLOCK;
+    if (VB && VB.on && me && !me.dead) {
+      // зрение не проникает сквозь лес: многоугольник рисуем на крошечном холсте —
+      // при растягивании края сами становятся мягкими (без дорогого blur)
+      const q = 3, vw = Math.ceil(fw / q), vh = Math.ceil(fh / q);
+      if (!visC) visC = AB.canvas(vw, vh);
+      if (visC.width !== vw || visC.height !== vh) { visC.width = vw; visC.height = vh; }
+      const vctx = visC.getContext('2d');
+      vctx.globalCompositeOperation = 'source-over'; vctx.globalAlpha = 1;
+      vctx.clearRect(0, 0, vw, vh);
+      const wr = vr / s / z, poly = visionPoly(W, me.x, me.y - 6, wr, VB);
+      vctx.fillStyle = '#000'; vctx.beginPath();
+      poly.forEach((p, i) => { const [sx, sy] = toS(p[0], p[1]); if (i) vctx.lineTo(sx / q, sy / q); else vctx.moveTo(sx / q, sy / q); });
+      vctx.closePath(); vctx.fill();
+      vctx.globalCompositeOperation = 'destination-in';
+      blot(vctx, CUT, center[0] / q, center[1] / q, vr / q, 1);
+      fctx.globalAlpha = 1; fctx.imageSmoothingEnabled = true;
+      fctx.drawImage(visC, 0, 0, vw * q, vh * q);
+    } else cut(center[0], center[1], vr, 1);
+    for (const st of G.structs) if (st.kind === 'tower') { const [sx, sy] = toS(st.x, st.y); cut(sx, sy, C().STRUCTURES.tower.vision * (st.bmod === 'light' ? 1.6 : 1) * z * s, 0.8); }
+    for (const l of lights) { const [sx, sy] = toS(l[0], l[1]); cut(sx, sy, l[2] * z * s * 0.9, 0.85 * l[3]); }
+    fctx.globalAlpha = 1; fctx.globalCompositeOperation = 'source-over';
+    // --- тьма ночи: в том же маленьком холсте под туманом, на экран — одним слоем
     const dctx = R.darkC.getContext('2d');
-    dctx.globalCompositeOperation = 'source-over';
+    dctx.globalCompositeOperation = 'source-over'; dctx.globalAlpha = 1;
     dctx.clearRect(0, 0, fw, fh);
     if (nf > 0.01) {
       dctx.fillStyle = `rgba(6,10,32,${cfg.NIGHT_DARKNESS * nf})`; dctx.fillRect(0, 0, fw, fh);
@@ -2040,68 +2134,27 @@
       for (const l of lights) {
         const [sx, sy] = toS(l[0], l[1]); const r = l[2] * z * s;
         if (sx < -r || sy < -r || sx > fw + r || sy > fh + r) continue;
-        const g = dctx.createRadialGradient(sx, sy, 0, sx, sy, r);
-        g.addColorStop(0, `rgba(0,0,0,${0.95 * l[3]})`); g.addColorStop(0.5, `rgba(0,0,0,${0.6 * l[3]})`); g.addColorStop(1, 'rgba(0,0,0,0)');
-        dctx.fillStyle = g; dctx.fillRect(sx - r, sy - r, r * 2, r * 2);
+        blot(dctx, HOLE, sx, sy, r, l[3]);
       }
-      if (me && !me.dead) { const [sx, sy] = toS(me.x, me.y); const r = 70 * z * s; const g = dctx.createRadialGradient(sx, sy, 0, sx, sy, r); g.addColorStop(0, 'rgba(0,0,0,0.5)'); g.addColorStop(1, 'rgba(0,0,0,0)'); dctx.fillStyle = g; dctx.fillRect(sx - r, sy - r, r * 2, r * 2); }
+      if (me && !me.dead) { const [sx, sy] = toS(me.x, me.y); blot(dctx, LIN, sx, sy, 70 * z * s, 0.5); }
+      dctx.globalAlpha = 1; dctx.globalCompositeOperation = 'source-over';
     }
-    // --- туман
-    const fctx = R.fogC.getContext('2d');
-    fctx.globalCompositeOperation = 'source-over';
-    fctx.clearRect(0, 0, fw, fh);
-    const fc = AB.mix(cfg.FOG_DAY_COLOR, cfg.FOG_NIGHT_COLOR, nf);
-    fctx.fillStyle = AB.rgb(fc, cfg.FOG_OPACITY); fctx.fillRect(0, 0, fw, fh);
-    // клубы тумана (текстура)
-    fctx.globalCompositeOperation = 'source-over';
-    for (let i = 0; i < 4; i++) {
-      const wx = cam.x + Math.sin(t * 0.05 + i * 1.7) * 600, wy = cam.y + Math.cos(t * 0.04 + i * 2.3) * 400;
-      const [sx, sy] = toS(wx, wy); const r = (260 + i * 30) * z * s;
-      const g = fctx.createRadialGradient(sx, sy, 0, sx, sy, r);
-      const lc = AB.mix(fc, [120, 140, 130], 0.12 * (1 - nf * 0.7));
-      g.addColorStop(0, AB.rgb(lc, 0.25)); g.addColorStop(1, AB.rgb(lc, 0));
-      fctx.fillStyle = g; fctx.fillRect(sx - r, sy - r, r * 2, r * 2);
+    // тёплое свечение огней — тоже в маленьком слое (порядок как раньше: тьма → свет → туман)
+    const GLOW = radSprite('glow', [[0, 1], [1, 0]], '255,140,52');
+    for (const l of lights) {
+      const [sx, sy] = toS(l[0], l[1]), r = l[2] * z * 0.75 * s;
+      if (sx < -r || sy < -r || sx > fw + r || sy > fh + r) continue;
+      blot(dctx, GLOW, sx, sy, r, (0.12 + 0.14 * nf) * l[3]);
     }
-    fctx.globalCompositeOperation = 'destination-out';
-    const soft = cfg.FOG_EDGE_SOFTNESS;
-    const cut = (sx, sy, r, str) => {
-      const g = fctx.createRadialGradient(sx, sy, r * (1 - soft), sx, sy, r);
-      g.addColorStop(0, `rgba(0,0,0,${str})`); g.addColorStop(1, 'rgba(0,0,0,0)');
-      fctx.fillStyle = g; fctx.beginPath(); fctx.arc(sx, sy, r, 0, TAU); fctx.fill();
-    };
-    const center = me && !me.dead ? toS(me.x, me.y) : toS(cam.x, cam.y);
-    const VB = cfg.VISION_BLOCK;
-    if (VB && VB.on && me && !me.dead) {
-      // зрение не проникает сквозь лес: лучи от игрока останавливаются в листве
-      const wr = vr / s / z, poly = visionPoly(W, me.x, me.y - 6, wr, VB);
-      fctx.save();
-      if (!R.lowQ) fctx.filter = `blur(${Math.max(1.5, 5 * s * z).toFixed(1)}px)`;
-      const g = fctx.createRadialGradient(center[0], center[1], vr * (1 - soft), center[0], center[1], vr);
-      g.addColorStop(0, 'rgba(0,0,0,1)'); g.addColorStop(1, 'rgba(0,0,0,0)');
-      fctx.fillStyle = g; fctx.beginPath();
-      poly.forEach((q, i) => { const [sx, sy] = toS(q[0], q[1]); if (i) fctx.lineTo(sx, sy); else fctx.moveTo(sx, sy); });
-      fctx.closePath(); fctx.fill();
-      fctx.restore();
-    } else cut(center[0], center[1], vr, 1);
-    for (const st of G.structs) if (st.kind === 'tower') { const [sx, sy] = toS(st.x, st.y); cut(sx, sy, C().STRUCTURES.tower.vision * (st.bmod === 'light' ? 1.6 : 1) * z * s, 0.8); }
-    for (const l of lights) { const [sx, sy] = toS(l[0], l[1]); cut(sx, sy, l[2] * z * s * 0.9, 0.85 * l[3]); }
+    dctx.globalAlpha = 1;
+    dctx.drawImage(R.fogC, 0, 0);
     // --- на экран
     ctx.save();
     ctx.setTransform(R.dpr, 0, 0, R.dpr, 0, 0);
     ctx.imageSmoothingEnabled = true;
-    if (nf > 0.01) ctx.drawImage(R.darkC, 0, 0, R.w, R.h);
-    // тёплое свечение
-    ctx.globalCompositeOperation = 'lighter';
-    for (const l of lights) {
-      const [sx, sy] = toS(l[0], l[1]); const x = sx / s, y = sy / s, r = l[2] * z * 0.75;
-      if (x < -r || y < -r || x > R.w + r || y > R.h + r) continue;
-      const g = ctx.createRadialGradient(x, y, 0, x, y, r);
-      const a = (0.14 + 0.16 * nf) * l[3];
-      g.addColorStop(0, `rgba(255,150,60,${a})`); g.addColorStop(1, 'rgba(255,120,40,0)');
-      ctx.fillStyle = g; ctx.fillRect(x - r, y - r, r * 2, r * 2);
-    }
+    ctx.drawImage(R.darkC, 0, 0, R.w, R.h);
+    ctx.imageSmoothingEnabled = true;
     ctx.globalCompositeOperation = 'source-over';
-    ctx.drawImage(R.fogC, 0, 0, R.w, R.h);
     // глаза в тумане
     if (cfg.SHOW_EYES_IN_FOG && nf > 0.3 && me) {
       const vrw = AB.visionRadius(R.w, R.h, nf) / z;

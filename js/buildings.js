@@ -186,7 +186,7 @@
   B.draw = function (ctx, key, x, y, alpha) {
     const s = B.get(key); if (!s) return;
     if (alpha !== undefined) ctx.globalAlpha = alpha;
-    ctx.drawImage(s.c, x - s.ax, y - s.ay, s.w, s.h);
+    AB.blit(ctx, s.c, x - s.ax, y - s.ay, s.w, s.h, s.ax, s.ay);
     if (alpha !== undefined) ctx.globalAlpha = 1;
   };
 

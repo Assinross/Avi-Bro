@@ -65,4 +65,33 @@ window.AB = window.AB || {};
     if (C.FOOD[k]) return C.FOOD[k].name;
     return ({ wood: 'Бревна', plank: 'Доски', coal: 'Уголь', seed_carrot: 'Семена моркови', seed_pumpkin: 'Семена тыквы', hide: 'Шкура', coin: 'Монеты', iron: 'Железо', stone: 'Камень', pickaxe: 'Кирка', xp: 'Опыт' })[k] || k;
   };
+
+  /* Быстрое рисование готовых спрайтов.
+     Масштабировать картинку при каждом кадре дорого (особенно без видеокарты — так рисует Яндекс Браузер
+     в режиме энергосбережения). Поэтому держим копию спрайта, уже уменьшенную/увеличенную под текущий
+     масштаб экрана, и кладём её 1:1 в целые пиксели — это в 10–15 раз дешевле.
+     (ax, ay) — точка привязки внутри картинки в единицах dw/dh (обычно «земля под предметом»). */
+  AB.blitGen = 1;
+  AB.blit = function (ctx, img, dx, dy, dw, dh, ax, ay) {
+    const m = ctx.getTransform();
+    const iw = img.width, ih = img.height;
+    if (m.b !== 0 || m.c !== 0 || m.a <= 0 || Math.abs(m.a - m.d) > 1e-6 || !iw || !ih) { ctx.drawImage(img, dx, dy, dw, dh); return; }
+    const S = Math.round(m.a * dw / iw * 20) / 20;              // шаг масштаба ~4% — глазу незаметно
+    if (S <= 0) return;
+    let mp = img._bc;
+    if (!mp || mp.gen !== AB.blitGen || mp.size > 32) { mp = img._bc = new Map(); mp.gen = AB.blitGen; }
+    let c = mp.get(S);
+    if (!c) {
+      c = document.createElement('canvas');
+      c.width = Math.max(1, Math.round(iw * S)); c.height = Math.max(1, Math.round(ih * S));
+      const g = c.getContext('2d'); g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+      g.drawImage(img, 0, 0, c.width, c.height);
+      mp.set(S, c);
+    }
+    const px = m.a * (dx + ax) + m.e, py = m.d * (dy + ay) + m.f;   // точка привязки на экране
+    const fx = ax / dw, fy = ay / dh;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(c, Math.round(px - fx * c.width), Math.round(py - fy * c.height));
+    ctx.setTransform(m);
+  };
 })(window.AB);

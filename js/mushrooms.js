@@ -288,7 +288,7 @@
       ctx.fillStyle = g; ctx.fillRect(d.x - 70 * s, cy - 70 * s, 140 * s, 140 * s); ctx.restore();
     }
   };
-  M.drawSprite = function (ctx, sp, x, y, s) { s = s || 1; ctx.drawImage(sp.c, x - sp.ox / K * s, y - sp.oy / K * s, sp.c.width / K * s, sp.c.height / K * s); };
+  M.drawSprite = function (ctx, sp, x, y, s) { s = s || 1; AB.blit(ctx, sp.c, x - sp.ox / K * s, y - sp.oy / K * s, sp.c.width / K * s, sp.c.height / K * s, sp.ox / K * s, sp.oy / K * s); };
   M.drawGlowcap = function (ctx, d, t, night) {
     M.drawSprite(ctx, M.glowcap(d.v), d.x, d.y, 1);
     const c = M.glowcapColor(d.v), a = (0.25 + 0.55 * night) * (0.75 + Math.sin(t * 2.3 + d.x) * 0.25);

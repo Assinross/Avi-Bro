@@ -1009,18 +1009,21 @@
   // Облегчённая графика: включается сама, если кадры долгие (слабый ПК, энергосбережение в браузере)
   function setLowQ(on, manual) {
     AB.Render.lowQ = !!on; App.lowQManual = manual && !on; AB.Render.resize();
-    try { localStorage.setItem('avibro-lowq', on ? '1' : manual ? '0' : ''); } catch (e) { /* */ }
+    try { localStorage.setItem('avibro-lowq2', on ? '1' : manual ? '0' : ''); } catch (e) { /* */ }
     const cb = $('optLowQ'); if (cb) cb.checked = !!on;
   }
-  try { const v = localStorage.getItem('avibro-lowq'); if (v === '1') AB.Render.lowQ = true; App.lowQManual = v === '0'; } catch (e) { /* */ }
-  const perf = { t: 0, n: 0, sum: 0 };
+  try { const v = localStorage.getItem('avibro-lowq2'); if (v === '1') AB.Render.lowQ = true; App.lowQManual = v === '0'; } catch (e) { /* */ }
+  // Судим по медиане длительности кадра за 5 с (единичные подвисания не в счёт) и только если плохо два окна подряд
+  const perf = { t: 0, a: [], bad: 0 };
   function watchPerf(rawDt) {
-    if (AB.Render.lowQ || App.lowQManual || App.state !== 'play' || App.paused || document.hidden) { perf.t = perf.n = perf.sum = 0; return; }
+    if (AB.Render.lowQ || App.lowQManual || App.state !== 'play' || App.paused || document.hidden) { perf.t = 0; perf.a.length = 0; perf.bad = 0; return; }
     if (rawDt > 0.5) return;                       // вкладка была свёрнута
-    perf.t += rawDt; perf.n++; perf.sum += rawDt;
-    if (perf.t < 6) return;
-    const fps = perf.n / perf.sum; perf.t = perf.n = perf.sum = 0;
-    if (App.playT > 8 && fps < 40) { setLowQ(true); AB.FX.toast('Игра тормозит — включена облегчённая графика (меню паузы)', '#9fd3ff'); }
+    perf.t += rawDt; perf.a.push(rawDt);
+    if (perf.t < 5) return;
+    const a = perf.a.sort((x, y) => x - y), med = a[a.length >> 1];
+    perf.t = 0; perf.a.length = 0;
+    if (App.playT > 8 && med > 1 / 40) perf.bad++; else perf.bad = 0;
+    if (perf.bad >= 2) { setLowQ(true); AB.FX.toast('Игра тормозит — включена облегчённая графика (меню паузы)', '#9fd3ff'); }
   }
   let last = performance.now();
   function frame(now) {
