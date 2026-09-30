@@ -13,10 +13,11 @@
 
 ## Architecture
 
-- `index.html` — page, menus, overlays; loads scripts in fixed order: `config.js → utils → world → skills → sim → sprites → buildings → fx → render → net → main`. Order matters; keep it.
+- `index.html` — page, menus, overlays; loads scripts in fixed order: `config.js → utils → world → skills → sim → sprites → buildings → fx → render → net → save → main`. Order matters; keep it.
 - `config.js` — ALL tuning via `window.CONFIG` (world, monsters, abilities, skills, buildings, economy, net). Prefer changing values here over touching logic.
 - `js/sim.js` (~2450 lines) — game logic: players, combat, buildings, monsters, bosses, day/night, net sync. `js/main.js` — menu, input, game loop. `js/render.js` — canvas, fog, lighting, HUD, minimap.
 - Modules share global namespace `window.AB` (IIFE pattern `(function (AB) {...})(window.AB)`); `window.CONFIG` is the global config. No imports/exports.
+- `js/save.js` - saves (`AB.Save`): world = seed + diffs, monsters are not saved. Storage: `saves/` via `server.py` `/saves` API, else `localStorage`. One save per party key (`solo-<uid>`, `pair-<hostUid>-<guestUid>`); uid in `localStorage['avibro-uid']`.
 - `server.py` — static file server + WebSocket relay on `/ws` + `/info` endpoint (used by `Net.detect()` to choose local vs PeerJS transport). Path traversal guarded; keep it.
 
 ## Net modes (`js/net.js`, `CONFIG.NET_MODE`)
