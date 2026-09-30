@@ -145,6 +145,31 @@
     $('roomLink').value = '';
     hostSeed = (Math.random() * 1e9) | 0;
     const name = playerName();
+    $('lobbyChoice').classList.add('hidden');
+    App.lobbyGuest = null;
+    // Запуск игры хостом: d - сохранение пары (или null - новый мир), gm - гость из hello
+    const hostStart = (d, gm) => {
+      $('lobbyChoice').classList.add('hidden');
+      App.lobbyGuest = null;
+      let G = null;
+      if (d) try { G = AB.Save.unpack(d, 'host'); } catch (e) { G = null; $('lobbyStatus').textContent = 'Сохранение не загрузилось - начинаем новую игру.'; }
+      if (G) {
+        const me = G.players.find(q => q.id === 0); if (me) { me.name = name; me.uid = AB.Save.uid(); }
+        const p = G.players.find(q => q.id === 1);
+        if (p) { p.name = gm.name; p.left = false; p.uid = gm.uid; } else AB.Sim.addPlayer(G, 1, gm.name, gm.prof).uid = gm.uid;
+      } else {
+        AB.setDifficulty(App.diff);
+        G = AB.Sim.create(hostSeed, 'host');
+        AB.Sim.addPlayer(G, 0, name, App.prof).uid = AB.Save.uid();
+        AB.Sim.addPlayer(G, 1, gm.name, gm.prof).uid = gm.uid;
+      }
+      App.saveKey = gm.uid === 'anon' ? null : AB.Save.keyPair(AB.Save.uid(), gm.uid); // старая версия у гостя - без сохранений
+      beginGame(G, 'host', 0);
+      AB.Net.send({ t: 'init', seed: G.seed, id: 1, df: AB.difficulty });
+      AB.Net.send(AB.Sim.snapshot(G, true));
+    };
+    $('btnLobbyCont').onclick = () => { const L = App.lobbyGuest; if (L) hostStart(L.save, L); };
+    $('btnLobbyNew').onclick = () => { const L = App.lobbyGuest; if (L) hostStart(null, L); };
     AB.Net.host({
       name, prof: App.prof ? (C().PROFESSIONS[App.prof] || {}).name : '',
       ready(code) {
@@ -158,21 +183,30 @@
       },
       data(m) {
         if (m.t === 'hello') {
-          let G = App.G;
-          if (App.state !== 'play' || App.mode !== 'host') {
-            AB.setDifficulty(App.diff);
-            G = AB.Sim.create(hostSeed, 'host');
-            AB.Sim.addPlayer(G, 0, name, App.prof);
-            AB.Sim.addPlayer(G, 1, (m.name || 'Друг').slice(0, 12), m.prof);
-            beginGame(G, 'host', 0);
-          } else {
+          const gm = { name: (m.name || 'Друг').slice(0, 12), prof: m.prof, uid: AB.Save.cleanUid(m.uid) };
+          if (App.state === 'play' && App.mode === 'host') {
+            // возвращение в идущую игру: только тот же напарник
+            const G = App.G;
             let p = G.players.find(q => q.id === 1);
-            if (!p) { p = AB.Sim.addPlayer(G, 1, (m.name || 'Друг').slice(0, 12), m.prof); }
-            else { p.name = (m.name || p.name).slice(0, 12); p.left = false; }
+            if (p && p.uid && p.uid !== 'anon' && gm.uid !== 'anon' && p.uid !== gm.uid) { AB.Net.send({ t: 'deny', s: `В этой игре играет другой напарник (${p.name}).` }); return; }
+            if (!p) { p = AB.Sim.addPlayer(G, 1, gm.name, gm.prof); p.uid = gm.uid; }
+            else { p.name = gm.name; p.left = false; }
             AB.Sim.msg(G, `${p.name} подключился!`, -1, '#8fe08a');
+            AB.Net.send({ t: 'init', seed: G.seed, id: 1, df: AB.difficulty });
+            AB.Net.send(AB.Sim.snapshot(G, true));
+            return;
           }
-          AB.Net.send({ t: 'init', seed: G.seed, id: 1, df: App.diff });
-          AB.Net.send(AB.Sim.snapshot(G, true));
+          App.lobbyGuest = gm;
+          if (gm.uid === 'anon') { hostStart(null, gm); return; }
+          AB.Save.load(AB.Save.keyPair(AB.Save.uid(), gm.uid)).then(d => {
+            if (App.lobbyGuest !== gm || App.state === 'play') return; // гость ушёл, пока читали сохранение
+            if (!AB.Save.ok(d)) { hostStart(null, gm); return; }
+            gm.save = d;
+            $('lobbyChoiceNote').textContent = `Есть сохранение: ${AB.Save.label(d)}`;
+            $('lobbyChoice').classList.remove('hidden');
+            $('lobbyStatus').textContent = `${gm.name} подключился. Продолжить сохранение или начать новую игру?`;
+            AB.Net.send({ t: 'wait' });
+          });
         } else if (App.mode === 'host' && App.G) {
           const p = App.G.players.find(q => q.id === 1);
           if (!p) return;
@@ -190,6 +224,7 @@
         }
       },
       guestLeft() {
+        if (App.lobbyGuest) { App.lobbyGuest = null; $('lobbyChoice').classList.add('hidden'); }
         const pl = App.G && App.G.players.find(q => q.id === 1);
         if (pl) pl.left = true; // ушедший не считается в кооп-балансе, но может вернуться тем же кодом
         if (App.state === 'play' && App.mode === 'host') AB.Sim.msg(App.G, 'Второй игрок отключился. Он может вернуться по тому же коду.', -1, '#ff9d7a');
@@ -209,9 +244,11 @@
     const name = playerName();
     let G = null;
     AB.Net.join(code, {
-      open() { $('joinStatus').textContent = 'Соединение установлено, загрузка мира…'; AB.Net.send({ t: 'hello', name, prof: App.prof }); },
+      open() { $('joinStatus').textContent = 'Соединение установлено, загрузка мира…'; AB.Net.send({ t: 'hello', name, prof: App.prof, uid: AB.Save.uid() }); },
       data(m) {
         if (m.t === 'full') { $('joinStatus').textContent = 'В комнате уже два игрока.'; return; }
+        if (m.t === 'wait') { $('joinStatus').textContent = 'Хост выбирает: продолжить или новая игра…'; return; }
+        if (m.t === 'deny') { AB.Net.close(); if (App.state === 'play') endToMenu(m.s); else $('joinStatus').textContent = m.s; return; }
         if (m.t === 'init') {
           AB.setDifficulty(m.df || 'hardcore');
           G = AB.Sim.create(m.seed, 'guest');
