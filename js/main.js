@@ -269,6 +269,33 @@
   }
 
   // Экран «Игра вдвоём»: со своего сервера — ссылка и список комнат; из интернета — скачать сервер
+  // Проверить обновление. С server.py - скачать с GitHub и перезапустить сервер;
+  // иначе (GitHub Pages) - сравнить загруженные файлы со свежими с сайта и перезагрузить страницу, если отличаются
+  function checkUpdate(b) {
+    if (b.disabled) return;
+    if (!b.dataset.t) b.dataset.t = b.textContent;
+    const done = (t, ms) => { b.textContent = t; setTimeout(() => { b.textContent = b.dataset.t; b.disabled = false; }, ms || 3000); };
+    b.disabled = true; b.textContent = 'Проверяю обновление…';
+    App.netReady.then(() => {
+      if (AB.Net.server) {
+        b.textContent = 'Скачиваю обновление…';
+        return fetch('/update', { cache: 'no-store' }).then(r => r.json()).then(j => {
+          if (j.ok && !j.files) done('Уже последняя версия ✓');
+          else if (j.ok) { b.textContent = `Обновлено (изменено файлов: ${j.files}). Перезапуск…`; setTimeout(() => location.reload(), 4000); }
+          else done('Не удалось: ' + (j.error || 'ошибка'), 6000);
+        }).catch(() => { b.textContent = 'Сервер перезапускается…'; setTimeout(() => location.reload(), 4000); });
+      }
+      if (location.protocol === 'file:') { done('Откройте игру с сайта или через server.py', 5000); return; }
+      // свой файл: как в кэше (эта версия) против свежего с сайта (no-cache заодно обновляет кэш для перезагрузки)
+      const files = [location.pathname, 'style.css'].concat([...document.scripts].map(s => s.getAttribute('src')).filter(u => u && !/^https?:/.test(u)));
+      const same = (u) => Promise.all([fetch(u, { cache: 'force-cache' }).then(r => r.text()), fetch(u, { cache: 'no-cache' }).then(r => r.text())]).then(([a, c]) => a === c);
+      return Promise.all(files.map(same)).then(r => {
+        if (r.every(Boolean)) done('Уже последняя версия ✓');
+        else { b.textContent = 'Найдено обновление. Перезагрузка…'; setTimeout(() => location.reload(), 1500); }
+      });
+    }).catch(() => done('Нет связи - попробуйте позже', 5000));
+  }
+
   // Экран "Сохранения": все сохранения текущего хранилища, только удаление
   function showSaves() {
     show('saves');
@@ -1318,15 +1345,8 @@
     bind('btnCoop', () => { show('coop'); $('coopErr').textContent = ''; $('peerWarn').classList.toggle('hidden', AB.Net.available() || !!AB.Net.server); setupCoopScreen(); });
     bind('btnLanCopy', () => { const t = $('lanLink').textContent; try { navigator.clipboard.writeText(t); } catch (e) { /* */ } $('btnLanCopy').textContent = 'Скопировано!'; setTimeout(() => $('btnLanCopy').textContent = 'Копировать', 1500); });
     bind('btnSrvGo', () => { let u = $('srvUrl').value.trim(); if (!u) return; if (!/^https?:\/\//.test(u)) u = 'http://' + u; try { localStorage.setItem('avibro-srv', u); } catch (e) { /* */ } location.href = u; });
-    bind('btnUpdate', () => {
-      if (!$('btnUpdate').dataset.t) $('btnUpdate').dataset.t = $('btnUpdate').textContent;
-      $('btnUpdate').textContent = 'Скачиваю обновление…'; $('btnUpdate').disabled = true;
-      fetch('/update', { cache: 'no-store' }).then(r => r.json()).then(j => {
-        if (j.ok && !j.files) { const b = $('btnUpdate'); b.textContent = 'Уже последняя версия ✓'; setTimeout(() => { b.textContent = b.dataset.t || 'Обновить игру'; b.disabled = false; }, 2500); }
-        else if (j.ok) { $('btnUpdate').textContent = `Обновлено (изменено файлов: ${j.files}). Перезапуск…`; setTimeout(() => location.reload(), 4000); }
-        else { $('btnUpdate').textContent = 'Не удалось: ' + (j.error || 'ошибка'); $('btnUpdate').disabled = false; }
-      }).catch(() => { $('btnUpdate').textContent = 'Сервер перезапускается…'; setTimeout(() => location.reload(), 4000); });
-    });
+    bind('btnUpdate', () => checkUpdate($('btnUpdate')));
+    bind('btnCheckUpd', () => checkUpdate($('btnCheckUpd')));
     bind('btnStop', () => {
       const b = $('btnStop');
       if (!b.dataset.arm) { b.dataset.arm = 1; b.textContent = 'Точно остановить? Нажмите ещё раз'; setTimeout(() => { delete b.dataset.arm; if (!b.disabled) b.textContent = 'Остановить сервер'; }, 3000); return; }

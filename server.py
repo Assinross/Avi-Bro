@@ -74,6 +74,8 @@ def update_from_github():
     """Скачать последнюю версию игры с GitHub. Пишет только изменившиеся файлы,
     удаляет файлы, которых больше нет в игре, и не оставляет временных файлов.
     Возвращает число изменённых/удалённых файлов (0 — уже последняя версия)."""
+    if os.path.isdir(os.path.join(ROOT, '.git')):  # папка разработки: скачанная версия затёрла бы незакоммиченные правки
+        raise RuntimeError('это папка разработки (git) - обновляйте через git pull')
     data = urllib.request.urlopen(REPO_ZIP, timeout=60).read()
     z = zipfile.ZipFile(io.BytesIO(data))
     top = z.namelist()[0].split('/')[0]
