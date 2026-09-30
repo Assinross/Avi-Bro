@@ -513,8 +513,18 @@
     App.lvSig = null;
   }
   function reroll() {
-    if (App.mode === 'guest') AB.Net.send({ t: 'cmd', c: 'reroll', x: 0, y: 0 });
-    else AB.Sim.command(App.G, App.myId, 'reroll', 0, 0);
+    AB.Sound.play('click', 1);
+    const c = App.aoWasOpen ? 'areroll' : 'reroll'; // окно боевого навыка или умения
+    if (App.mode === 'guest') AB.Net.send({ t: 'cmd', c, x: 0, y: 0 });
+    else AB.Sim.command(App.G, App.myId, c, 0, 0);
+    App.lvSig = null;
+  }
+  // Кнопка «Сменить варианты» — цена в монетах казны
+  function rerollButton(n) {
+    const cost = AB.Skills.rerollPrice(n), coins = (App.G && App.G.coins) || 0, b = $('btnReroll');
+    b.textContent = `Сменить варианты (${cost} $)`;
+    b.disabled = coins < cost; b.style.opacity = coins < cost ? 0.5 : 1;
+    b.title = coins < cost ? `В казне ${Math.floor(coins)} $` : '';
   }
   // Карточки выбора умения
   function updateLevelUI(me) {
@@ -528,8 +538,8 @@
     if (me && !(me.aq > 0)) App.abDefer = false;
     $('btnLater').classList.add('hidden'); $('btnReroll').classList.remove('hidden');
     if (!showOffers) { box.classList.add('hidden'); App.lvSig = null; if (!offers) App.lvOpen = false; return; }
-    const woodHave = AB.Sim.woodOf(App.G, me);
-    const sig = JSON.stringify(offers) + '|' + me.rr + '|' + me.queue.length + '|' + woodHave;
+    const coinsHave = Math.floor(App.G.coins || 0);
+    const sig = JSON.stringify(offers) + '|' + me.rr + '|' + me.queue.length + '|' + coinsHave;
     box.classList.remove('hidden');
     $('btnLater').classList.remove('hidden'); // «Выбрать позже» — игра идёт дальше
     if (sig === App.lvSig) return;
@@ -559,20 +569,18 @@
       el.addEventListener('click', () => pickSkill(i));
       cards.appendChild(el);
     });
-    const cost = AB.Skills.rerollCost(me);
-    $('btnReroll').textContent = `Перебросить (${cost} дерева)`;
-    $('btnReroll').disabled = woodHave < cost;
-    $('btnReroll').style.opacity = woodHave < cost ? 0.5 : 1;
+    rerollButton(me.rr);
   }
   // Выбор боевого навыка (уровень опыта)
   function abilityUI(me, box) {
     const cfg = C(), G = App.G;
     const iron = AB.Sim.ironOf(G, me);
-    const sig = 'ab' + JSON.stringify(me.ao) + me.aq + iron;
+    const sig = 'ab' + JSON.stringify(me.ao) + me.aq + iron + '|' + (me.arr || 0) + '|' + Math.floor(G.coins || 0);
     box.classList.remove('hidden');
-    $('btnLater').classList.remove('hidden'); $('btnReroll').classList.add('hidden');
+    $('btnLater').classList.remove('hidden'); $('btnReroll').classList.remove('hidden');
     if (sig === App.lvSig) return;
     App.lvSig = sig;
+    rerollButton(me.arr);
     $('lvTitle').textContent = `Уровень опыта ${me.xl}: боевой навык`;
     $('lvTitle').className = 'lvtitle ab';
     const learned = AB.Sim.abLearned(me);

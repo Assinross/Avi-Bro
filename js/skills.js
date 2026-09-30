@@ -96,16 +96,18 @@
     Sk.ensureOffers(G, p);
   };
 
+  // Цена смены вариантов: 30 → 50 → 70 → 70 … (n — сколько раз уже меняли в этом выборе)
+  Sk.rerollPrice = function (n) { const R = C().REROLL_COINS || [30, 50, 70]; return R[Math.min(R.length - 1, n || 0)]; };
   Sk.reroll = function (G, p) {
     if (!p.offers) return;
-    const cfg = C();
-    const cost = cfg.REROLL_COST + p.rr * cfg.REROLL_COST_STEP;
-    if (AB.Sim.woodOf(G, p) < cost) { AB.Sim.msg(G, `Для переброса нужно ${cost} дерева (рюкзак + склад)`, p.id, '#ff9d7a'); return; }
-    AB.Sim.spendWood(G, p, cost); p.rr++;
+    const cost = Sk.rerollPrice(p.rr);
+    if ((G.coins || 0) < cost) { AB.Sim.msg(G, `Сменить варианты: нужно ${cost} $ (в казне ${Math.floor(G.coins || 0)})`, p.id, '#ff9d7a'); return; }
+    G.coins -= cost; p.rr = (p.rr || 0) + 1;
     p.offers = Sk.makeOffers(G, p, p.queue[0]);
+    AB.Sim.msg(G, `Варианты умений сменены за ${cost} $`, p.id, '#ffd24a');
   };
 
-  Sk.rerollCost = function (p) { return C().REROLL_COST + (p.rr || 0) * C().REROLL_COST_STEP; };
+  Sk.rerollCost = function (p) { return Sk.rerollPrice(p.rr); };
 
   // Сумма характеристики по всей команде (для синергий)
   Sk.team = function (G) {

@@ -510,6 +510,10 @@
     if (m.dying > 0) ctx.globalAlpha = Math.min(1, m.dying);
     const sc = m.r / 12;
     S().ell(ctx, x, y + 6 * sc, 13 * sc, 5 * sc, 'rgba(0,0,0,0.35)');
+    if (m.nodrop && !m._inner) { // подмога босса (без добычи): лиловый круг призыва под ногами
+      ctx.strokeStyle = `rgba(190,120,255,${0.55 + Math.sin(t * 4 + m.id) * 0.2})`; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.ellipse(x, y + 6 * sc, 15 * sc, 6 * sc, 0, 0, TAU); ctx.stroke();
+    }
     const O = '#0c0806';
     if (m.type === 'wolf' || m.type === 'alpha' || m.type === 'bonewolf') {
       const alpha = m.type === 'alpha', bone = m.type === 'bonewolf';

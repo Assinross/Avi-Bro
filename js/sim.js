@@ -677,6 +677,7 @@
     if (!m.boss) G.tele = G.tele.filter(t => t.owner !== m.id);
     G.stats.kills++;
     if (m.boss) { bossReward(G, m); return; }
+    if (m.nodrop) { if (p && p.st.killHeal > 0 && !p.dead) p.hp = Math.min(p.mhp, p.hp + p.st.killHeal); return; } // подмога босса: без добычи
     const luck = p ? p.st.luck : 0;
     let meat = def.meat[0] + Math.floor(rnd() * (def.meat[1] - def.meat[0] + 1));
     const mb = p ? p.st.meatBonus : (G.team.meatBonus || 0) / Math.max(1, G.players.length);
@@ -1142,6 +1143,17 @@
     if (!o.length) { p.aq = 0; return; }
     p.ao = o;
   };
+  // Сменить варианты боевого навыка за монеты (цена как у умений: 30 → 50 → 70)
+  function rerollAbility(G, p) {
+    if (!p.ao) return;
+    const cost = AB.Skills.rerollPrice(p.arr);
+    if ((G.coins || 0) < cost) { Sim.msg(G, `Сменить варианты: нужно ${cost} $ (в казне ${Math.floor(G.coins || 0)})`, p.id, '#ff9d7a'); return; }
+    const old = JSON.stringify(p.ao);
+    let o = Sim.makeAbOffers(G, p);
+    for (let k = 0; k < 6 && JSON.stringify(o) === old; k++) o = Sim.makeAbOffers(G, p); // постараться дать другой набор
+    G.coins -= cost; p.arr = (p.arr || 0) + 1; p.ao = o;
+    Sim.msg(G, `Варианты навыков сменены за ${cost} $`, p.id, '#ffd24a');
+  }
   function pickAbility(G, p, i) {
     const o = p.ao && p.ao[i];
     if (!o) return;
@@ -1151,7 +1163,7 @@
     // устаревший вариант (уровень навыка уже изменился) — не понижаем, а предлагаем заново
     if (cur && o.lv <= cur.lv) { p.ao = null; Sim.ensureAbOffers(G, p); return; }
     if (cur) cur.lv = Math.min(C().ABILITY_MAX_LEVEL, o.lv); else if (Sim.abLearned(p) < C().ABILITY_MAX) p.ab.push({ id: o.id, lv: 1 });
-    p.aq = Math.max(0, p.aq - 1); p.ao = null;
+    p.aq = Math.max(0, p.aq - 1); p.ao = null; p.arr = 0;
     const def = Sim.abDef(o.id);
     Sim.fx(G, { k: 'skill', x: p.x, y: p.y, pid: p.id, s: `${def.name}${o.lv > 1 ? ' ур. ' + o.lv : ''}`, t: Math.min(4, o.lv) });
     Sim.ensureAbOffers(G, p);
@@ -1459,6 +1471,11 @@
         if (m.burn.tick <= 0) { m.burn.tick = 0.5; damageMonster(G, m, m.burn.dps * 0.5, { p: G.players.find(p => p.id === m.burn.p), src: 'burn', noProc: true }); if (m.dead) continue; }
         if (m.burn && m.burn.t <= 0) m.burn = null;
       }
+      if (m.sum !== undefined) { // подмога: живёт недолго и уходит вместе со своим боссом
+        m.life -= dt;
+        if (m.life <= 0 || !list.some(q => q.id === m.sum && !q.dying)) { m.dying = 0.8; continue; }
+      }
+      if (m.boss || m.es) summonTick(G, m, dt);
       if (m.boss) { bossAI(G, m, dt); continue; }
       const np = nearestPlayer(G, m.x, m.y);
       m.spCd -= dt;
@@ -1665,6 +1682,33 @@
   }
 
   /* ======================= БОССЫ ======================= */
+  // Босс зовёт подмогу
+  function summonTick(G, m, dt) {
+    const S = C().BOSS_SUMMON;
+    if (!S) return;
+    const E = m.es ? Object.assign({}, S, S.elite) : S;
+    const engaged = G.players.some(p => !p.dead && AB.dist2(p.x, p.y, m.x, m.y) < S.engage * S.engage);
+    if (!engaged) return;
+    if (m.sumT === undefined) m.sumT = E.first;
+    m.sumT -= dt;
+    if (m.sumT > 0) return;
+    m.sumT = E.every * (0.85 + rnd() * 0.3);
+    const alive = G.monsters.filter(q => q.sum === m.id && !q.dying).length;
+    let n = Math.min(E.n, E.max - alive);
+    if (n <= 0) return;
+    let pool = m.boss ? S.types[m.type] : null;
+    if (!pool) { const s = G.W.sites.find(q => q.id === m.site); const K = s && (C().SITE_KINDS[s.kind] || C().SITE_KINDS.ruins); pool = K ? K.packs[s.tier].flat().filter(t => t !== m.type) : ['wolf']; if (!pool.length) pool = ['wolf']; }
+    const lv = Math.max(1, (m.lv || G.day) - S.lvDrop);
+    for (let k = 0; k < n; k++) {
+      const a = rnd() * TAU, d = m.r + 40 + rnd() * 30;
+      let x = m.x + Math.cos(a) * d, y = m.y + Math.sin(a) * d;
+      if (!AB.freeSpot(G.W, x, y, 12)) { x = m.x; y = m.y + m.r + 20; }
+      const q = Sim.spawnMonster(G, pool[Math.floor(rnd() * pool.length)], x, y, false, 0, 1, lv);
+      q.nodrop = true; q.sum = m.id; q.life = S.life; q.hunter = true; q.st = 'chase'; q.xpk = 0;
+    }
+    Sim.fx(G, { k: 'howl', x: m.x, y: m.y });
+    if (!m.sumMsg) { m.sumMsg = 1; Sim.msg(G, `${m.boss ? C().BOSSES[m.type].name : (m.en || 'Босс лагеря')} зовёт подмогу! С неё ничего не выпадает`, -1, '#ff9d7a'); }
+  }
   function bossAI(G, m, dt) {
     const cfg = C(), def = cfg.BOSSES[m.type], MV = cfg.BOSS_MOVES;
     const np = nearestPlayer(G, m.x, m.y);
@@ -1720,7 +1764,7 @@
       for (let i = 0; i < MV.wolves; i++) {
         const a = rnd() * TAU;
         const w = Sim.spawnMonster(G, 'wolf', m.x + Math.cos(a) * 60, m.y + Math.sin(a) * 60, false, 0, 1, m.lv);
-        w.hunter = true; w.st = 'chase';
+        w.hunter = true; w.st = 'chase'; w.nodrop = true; w.sum = m.id; w.life = C().BOSS_SUMMON ? C().BOSS_SUMMON.life : 45; w.xpk = 0;
       }
     } else if (k === 'hex') {
       for (const p of G.players) {
@@ -2165,7 +2209,7 @@
     G.spawnT -= dt;
     if (G.spawnT > 0) return;
     G.spawnT = G.isNight ? cfg.SPAWN_INTERVAL_NIGHT : cfg.SPAWN_INTERVAL_DAY;
-    const roamers = G.monsters.filter(m => !m.guard && !m.boss).length;
+    const roamers = G.monsters.filter(m => !m.guard && !m.boss && m.sum === undefined).length;
     const coop = Sim.activeCount(G) > 1 ? cfg.COOP_MONSTER_MULT : 1;
     const max = G.isNight ? Math.min(cfg.NIGHT_MONSTERS_CAP, Math.round((cfg.NIGHT_MAX_MONSTERS + (G.day - 1) * cfg.NIGHT_MONSTERS_PER_NIGHT) * coop)) : Math.round(cfg.DAY_MAX_MONSTERS * coop);
     if (roamers >= max) return;
@@ -2226,6 +2270,7 @@
     if (c === 'pick') { AB.Skills.pick(G, p, x | 0); return; }
     if (c === 'apick') { pickAbility(G, p, x | 0); return; }
     if (c === 'reroll') { AB.Skills.reroll(G, p); return; }
+    if (c === 'areroll') { rerollAbility(G, p); return; }
     if (c === 'goods') {
       const M = cfg.MERCHANT, g = cfg.MERCHANT_GOODS.find(q => q.id === x);
       if (!g || !G.merchant || AB.dist(p.x, p.y, G.merchant.x, G.merchant.y) > M.radius * 1.6) return;
@@ -2630,11 +2675,11 @@
       p: G.players.map(p => ({
         id: p.id, n: p.name, pr: p.prof, x: r1(p.x), y: r1(p.y), a: r1(p.a), hp: r1(p.hp), mh: r1(p.mhp), f: r1(p.food), d: p.dead ? 1 : 0, rs: r1(p.rs),
         inv: p.inv, sw: r1(p.sw), sk: p.sk, sa: r1(p.sa), tp: p.tp, h: r1(p.hurt), mv: p.moving ? 1 : 0,
-        ab: p.ab.map(a => [a.id, a.lv]), abt: p.ab.map(a => r1(Math.max(0, (p.abT && p.abT[a.id]) || 0))), xp: r1(p.xp), xl: p.xl, aq: p.aq, ao: p.ao, sh: Math.round(p.sh || 0), lf: p.left ? 1 : 0,
+        ab: p.ab.map(a => [a.id, a.lv]), abt: p.ab.map(a => r1(Math.max(0, (p.abT && p.abT[a.id]) || 0))), xp: r1(p.xp), xl: p.xl, aq: p.aq, ao: p.ao, arr: p.arr || 0, sh: Math.round(p.sh || 0), lf: p.left ? 1 : 0,
         sl: p.slowT > 0 ? p.slowPct : 0, mo: p.mo || [], ax: p.axe || 1, pk: p.pick || 0, bu: p.bagUp || 0, mg: p.mgBought || {}, lv: p.level, q: p.queue, of: p.offers, sks: p.skills.map(q => q.id + ':' + q.tier + ':' + (q.sup || 0)), st: stCompact(p.st), rr: p.rr, swl: p.swl, eq: p.eq || {}, wd: p.wd || [],
       })),
       m: G.monsters.map(m => [m.id, MON_TYPES.indexOf(m.type), r1(m.x), r1(m.y), r1(m.a), Math.round(m.hp), Math.round(m.maxHp), m.hurt > 0 ? 1 : 0,
-        (m.guard ? 1 : 0) | (m.hunter ? 2 : 0) | (m.st === 'chase' ? 4 : 0) | ((m.atk || 0) > 0 ? 8 : 0) | (m.burn ? 16 : 0) | (m.slowT > 0 ? 32 : 0) | (m.act ? 64 : 0) | (m.mark > 0 ? 128 : 0),
+        (m.guard ? 1 : 0) | (m.hunter ? 2 : 0) | (m.st === 'chase' ? 4 : 0) | ((m.atk || 0) > 0 ? 8 : 0) | (m.burn ? 16 : 0) | (m.slowT > 0 ? 32 : 0) | (m.act ? 64 : 0) | (m.mark > 0 ? 128 : 0) | (m.nodrop ? 256 : 0),
         m.dying > 0 ? r1(m.dying) : 0, m.act ? m.act.k : 0, m.es ? [Math.round(m.es * 100) / 100, m.en] : 0, m.lv || 1, m.site >= 0 ? m.site : -1]),
       pr: G.projs.map(p => [p.id, p.k, r1(p.x), r1(p.y), Math.round(p.vx), Math.round(p.vy)]),
       ep: G.eprojs.map(e => [r1(e.x), r1(e.y), Math.round(e.vx), Math.round(e.vy), e.lk || 0]),
@@ -2694,7 +2739,7 @@
       if (!mine) { p.a = sp.a; p.moving = !!sp.mv; }
       p.name = sp.n; p.prof = sp.pr; p.hp = sp.hp; p.mhp = sp.mh; p.food = sp.f; p.dead = !!sp.d; p.rs = sp.rs; p.left = !!sp.lf;
       p.inv = sp.inv; p.sw = sp.sw; p.sk = sp.sk; p.sa = sp.sa; p.tp = sp.tp; p.hurt = sp.h;
-      p.ab = sp.ab.map(a => ({ id: a[0], lv: a[1] })); p.abT = {}; p.ab.forEach((a, i) => p.abT[a.id] = sp.abt[i]); p.xp = sp.xp; p.xl = sp.xl; p.aq = sp.aq; p.ao = sp.ao; p.sh = sp.sh;
+      p.ab = sp.ab.map(a => ({ id: a[0], lv: a[1] })); p.abT = {}; p.ab.forEach((a, i) => p.abT[a.id] = sp.abt[i]); p.xp = sp.xp; p.xl = sp.xl; p.aq = sp.aq; p.ao = sp.ao; p.arr = sp.arr || 0; p.sh = sp.sh;
       p.eq = sp.eq || {}; p.wd = sp.wd || []; p.mo = sp.mo; p.axe = sp.ax; p.pick = sp.pk || 0; p.bagUp = sp.bu; p.mgBought = sp.mg; p.slowT = sp.sl ? 1 : 0; p.slowPct = sp.sl || 0; p.level = sp.lv; p.queue = sp.q; p.offers = sp.of; p.rr = sp.rr; p.swl = sp.swl;
       p.skills = sp.sks.map(x => { const a = x.split(':'); return { id: a[0], tier: +a[1], sup: +a[2] }; });
       const st = {}; AB.Skills.statKeys().forEach(k => st[k] = sp.st[k] || 0); p.st = st;
@@ -2706,7 +2751,7 @@
       m.type = MON_TYPES[a[1]]; m.tx = a[2]; m.ty = a[3]; m.a = a[4]; m.hp = a[5]; m.maxHp = a[6];
       m.hurt = a[7] ? 0.1 : 0; const f = a[8];
       m.guard = !!(f & 1); m.hunter = !!(f & 2); m.st = f & 4 ? 'chase' : 'idle'; m.atk = f & 8 ? 0.2 : 0;
-      m.burn = f & 16 ? {} : null; m.slowT = f & 32 ? 1 : 0; m.mark = f & 128 ? 1 : 0;
+      m.burn = f & 16 ? {} : null; m.slowT = f & 32 ? 1 : 0; m.mark = f & 128 ? 1 : 0; m.nodrop = !!(f & 256);
       m.act = f & 64 ? { k: a[10] } : null;
       m.dying = a[9]; m.r = AB.monDef(m.type).radius; m.boss = AB.isBoss(m.type); m.lostT = m.lostT || 0;
       if (a[11]) { m.es = a[11][0]; m.en = a[11][1]; m.r *= m.es; m.guard = true; } else { m.es = 0; m.en = null; }
