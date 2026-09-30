@@ -6,10 +6,10 @@ Avi-Bro — локальный сервер для игры вдвоём в од
 они сами скачивают последнюю версию игры с GitHub и запускают этот сервер.
 
 Вручную (в папке с игрой):
-    python3 server.py            # порт 8080
+    python3 server.py            # порт 8067
     python3 server.py 9000       # другой порт
 
-Постоянная ссылка для обоих компьютеров: http://<имя-компьютера>.local:8080 (или http://IP:8080).
+Постоянная ссылка для обоих компьютеров: http://<имя-компьютера>.local:8067 (или http://IP:8067).
 Сервер отдаёт файлы игры, показывает список комнат (/rooms), пересылает игровые сообщения (WebSocket /ws)
 и умеет обновлять игру до последней версии с GitHub (/update). Нужен только Python 3.
 """
@@ -17,7 +17,7 @@ import asyncio, os, sys, hashlib, base64, json, mimetypes, re, socket, struct, i
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 ARGS = [a for a in sys.argv[1:] if not a.startswith('--')]
-PORT = int(ARGS[0]) if ARGS else 8080
+PORT = int(ARGS[0]) if ARGS else 8067
 MAX_ROOMS = 30          # защита от мусора: не больше комнат
 MAX_MSG = 16 * 1024 * 1024  # и не больше 16 МБ в одном сообщении
 GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Avi-Bro: скачать последнюю версию игры и запустить сервер для игры вдвоём.
 # Первый запуск: bash start-server.sh — дальше запускайте «Avi-Bro сервер» из меню приложений.
-# Постоянная ссылка для обоих компьютеров: http://<имя-этого-компьютера>.local:8080
+# Постоянная ссылка для обоих компьютеров: http://<имя-этого-компьютера>.local:8067
 set -e
 DIR="$HOME/avi-bro-server"
-PORT="${AVIBRO_PORT:-8080}"
+PORT="${AVIBRO_PORT:-8067}"
 ZIP="${AVIBRO_ZIP:-https://github.com/Assinross/Avi-Bro/archive/refs/heads/main.zip}"
 mkdir -p "$DIR"
 # уже запущен? второй сервер не нужен — просто открываем игру

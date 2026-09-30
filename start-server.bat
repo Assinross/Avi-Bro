@@ -6,7 +6,7 @@ rem Работаем из копии во временной папке: обн�
 if not "%~1"=="--run" ( copy /y "%~f0" "%TEMP%\avibro-start.bat" >nul & "%TEMP%\avibro-start.bat" --run & exit /b )
 setlocal
 set "DIR=%USERPROFILE%\avi-bro-server"
-set PORT=8080
+set PORT=8067
 set "ZIP=https://github.com/Assinross/Avi-Bro/archive/refs/heads/main.zip"
 set "AVIBRO_ZIP=%ZIP%"
 set "PY="

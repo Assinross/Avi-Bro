@@ -5,8 +5,8 @@
 ## Run / verify
 
 - No build, no npm, no tests, no lint, no CI. Do not add tooling.
-- Solo quick check: `python3 -m http.server 8080` in repo root, open `http://localhost:8080`.
-- Coop check: `python3 server.py [port]` (default 8080, stdlib only). Open the printed LAN URL on both machines. Custom port: `python3 server.py 9000`.
+- Solo quick check: `python3 -m http.server 8067` in repo root, open `http://localhost:8067`.
+- Coop check: `python3 server.py [port]` (default 8067, stdlib only). Open the printed LAN URL on both machines. Custom port: `python3 server.py 9000`.
 - Single-machine coop debug: append `?local=1`, open in two tabs (BroadcastChannel, no server needed — see `js/net.js:5`).
 - After any change: hard-reload in browser (`Ctrl+Shift+R`). No hot reload, no cache-busting.
 - Verify with `python3 -c "import ast; ast.parse(open('server.py').read())"` for `server.py`, `node --check <file>` for JS if node exists; otherwise rely on browser console.
