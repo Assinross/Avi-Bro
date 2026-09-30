@@ -1132,11 +1132,19 @@
     if (App.playT > 8 && med > 1 / 40) perf.bad++; else perf.bad = 0;
     if (perf.bad >= 2) { setLowQ(true); AB.FX.toast('Игра тормозит — включена облегчённая графика (меню паузы)', '#9fd3ff'); }
   }
+  // Счётчик FPS: кадры за полсекунды (рисует render.js, галочка в паузе)
+  const fpsC = { n: 0, t: 0 };
+  function countFps(now) {
+    fpsC.n++;
+    if (!fpsC.t) fpsC.t = now;
+    if (now - fpsC.t >= 500) { AB.Render.fps = Math.round(fpsC.n * 1000 / (now - fpsC.t)); fpsC.n = 0; fpsC.t = now; }
+  }
   let last = performance.now();
   function frame(now) {
     let dt = (now - last) / 1000; last = now;
     App.playT = App.state === 'play' ? (App.playT || 0) + dt : 0;
     watchPerf(dt);
+    countFps(now);
     if (dt > 0.05) dt = 0.05;
     try { tick(dt); } catch (e) { console.error(e); }
     requestAnimationFrame(frame);
@@ -1296,6 +1304,9 @@
     $('optRun').addEventListener('change', (e) => setRunAlways(e.target.checked, false));
     $('optLowQ').checked = !!AB.Render.lowQ;
     $('optLowQ').addEventListener('change', (e) => setLowQ(e.target.checked, true));
+    try { AB.Render.showFps = localStorage.getItem('avibro-fps') !== '0'; } catch (e) { AB.Render.showFps = true; }
+    $('optFps').checked = AB.Render.showFps;
+    $('optFps').addEventListener('change', (e) => { AB.Render.showFps = e.target.checked; try { localStorage.setItem('avibro-fps', e.target.checked ? '1' : '0'); } catch (e2) { /* */ } });
     $('optAutoPick').addEventListener('change', (e) => setAutoPick(e.target.checked));
     document.querySelectorAll('[data-ex]').forEach(b => b.addEventListener('click', () => { AB.Sound.play('click', 1); const [c, v] = b.dataset.ex.split(':'); sendCmd(c, v === 'all' ? 'all' : +v); App.exSig = null; }));
     bind('btnCoop', () => { show('coop'); $('coopErr').textContent = ''; $('peerWarn').classList.toggle('hidden', AB.Net.available() || !!AB.Net.server); setupCoopScreen(); });

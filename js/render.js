@@ -2373,6 +2373,7 @@
       const wt = `${AB.WX.icon || ''} ${AB.WX.name}`; ctx.font = 'bold 14px "DejaVu Sans", "Nunito", system-ui'; const ww = ctx.measureText(wt).width + 22;
       panel(ctx, 292, 14, ww, 32, 10); ctx.textAlign = 'left'; ctx.fillStyle = AB.WX.color || '#fff'; ctx.fillText(wt, 303, 31);
       ctx.font = 'bold 26px "Nunito", system-ui, sans-serif'; ctx.fillStyle = '#fff'; }
+    drawFps(ctx, 296, 60); // под плашкой погоды
     // солнце/луна
     if (ti.isNight) { S().circle(ctx, 36, 66, 8, '#cfe0ff'); S().circle(ctx, 40, 63, 7, 'rgba(10,18,15,1)'); }
     else { S().circle(ctx, 36, 66, 7, '#ffd24a'); ctx.strokeStyle = '#ffd24a'; ctx.lineWidth = 2; for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4; ctx.beginPath(); ctx.moveTo(36 + Math.cos(a) * 9, 66 + Math.sin(a) * 9); ctx.lineTo(36 + Math.cos(a) * 12, 66 + Math.sin(a) * 12); ctx.stroke(); } }
@@ -2720,6 +2721,15 @@
       ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.fillText(badge, x + s - bw / 2 + 4, y + 2.5);
     }
   }
+  // Счётчик FPS (R.fps считает main.js): зелёный - плавно, жёлтый - терпимо, красный - тормозит
+  function drawFps(ctx, x, y) {
+    if (!R.showFps || !R.fps) return;
+    ctx.save();
+    ctx.font = 'bold 12px "Nunito", system-ui'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillText(`${R.fps} FPS`, x + 1, y + 1);
+    ctx.fillStyle = R.fps >= 50 ? '#8fe08a' : R.fps >= 30 ? '#ffd24a' : '#ff6a5a'; ctx.fillText(`${R.fps} FPS`, x, y);
+    ctx.restore();
+  }
   function hudMobile(G, me, ui) {
     const ctx = R.ctx, cfg = C(), panelOpen = ui.mobPanel || null;
     ctx.save(); ctx.setTransform(R.dpr, 0, 0, R.dpr, 0, 0);
@@ -2732,6 +2742,7 @@
     ctx.textBaseline = 'middle';
     // --- состояние (слева сверху)
     panel(ctx, 8, 8, 196, 64, 12);
+    drawFps(ctx, 212, 18); // справа от панели состояния
     ctx.textAlign = 'left'; ctx.font = 'bold 14px "Nunito", system-ui'; ctx.fillStyle = '#fff';
     ctx.fillText(`${ti.isNight ? 'Ночь' : 'День'} ${ti.day}/${cfg.NIGHTS_TO_WIN}`, 16, 21);
     if (AB.WX && AB.WX.icon) { const dw = ctx.measureText(`${ti.isNight ? 'Ночь' : 'День'} ${ti.day}/${cfg.NIGHTS_TO_WIN}`).width; ctx.font = 'bold 13px "DejaVu Sans", system-ui'; ctx.fillStyle = AB.WX.color; ctx.fillText(AB.WX.icon, 22 + dw, 21); }
