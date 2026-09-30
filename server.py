@@ -13,7 +13,7 @@ Avi-Bro — локальный сервер для игры вдвоём в од
 Сервер отдаёт файлы игры, показывает список комнат (/rooms), пересылает игровые сообщения (WebSocket /ws)
 и умеет обновлять игру до последней версии с GitHub (/update). Нужен только Python 3.
 """
-import asyncio, os, sys, hashlib, base64, json, mimetypes, socket, struct, io, shutil, threading, time, zipfile, urllib.request
+import asyncio, os, sys, hashlib, base64, json, mimetypes, re, socket, struct, io, shutil, threading, time, zipfile, urllib.request
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 ARGS = [a for a in sys.argv[1:] if not a.startswith('--')]
@@ -34,6 +34,39 @@ def host_links():
 
 
 MANIFEST = os.path.join(ROOT, '.avibro-files.json')  # какие файлы положило обновление — чтобы убирать устаревшие
+SAVES = os.path.join(ROOT, 'saves')  # сохранения игр; обновление с GitHub эту папку не трогает
+SAVE_KEY = re.compile(r'^(solo|pair)-[a-z0-9-]{1,64}$')
+SAVE_MAX = 5 * 1024 * 1024  # больше не бывает: мир хранится как зерно + изменения
+
+
+def saves_list():
+    """Витрины всех сохранений (без данных мира). Битый файл - {key, bad: True}, чтобы его можно было удалить."""
+    out = []
+    try:
+        names = os.listdir(SAVES)
+    except OSError:
+        return out
+    for fn in names:
+        key = fn[:-5]
+        if not fn.endswith('.json') or not SAVE_KEY.match(key):
+            continue
+        try:
+            with open(os.path.join(SAVES, fn), encoding='utf-8') as f:
+                d = json.load(f)
+            out.append({k: d.get(k) for k in ('key', 'at', 'v', 'diff', 'meta')})
+        except (OSError, ValueError):
+            out.append({'key': key, 'bad': True})
+    return out
+
+
+def save_write(key, data):
+    """Записать сохранение целиком: файл никогда не бывает "наполовину записан"."""
+    os.makedirs(SAVES, exist_ok=True)
+    dst = os.path.join(SAVES, key + '.json')
+    tmp = dst + '.part'
+    with open(tmp, 'wb') as out:
+        out.write(data)
+    os.replace(tmp, dst)
 
 
 def update_from_github():
@@ -309,6 +342,37 @@ async def handle(reader, writer):
         except Exception as e:
             body = json.dumps({'ok': False, 'error': str(e)}, ensure_ascii=False).encode()
         ctype, status = 'application/json', '200 OK'
+    elif path == '/saves' or path.startswith('/saves/'):
+        key = path[len('/saves/'):]
+        ctype, status, body = 'application/json', '200 OK', b'{"ok":true}'
+        try:
+            if path == '/saves':
+                body = json.dumps(saves_list(), ensure_ascii=False).encode()
+            elif not SAVE_KEY.match(key):
+                status, body = '400 Bad Request', b'{"ok":false,"error":"bad key"}'
+            elif method == 'GET':
+                try:
+                    with open(os.path.join(SAVES, key + '.json'), 'rb') as f:
+                        body = f.read()
+                except OSError:
+                    status, body = '404 Not Found', b'null'
+            elif method == 'POST':
+                n = int(headers.get('content-length') or 0)
+                if n <= 0 or n > SAVE_MAX:
+                    status, body = '413 Payload Too Large', b'{"ok":false,"error":"size"}'
+                else:
+                    data = await asyncio.wait_for(reader.readexactly(n), 30)
+                    json.loads(data)  # мусор не пишем
+                    save_write(key, data)
+            elif method == 'DELETE':
+                try:
+                    os.remove(os.path.join(SAVES, key + '.json'))
+                except FileNotFoundError:
+                    pass
+            else:
+                status, body = '405 Method Not Allowed', b'{"ok":false}'
+        except Exception as e:
+            status, body = '500 Internal Server Error', json.dumps({'ok': False, 'error': str(e)}, ensure_ascii=False).encode()
     else:
         rel = path.lstrip('/') or 'index.html'
         full = os.path.realpath(os.path.join(ROOT, rel))
