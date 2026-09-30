@@ -31,6 +31,7 @@
     AB.WX = Sim.wxDef('clear');
     G.tstock = {}; if (mode !== 'guest') Sim.restockTowns(G);
     W.G = G; // для столкновений со зданиями
+    W.treeBase = W.trees.length; // деревья с id >= treeBase - выросшие побеги (их нет в мире из зерна)
     if (mode !== 'guest') {
       W.sites.forEach((s) => {
         s.guards.forEach((type, k) => spawnGuard(G, s, type, (k / s.guards.length) * TAU, s.elite ? 0 : 55));
@@ -392,6 +393,7 @@
 
   function onDawn(G, prevDay) {
     const cfg = C();
+    G.saveReq = true; // автосохранение на рассвете (делает main.js)
     if ((prevDay + 1) % cfg.MERCHANT.every === 0) {
       const f = G.fires.find(q => q.main);
       G.merchant = { x: f.x + cfg.MERCHANT.offset[0], y: f.y + cfg.MERCHANT.offset[1] };
@@ -2669,7 +2671,7 @@
     if (G.oreDirty) G.oreDirty.clear();
     s.or = ores;
     if (full) {
-      W.trees.forEach(t => { if (t.dead || t.hp < C().TREE_HP) trees.push(treeRec(t)); });
+      W.trees.forEach(t => { if (t.dead || t.hp < C().TREE_HP || t.id >= W.treeBase) trees.push(treeRec(t)); });
       W.bushes.forEach(b => { if (b.berries === 0) bushes.push([b.id, 0]); });
     } else {
       G.treeDirty.forEach(id => { const t = W.trees[id]; trees.push(treeRec(t)); });
