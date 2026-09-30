@@ -28,6 +28,7 @@
       <button id="btnSolo" class="btn gold">Один игрок</button>
       <button id="btnCoop" class="btn">Игра вдвоём</button>
       <button id="btnHelp" class="btn ghost">Как играть</button>
+      <button id="btnSaves" class="btn ghost">Сохранения</button>
       <div id="menuMsg" class="msg"></div>
       <div id="netInfo" class="msg ok hidden"></div>
     </div>
@@ -41,6 +42,15 @@
       <button id="btnCont" class="btn gold">Продолжить</button>
       <button id="btnNew" class="btn">Новая игра</button>
       <p class="note">Новая игра заменит это сохранение при первом сохранении.</p>
+      <button class="btn ghost" data-back="menu">Назад</button>
+    </div>
+  </div>
+
+  <!-- Сохранения: список для удаления -->
+  <div id="saves" class="screen hidden">
+    <div class="card">
+      <h2>Сохранения</h2>
+      <div id="savesList" class="saves"></div>
       <button class="btn ghost" data-back="menu">Назад</button>
     </div>
   </div>

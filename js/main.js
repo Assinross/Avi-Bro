@@ -9,7 +9,7 @@
   };
 
   /* ============================ ЭКРАНЫ ============================ */
-  const screens = ['menu', 'cont', 'coop', 'lobby', 'joining', 'help', 'pause', 'over', 'prof'];
+  const screens = ['menu', 'cont', 'saves', 'coop', 'lobby', 'joining', 'help', 'pause', 'over', 'prof'];
   function show(id) {
     screens.forEach(s => $(s).classList.toggle('hidden', s !== id));
     document.body.classList.toggle('in-game', id === null);
@@ -231,6 +231,28 @@
   }
 
   // Экран «Игра вдвоём»: со своего сервера — ссылка и список комнат; из интернета — скачать сервер
+  // Экран "Сохранения": все сохранения текущего хранилища, только удаление
+  function showSaves() {
+    show('saves');
+    const box = $('savesList');
+    box.innerHTML = '<span class="note">Загрузка…</span>';
+    App.netReady.then(() => AB.Save.list()).then(list => {
+      box.innerHTML = '';
+      if (!list.length) { box.innerHTML = '<span class="note">Сохранений пока нет</span>'; return; }
+      list.forEach(h => {
+        const row = document.createElement('div'); row.className = 'saverow';
+        const t = document.createElement('span'); t.textContent = AB.Save.label(h);
+        const b = document.createElement('button'); b.className = 'btn small'; b.textContent = 'Удалить';
+        b.addEventListener('click', () => {
+          if (!b.dataset.arm) { b.dataset.arm = 1; b.textContent = 'Точно удалить?'; setTimeout(() => { if (!b.disabled) { delete b.dataset.arm; b.textContent = 'Удалить'; } }, 3000); return; }
+          b.disabled = true;
+          AB.Save.remove(h.key).then(showSaves).catch(() => { b.disabled = false; b.textContent = 'Ошибка, ещё раз'; });
+        });
+        row.append(t, b); box.appendChild(row);
+      });
+    });
+  }
+
   function setupCoopScreen() {
     const sv = AB.Net.server; App.roomsSig = null;
     $('lanBox').classList.toggle('hidden', !sv);
@@ -1260,6 +1282,7 @@
       });
     });
     bind('btnHelp', () => show('help'));
+    bind('btnSaves', showSaves);
     bind('btnHost', () => chooseProf(startHost, 'coop'));
     bind('btnJoin', () => { const code = $('code').value; if (code.replace(/\D/g, '').length < 3) { $('coopErr').textContent = 'Введите код комнаты'; return; } chooseProf(() => startJoin(code), 'coop', true); });
     document.querySelectorAll('[data-back]').forEach(b => b.addEventListener('click', () => { AB.Net.close(); show(b.dataset.back); }));

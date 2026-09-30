@@ -286,3 +286,8 @@ body.touch #trader { justify-content: flex-end; align-items: flex-end; padding-b
 
 .diffbox{margin:4px 0 10px}.diffs{display:flex;gap:8px;justify-content:center;margin:4px 0}.diffs .btn{min-width:120px}
 .diffbox .mchead{text-align:center}
+
+/* Экран "Сохранения" */
+.saves { display: flex; flex-direction: column; gap: 8px; margin: 10px 0; max-height: 50vh; overflow-y: auto; }
+.saverow { display: flex; gap: 10px; align-items: center; justify-content: space-between; font-size: 14px; }
+.saverow span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
