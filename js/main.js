@@ -86,12 +86,13 @@
   }
 
   // Продолжить одиночную игру из сохранения
-  function continueSolo(d) {
+  // key - если грузим с экрана "Сохранения" чужой/старый ключ (игра открыта по другому адресу): пишем в тот же файл
+  function continueSolo(d, key) {
     let G;
     try { G = AB.Save.unpack(d, 'solo'); } catch (e) { show('menu'); $('menuMsg').textContent = 'Сохранение не загрузилось: ' + e.message; return; }
     const me = G.players.find(q => q.id === 0);
-    if (me) { me.name = playerName(); me.uid = AB.Save.uid(); }
-    App.saveKey = AB.Save.keySolo();
+    if (me) { me.name = playerName(); if (!key) me.uid = AB.Save.uid(); }
+    App.saveKey = key || AB.Save.keySolo();
     beginGame(G, 'solo', 0);
   }
 
@@ -279,13 +280,18 @@
       list.forEach(h => {
         const row = document.createElement('div'); row.className = 'saverow';
         const t = document.createElement('span'); t.textContent = AB.Save.label(h);
+        if (AB.Save.ok(h) && /^solo-/.test(h.key)) { // одиночное можно загрузить отсюда (нужно, если игра открыта по другому адресу)
+          const ld = document.createElement('button'); ld.className = 'btn small gold'; ld.textContent = 'Загрузить';
+          ld.addEventListener('click', () => { ld.disabled = true; AB.Save.load(h.key).then(d => { if (AB.Save.ok(d)) continueSolo(d, h.key); else { ld.disabled = false; ld.textContent = 'Не загрузилось'; } }); });
+          row.append(ld);
+        }
         const b = document.createElement('button'); b.className = 'btn small'; b.textContent = 'Удалить';
         b.addEventListener('click', () => {
           if (!b.dataset.arm) { b.dataset.arm = 1; b.textContent = 'Точно удалить?'; setTimeout(() => { if (!b.disabled) { delete b.dataset.arm; b.textContent = 'Удалить'; } }, 3000); return; }
           b.disabled = true;
           AB.Save.remove(h.key).then(showSaves).catch(() => { b.disabled = false; b.textContent = 'Ошибка, ещё раз'; });
         });
-        row.append(t, b); box.appendChild(row);
+        row.prepend(t); row.append(b); box.appendChild(row);
       });
     });
   }
