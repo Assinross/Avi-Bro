@@ -1255,6 +1255,17 @@
     ctx.fillStyle = '#1a1206'; ctx.fillRect(x - 1, y, 2, 3.5);
     ctx.restore();
   }
+  // Бегущий человечек (пиктограмма)
+  function runnerIcon(ctx, x, y, s, col) {
+    ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
+    ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 3.2; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.beginPath(); ctx.arc(4, -12, 3.6, 0, TAU); ctx.fill();                                    // голова
+    ctx.beginPath(); ctx.moveTo(2, -6); ctx.lineTo(-2, 3); ctx.stroke();                           // туловище
+    ctx.beginPath(); ctx.moveTo(-8, -3); ctx.lineTo(-3, -6); ctx.lineTo(2, -6); ctx.lineTo(6, -1); ctx.lineTo(10, -3); ctx.stroke(); // руки
+    ctx.beginPath(); ctx.moveTo(-2, 3); ctx.lineTo(4, 7); ctx.lineTo(2, 13); ctx.stroke();         // нога впереди
+    ctx.beginPath(); ctx.moveTo(-2, 3); ctx.lineTo(-6, 9); ctx.lineTo(-12, 9); ctx.stroke();       // нога сзади
+    ctx.restore();
+  }
   function hpBar(ctx, x, y, w, frac, col) {
     ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(x - w / 2 - 1, y - 1, w + 2, 5);
     ctx.fillStyle = col; ctx.fillRect(x - w / 2, y, w * AB.clamp(frac, 0, 1), 3);
@@ -2632,7 +2643,7 @@
       }
       // подсказки
       const st = me.st || {}, bc = (v) => Math.max(1, Math.round(v * (1 - Math.min(80, st.buildCost || 0) / 100)));
-      const hints = [['E', 'Съесть'], ['R', 'Посадить'], ['G', `Грядка (${bc(cfg.GARDEN_BED_COST)})`], ['F', 'Автоподбор']];
+      const hints = [['Пробел', AB.App && AB.App.runAlways ? 'Шагом' : 'Бег'], ['Caps', AB.App && AB.App.runAlways ? 'Всегда бегом ✓' : 'Всегда бегом'], ['E', 'Съесть'], ['R', 'Посадить'], ['G', `Грядка (${bc(cfg.GARDEN_BED_COST)})`], ['F', 'Автоподбор']];
       if (me.aq > 0) hints.push(['K', 'Навык']);
       if (st.structBuild > 0) { hints.push(['T', `Частокол (${bc(cfg.STRUCTURES.wall.cost)})`]); hints.push(['Y', `Вышка (${bc(cfg.STRUCTURES.tower.cost)})`]); }
       else if (st.turretBuild > 0) hints.push(['T', `Турель/пушка (${bc(cfg.STRUCTURES.turret.cost)})`]);
@@ -2645,7 +2656,8 @@
       hints.push(['I', (me.wd && me.wd.length) ? `Снаряжение (${me.wd.length})` : 'Снаряжение']);
       ctx.font = '600 12px "Nunito", system-ui, sans-serif';
       // раскладка подсказок в 1–2 строки между рюкзаком и миникартой
-      const hw = (h) => ctx.measureText(h[1]).width + 24 + (h[0].length > 1 ? 28 : 16);
+      const kwOf = (k) => { ctx.font = 'bold 11px system-ui'; const w = Math.max(16, ctx.measureText(k).width + 8); ctx.font = '600 12px "Nunito", system-ui, sans-serif'; return w; };
+      const hw = (h) => ctx.measureText(h[1]).width + 24 + kwOf(h[0]);
       const left = 330, right = SW - cfg.MINIMAP_SIZE - 40, maxW = right - left, hy2 = hy - 22;
       const rows = [[]]; let rw = 0;
       hints.forEach(h => { const w2 = hw(h); if (rw + w2 > maxW && rows[rows.length - 1].length) { rows.push([]); rw = 0; } rows[rows.length - 1].push(h); rw += w2; });
@@ -2654,7 +2666,7 @@
         let hxx = Math.max(left, Math.min(SW / 2 - tot / 2, right - tot));
         const hyy = hy2 - 30 - (rows.length - 1 - ri) * 24;
         row.forEach(h => {
-          const tw2 = ctx.measureText(h[1]).width, kw = h[0].length > 1 ? 28 : 16;
+          const tw2 = ctx.measureText(h[1]).width, kw = kwOf(h[0]);
           ctx.fillStyle = 'rgba(10,18,15,0.7)'; roundRect(ctx, hxx, hyy - 10, tw2 + 16 + kw, 20, 6); ctx.fill();
           ctx.fillStyle = '#ffd24a'; roundRect(ctx, hxx + 3, hyy - 7, kw, 14, 3); ctx.fill();
           ctx.fillStyle = '#1a1206'; ctx.textAlign = 'center'; ctx.font = 'bold 11px system-ui'; ctx.fillText(h[0], hxx + 3 + kw / 2, hyy);
@@ -2914,6 +2926,14 @@
         ctx.globalAlpha = foodN ? 1 : 0.4; ctx.drawImage(S().icons.meat, ex - 17, ey - 17, 34, 34); ctx.globalAlpha = 1;
         ctx.font = 'bold 11px "Nunito", system-ui'; ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.strokeText(`съесть · ${foodN}`, ex, ey + r + 9); ctx.fillText(`съесть · ${foodN}`, ex, ey + r + 9);
         click(ex - r, ey - r, r * 2, r * 2, 'eat', null);
+        // кнопка бега (бегущий человечек) — над «Съесть»
+        const on = !!(AB.App && AB.App.runMob), ry = ey - r * 2 - 26;
+        ctx.fillStyle = on ? 'rgba(90,168,255,0.9)' : 'rgba(10,18,15,0.82)'; ctx.beginPath(); ctx.arc(ex, ry, r, 0, TAU); ctx.fill();
+        ctx.strokeStyle = on ? '#dff0ff' : '#6ac8ff'; ctx.lineWidth = 2; ctx.stroke();
+        runnerIcon(ctx, ex, ry, 1.15, on ? '#10223a' : '#dff0ff');
+        ctx.font = 'bold 11px "Nunito", system-ui'; ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+        const rl = on ? 'бег · вкл' : 'бег'; ctx.strokeText(rl, ex, ry + r + 9); ctx.fillText(rl, ex, ry + r + 9);
+        click(ex - r, ry - r, r * 2, r * 2, 'm:run', 0);
       }
     }
     // режим стройки: плашка с отменой

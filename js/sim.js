@@ -322,7 +322,7 @@
     const cfg = C();
     const s = (p.st && p.st.speed) || 0;
     const slow = p.slowT > 0 ? 1 - (p.slowPct || 0) / 100 : 1;
-    return cfg.PLAYER_SPEED * cfg.MOVE_SPEED_MULT * Math.max(0.4, 1 + s / 100) * slow * (AB.WX ? AB.WX.speed : 1);
+    return cfg.PLAYER_SPEED * cfg.MOVE_SPEED_MULT * Math.max(0.4, 1 + s / 100) * slow * (AB.WX ? AB.WX.speed : 1) * (p.run ? (cfg.RUN_SPEED_MULT || 1) : 1);
   };
   AB.movePlayer = function (W, p, dx, dy, dt) {
     if (p.dead) return;
@@ -775,7 +775,13 @@
         continue;
       }
       const st = p.st;
-      p.food = Math.max(0, p.food - cfg.FOOD_DRAIN * (1 - Math.min(cfg.HUNGER_CAP, st.hunger) / 100) * dt * (AB.WX ? AB.WX.hunger : 1));
+      p.food = Math.max(0, p.food - cfg.FOOD_DRAIN * (1 - Math.min(cfg.HUNGER_CAP, st.hunger) / 100) * dt * (AB.WX ? AB.WX.hunger : 1) * (p.run && p.moving ? (cfg.RUN_FOOD_MULT || 1) : 1));
+      // голод 10% и есть еда — едим сами
+      p._aeT = (p._aeT || 0) - dt;
+      if (p.food <= cfg.PLAYER_MAX_FOOD * (cfg.AUTO_EAT_AT || 0) && p._aeT <= 0 && Object.keys(cfg.FOOD).some(k => p.inv[k] > 0)) {
+        p._aeT = 1.5; const f0 = p.food; eatFood(G, p, null);
+        if (p.food > f0) Sim.msg(G, 'Голод! Герой перекусил сам', p.id, '#ffc46b');
+      }
       if (p.food <= 0) { p.hp -= cfg.STARVE_DAMAGE * dt; if (p.hp <= 0) damagePlayer(G, p, 1); }
       else if (p.food > cfg.REGEN_FOOD_MIN) p.hp = Math.min(p.mhp, p.hp + cfg.HP_REGEN * dt);
       if (st.regen > 0) p.hp = Math.min(p.mhp, p.hp + st.regen * dt);

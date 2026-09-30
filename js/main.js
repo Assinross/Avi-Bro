@@ -152,7 +152,7 @@
               else { p.x += (m.x - p.x) / d * lim; p.y += (m.y - p.y) / d * lim; }
               p._inT = now;
             }
-            p.a = m.a; p.moving = !!m.mv;
+            p.a = m.a; p.moving = !!m.mv; p.run = !!m.rn;
           } else if (m.t === 'cmd') AB.Sim.command(App.G, 1, m.c, m.x, m.y);
         }
       },
@@ -264,6 +264,7 @@
       if (k === 'KeyR') command('plant');
       if (k === 'KeyG') command('bed');
       if (k === 'KeyF') setAutoPick(!App.autoPick);
+      if (k === 'CapsLock') setRunAlways(!App.runAlways, true);
     });
     window.addEventListener('keyup', (e) => App.keys.delete(e.code));
     window.addEventListener('blur', () => { App.keys.clear(); App.mouse.down = false; });
@@ -479,6 +480,7 @@
     if (c.c === 'm:gear') { toggleGear(); return; }
     if (c.c === 'm:panel') { App.mobPanel = App.mobPanel === c.v ? null : c.v; return; }
     if (c.c === 'm:nop') return;
+    if (c.c === 'm:run') { App.runMob = !App.runMob; AB.FX.toast(App.runMob ? 'Бег включён — сытость тратится в 4 раза быстрее' : 'Шагом', '#bfe4ff'); return; }
     if (c.c === 'm:cancelbuild') { App.buildMode = null; return; }
     if (c.c === 'eat' && !c.v) { command('eat'); return; }
     if (c.c === 'buildmode') {
@@ -966,6 +968,12 @@
     }
     let dx = 0, dy = 0;
     const K = App.keys;
+    // бег: пробел; при «всегда бегом» пробел наоборот — шагом. На телефоне — кнопка-переключатель.
+    me.run = App.touch ? !!App.runMob : (App.runAlways ? !K.has('Space') : K.has('Space'));
+    if (me.run && me.moving) {
+      App.dustT = (App.dustT || 0) - dt;
+      if (App.dustT <= 0) { App.dustT = 0.12; AB.FX.add({ t: 'smoke', x: me.x - Math.cos(me.a || 0) * 6, y: me.y + 4, z: 1, vx: (Math.random() - 0.5) * 16, vy: -4, vz: 8, g: 0, life: 0.45, size: 3 + Math.random() * 2, c: 'rgba(176,156,118,' }); }
+    }
     if (K.has('ArrowLeft') || K.has('KeyA')) dx -= 1;
     if (K.has('ArrowRight') || K.has('KeyD')) dx += 1;
     if (K.has('ArrowUp') || K.has('KeyW')) dy -= 1;
@@ -1018,6 +1026,15 @@
     if (App.mouse.onCanvas) me.a = Math.atan2(mw.y - me.y, mw.x - me.x);
     else if (dx || dy) me.a = Math.atan2(dy, dx);
   }
+
+  // «Всегда бегом» (ПК): бег без пробела, пробел — идти шагом. Запоминается в браузере.
+  function setRunAlways(on, toast) {
+    App.runAlways = !!on;
+    try { localStorage.setItem('avibro-run', on ? '1' : '0'); } catch (e) { /* */ }
+    const cb = $('optRun'); if (cb) cb.checked = App.runAlways;
+    if (toast) AB.FX.toast(on ? 'Всегда бегом (пробел — идти шагом). Бег тратит сытость в 4 раза быстрее' : 'Шагом (пробел — бежать)', '#bfe4ff');
+  }
+  try { App.runAlways = localStorage.getItem('avibro-run') === '1'; } catch (e) { App.runAlways = false; }
 
   /* ============================ ЦИКЛ ============================ */
   // Облегчённая графика: включается сама, если кадры долгие (слабый ПК, энергосбережение в браузере)
@@ -1080,7 +1097,7 @@
         G.clock += dt;
         const ti = AB.Sim.timeInfo(G.clock); G.nightF = ti.nightF; G.isNight = ti.isNight; G.day = ti.day;
         App.inT -= dt;
-        if (App.inT <= 0 && me) { App.inT = 1 / C().NET_INPUT_HZ; AB.Net.send({ t: 'in', x: Math.round(me.x * 10) / 10, y: Math.round(me.y * 10) / 10, a: Math.round(me.a * 100) / 100, mv: me.moving ? 1 : 0, tp: me.tp }); }
+        if (App.inT <= 0 && me) { App.inT = 1 / C().NET_INPUT_HZ; AB.Net.send({ t: 'in', x: Math.round(me.x * 10) / 10, y: Math.round(me.y * 10) / 10, a: Math.round(me.a * 100) / 100, mv: me.moving ? 1 : 0, rn: me.run ? 1 : 0, tp: me.tp }); }
         smoothRemote(G, dt);
       }
     }
@@ -1185,6 +1202,8 @@
     bind('btnPickWs', () => { sendCmd('pickcraft', 0); App.wsSig = null; });
     try { App.autoPick = localStorage.getItem('avibro-autopick') === null ? !!C().AUTO_PICKUP : localStorage.getItem('avibro-autopick') === '1'; } catch (e) { App.autoPick = !!C().AUTO_PICKUP; }
     $('optAutoPick').checked = App.autoPick;
+    $('optRun').checked = App.runAlways;
+    $('optRun').addEventListener('change', (e) => setRunAlways(e.target.checked, false));
     $('optLowQ').checked = !!AB.Render.lowQ;
     $('optLowQ').addEventListener('change', (e) => setLowQ(e.target.checked, true));
     $('optAutoPick').addEventListener('change', (e) => setAutoPick(e.target.checked));
