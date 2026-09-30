@@ -18,7 +18,6 @@
     const G = {
       seed, W, mode, clock: 0, day: 1, isNight: false, nightF: 0,
       players: [], monsters: [], projs: [], drops: [], eprojs: [], tele: [], structs: [], mines: [], bots: [],
-      plots: W.plots.map((p, i) => ({ id: i, x: p.x, y: p.y, crop: null, t: 0, ready: false, mod: false })),
       fires: W.fires.map((f, i) => ({ id: i, x: f.x, y: f.y, fuel: f.town !== undefined ? cfg.FIRE_FUEL_MAX : cfg.FIRE_FUEL_START, main: f.main, town: f.town, lvl: 1, mod: false, lm: 1 })),
       nextId: 1, spawnT: 2, fxOut: [], treeDirty: new Set(), bushDirty: new Set(),
       over: null, stats: { kills: 0 }, fireLevel: 1, nextBoss: cfg.BOSS_FIRST_NIGHT, bossCount: 0, team: {},
@@ -124,7 +123,7 @@
   /* ======================= ПОГОДА ======================= */
   Sim.wxDef = function (id) {
     const W = C().WEATHER; const t = (W && W.types[id]) || { name: 'Ясно' };
-    return Object.assign({ id, fireBurn: 1, crop: 1, hunger: 1, speed: 1, monSpeed: 1, vision: 1, sight: 1 }, t);
+    return Object.assign({ id, fireBurn: 1, hunger: 1, speed: 1, monSpeed: 1, vision: 1, sight: 1 }, t);
   };
   function pickWeather(G) {
     const WC = C().WEATHER, keys = Object.keys(WC.types).filter(k => k !== G.wx.id && !(WC.types[k].dayOnly && (G.isNight || G.nightF > 0.2)));
@@ -464,7 +463,7 @@
     p.inv[k] = (p.inv[k] || 0) + n;
     return true;
   }
-  // Рюкзак: дерево и еда занимают место, семена — нет
+  // Рюкзак: дерево и еда занимают место
   Sim.bagItem = (k) => k === 'wood' || k === 'hide' || k === 'coal' || k === 'iron' || k === 'stone';
   Sim.bagUsed = (p) => { let n = 0; for (const k in p.inv) if (Sim.bagItem(k)) n += p.inv[k] || 0; return n; };
   Sim.bagCap = (p) => C().BACKPACK_START + ((p.st && p.st.bag) || 0) + (p.bagUp || 0);
@@ -617,7 +616,7 @@
     if (m.dying || m.dead) return;
     const cfg = C();
     o = o || {};
-    dmg *= markMult(G, m, o.mk || o.src);
+    dmg *= markMult(G, m, o.mk || o.src) * (cfg.PLAYER_DAMAGE_MULT || 1);
     m.hp -= dmg; m.hurt = 0.12;
     if (!m.hunter && m.st !== 'return') m.st = 'chase';
     const p = o.p;
@@ -693,12 +692,11 @@
     if (m.type === 'brute' && depth > 0.5 && rnd() < (cfg.IRON.bruteChance || 0) * (1 + luck / 100)) { Sim.dropItem(G, 'iron', 1, m.x, m.y, 12); Sim.msg(G, 'Громила обронил железо!', -1, '#c8d4e0'); }
     if (def.hide && rnd() < def.hide * (1 + luck / 100)) Sim.dropItem(G, 'hide', 1, m.x, m.y, 12);
     dropCoins(G, m);
-    if (m.es) { // босс лагеря: монеты за всю группу и гарантированная шкура/семя
+    if (m.es) { // босс лагеря: монеты за всю группу и гарантированная шкура
       const E = C().ELITE; for (let k = 1; k < E.coinsMult; k++) dropCoins(G, m);
       if (def.hide) Sim.dropItem(G, 'hide', 1, m.x, m.y, 14);
       Sim.msg(G, `${m.en || def.name} повержен!`, -1, '#ffd24a');
     }
-    if (rnd() < def.seedChance * (1 + luck / 100)) Sim.dropItem(G, rnd() < 0.7 ? 'seed_carrot' : 'seed_pumpkin', 1, m.x, m.y, 12);
     if (p && p.st.killHeal > 0 && !p.dead) p.hp = Math.min(p.mhp, p.hp + p.st.killHeal);
   }
 
@@ -723,7 +721,6 @@
     if (R.coal) Sim.dropItem(G, 'coal', Math.max(1, Math.round(R.coal * mult)), m.x, m.y, 30);
     if (R.iron) Sim.dropItem(G, 'iron', Math.max(1, Math.round(R.iron * mult)), m.x, m.y, 30);
     Sim.dropItem(G, 'xp', Math.max(1, Math.round((cfg.XP_DROP.boss || 40) * mult)), m.x, m.y, 40);
-    for (let i = 0; i < R.seeds; i++) Sim.dropItem(G, rnd() < 0.5 ? 'seed_carrot' : 'seed_pumpkin', 1, m.x, m.y, 30);
     Sim.msg(G, `Босс «${cfg.BOSSES[m.type].name}» повержен! Бонусное умение каждому`, -1, '#ffd24a');
     G.tele = G.tele.filter(t => t.owner !== m.id);
     for (const p of G.players) { for (let i = 0; i < R.bonusLevel; i++) p.queue.push('n'); AB.Skills.ensureOffers(G, p); }
@@ -735,6 +732,7 @@
     const cfg = C(), st = p.st;
     if (st.dodge > 0 && rnd() * 100 < Math.min(cfg.DODGE_CAP, st.dodge)) { Sim.fx(G, { k: 'dodge', x: p.x, y: p.y }); return; }
     const a = st.armor || 0;
+    dmg *= cfg.MONSTER_DAMAGE_MULT || 1;
     dmg *= a >= 0 ? cfg.ARMOR_K / (cfg.ARMOR_K + a) : (cfg.ARMOR_K - a) / cfg.ARMOR_K;
     if (p.sh > 0) { const ab = Math.min(p.sh, dmg); p.sh -= ab; dmg -= ab; if (dmg <= 0.01) { Sim.fx(G, { k: 'block', x: p.x, y: p.y }); return; } }
     p.hp -= dmg;
@@ -896,18 +894,6 @@
         b.berries = 0; b.t = cfg.BERRY_REGROW_TIME; G.bushDirty.add(b.id);
         Sim.dropItem(G, 'berry', cfg.BERRIES_PER_BUSH, b.x, b.y, 14);
         Sim.fx(G, { k: 'rustle', x: b.x, y: b.y });
-      }
-    }
-    // урожай
-    for (const pl of G.plots) {
-      if (pl.ready && AB.dist2(p.x, p.y, pl.x, pl.y) < 34 * 34) {
-        const cd = cfg.CROPS[pl.crop];
-        let n = cd.yield[0] + Math.floor(rnd() * (cd.yield[1] - cd.yield[0] + 1));
-        n = Math.round(n * (1 + p.st.cropBonus / 100));
-        Sim.dropItem(G, pl.crop, n, pl.x, pl.y, 14);
-        Sim.msg(G, `Урожай: ${cd.name} ×${n}`, p.id, '#b8f28a');
-        Sim.fx(G, { k: 'rustle', x: pl.x, y: pl.y });
-        pl.crop = null; pl.ready = false; pl.t = 0;
       }
     }
     // сундуки
@@ -1987,12 +1973,6 @@
       (G.oreDirty || (G.oreDirty = new Set())).add(o.id);
     }
     for (const b of W.bushes) if (b.berries === 0) { b.t -= dt; if (b.t <= 0) { b.berries = 1; G.bushDirty.add(b.id); } }
-    for (const pl of G.plots) {
-      if (pl.crop && !pl.ready) {
-        pl.t += dt * (pl.mod ? 1 + cfg.MODULES.plot.grow / 100 : 1) * (AB.WX ? AB.WX.crop : 1);
-        if (pl.t >= cfg.CROPS[pl.crop].grow) pl.ready = true;
-      }
-    }
     updateKitchen(G, dt);
     updateStore(G, dt);
     // костёр жжёт монстров (нежить — сильнее)
@@ -2256,7 +2236,7 @@
     const W = G.W, gi = Math.floor(y / W.T) * W.N + Math.floor(x / W.T);
     if (!AB.freeSpot(W, x, y, rad) || W.ground[gi] === AB.G_WATER) { Sim.msg(G, 'Здесь нельзя строить', p.id, '#ff9d7a'); return false; }
     const OR = C().OBSTACLE_RADIUS;
-    if (G.plots.some(q => AB.dist(q.x, q.y, x, y) < 30 + rad) || G.fires.some(q => AB.dist(q.x, q.y, x, y) < 30 + rad) || G.structs.some(s => AB.dist(s.x, s.y, x, y) < (s.r + rad) * 0.95)
+    if (G.fires.some(q => AB.dist(q.x, q.y, x, y) < 30 + rad) || G.structs.some(s => AB.dist(s.x, s.y, x, y) < (s.r + rad) * 0.95)
       || AB.dist(G.kitchen.x, G.kitchen.y, x, y) < OR.kitchen + rad + 10 || AB.dist(G.store.x, G.store.y, x, y) < OR.mill + rad + 10) {
       Sim.msg(G, 'Слишком близко к другой постройке', p.id, '#ff9d7a'); return false;
     }
@@ -2360,33 +2340,8 @@
       if (d > cfg.BUILD_RANGE) { bx = p.x + (bx - p.x) / d * cfg.BUILD_RANGE; by = p.y + (by - p.y) / d * cfg.BUILD_RANGE; }
     }
     if (c === 'eat') { eatFood(G, p, null); return; }
-    if (false) {
-    } else if (c === 'plant') {
-      const seedKey = p.inv.seed_carrot > 0 ? 'seed_carrot' : (p.inv.seed_pumpkin > 0 ? 'seed_pumpkin' : null);
-      if (!seedKey) { Sim.msg(G, 'Нет семян. Ищите их в сундуках и у сильных монстров', p.id, '#ff9d7a'); return; }
-      let best = null;
-      if (typeof x === 'string' && x[0] === 'p') {
-        // посадка ПКМ в конкретную грядку
-        const pl0 = G.plots.find(q => q.id === +x.slice(1));
-        if (pl0 && !pl0.crop && AB.dist(p.x, p.y, pl0.x, pl0.y) <= cfg.PLANT_RANGE) best = pl0;
-        else { Sim.msg(G, pl0 && pl0.crop ? 'Грядка уже засажена' : 'Подойдите к грядке ближе', p.id, '#ff9d7a'); return; }
-      } else {
-        let bd = cfg.PLANT_RANGE;
-        for (const pl of G.plots) { if (pl.crop) continue; const d = AB.dist(p.x, p.y, pl.x, pl.y); if (d < bd) { bd = d; best = pl; } }
-        if (!best) { Sim.msg(G, 'Подойдите к свободной грядке (или постройте её клавишей G)', p.id, '#ff9d7a'); return; }
-      }
-      p.inv[seedKey]--;
-      best.crop = seedKey === 'seed_carrot' ? 'carrot' : 'pumpkin'; best.t = 0; best.ready = false;
-      Sim.fx(G, { k: 'plant', x: best.x, y: best.y });
-    } else if (c === 'bed') { // новые костры строить нельзя — только грядки
-      const cost = Sim.buildCost(p, cfg.GARDEN_BED_COST);
-      if (Sim.woodOf(G, p) < cost) { pay(G, p, cost); return; }
-      if (G.players.some(q => !q.dead && AB.dist(q.x, q.y, bx, by) < cfg.PLAYER_RADIUS + 18)) { Sim.msg(G, 'Нельзя строить на игроке — отойдите или выберите другое место', p.id, '#ff9d7a'); return; }
-      if (!placeOk(G, p, bx, by, 16)) return;
-      pay(G, p, cost);
-      G.plots.push({ id: G.plots.length, x: bx, y: by, crop: null, t: 0, ready: false, mod: false });
-      Sim.fx(G, { k: 'build', x: bx, y: by });
-    } else if (c === 'build1' || c === 'build2') {
+    if (c === 'plant' || c === 'bed') return; // огорода больше нет
+    if (c === 'build1' || c === 'build2') {
       // T / Y: действие зависит от профессии
       const st = p.st;
       if (st.shopBuild > 0 && c === 'build1') { buildEcon(G, p, bx, by); }
@@ -2401,7 +2356,7 @@
   function eatFood(G, p, key) {
     const cfg = C();
     const avail = Object.keys(cfg.FOOD).filter(k => p.inv[k] > 0);
-    if (!avail.length) { Sim.msg(G, 'Нет еды! Охотьтесь, собирайте ягоды, сажайте огород', p.id, '#ff9d7a'); return; }
+    if (!avail.length) { Sim.msg(G, 'Нет еды! Охотьтесь, собирайте ягоды, покупайте еду у торговцев', p.id, '#ff9d7a'); return; }
     const need = cfg.PLAYER_MAX_FOOD - p.food, hurt = p.mhp - p.hp;
     let pick = key && p.inv[key] > 0 ? key : null;
     if (!pick) {
@@ -2661,8 +2616,7 @@
     // модули есть только для этих видов (на остальные ставить нечего — раньше падало/не давало эффекта)
     G.structs.forEach(s => { const k = s.kind === 'turret' ? 'turret' : s.kind === 'tower' ? (s.armed ? 'turret' : 'tower') : s.kind === 'wall' ? 'wall' : null; if (k) test(s, k); });
     G.fires.forEach(f => test(f, 'fire'));
-    G.plots.forEach(pl => test(pl, 'plot'));
-    if (!best) { Sim.msg(G, 'Наведите курсор на постройку, костёр или грядку без модуля', p.id, '#ff9d7a'); return; }
+    if (!best) { Sim.msg(G, 'Наведите курсор на постройку или костёр без модуля', p.id, '#ff9d7a'); return; }
     if (!pay(G, p, cfg.MODULE_COST)) return;
     best.mod = true; best.modBy = p.id;
     Sim.msg(G, `Модуль «${cfg.MODULES[kind].name}» установлен`, -1, '#5aa8ff');
@@ -2695,7 +2649,6 @@
       mn: G.mines.map(q => [r1(q.x), r1(q.y), q.look || 0]),
       bt: G.bots.map(b => [b.id, b.ab, r1(b.x), r1(b.y), r1(b.a), Math.round(b.life / b.max * 100) / 100]),
       d: G.drops.map(d => d.v > 1 ? [d.id, d.k, r1(d.x), r1(d.y), d.v] : [d.id, d.k, r1(d.x), r1(d.y)]),
-      pl: G.plots.map(p => [r1(p.x), r1(p.y), p.crop, Math.round(p.t), p.ready ? 1 : 0, p.mod ? 1 : 0]),
       f: G.fires.map(f => [r1(f.x), r1(f.y), r1(f.fuel), f.main ? 1 : 0, f.lvl, f.mod ? 1 : 0, f.lm, f.cap || Sim.fireCap(G, f), f.bmod || 0, f.town === undefined ? -1 : f.town]),
       ch: W.sites.filter(s2 => s2.opened).map(s2 => s2.id),
       so: [G.store.x, G.store.y, G.store.logs, G.store.planks, G.store.lvl, G.store.up, (G.store.saws || []).map(v => Math.round(v)), G.store.coal || 0, G.store.bmod || 0, G.store.iron || 0, G.store.stone || 0, G.store.hides || 0],
@@ -2773,7 +2726,6 @@
     G.bots = (s.bt || []).map(a => ({ id: a[0], ab: a[1], x: a[2], y: a[3], a: a[4], lf: a[5] }));
     const dmap = new Map(G.drops.map(d => [d.id, d]));
     G.drops = s.d.map(a => { const o = dmap.get(a[0]); return { id: a[0], k: a[1], x: a[2], y: a[3], v: a[4] || 1, age: o ? o.age : 0 }; });
-    G.plots = s.pl.map((a, i) => ({ id: i, x: a[0], y: a[1], crop: a[2], t: a[3], ready: !!a[4], mod: !!a[5] }));
     G.fires = s.f.map((a, i) => ({ id: i, x: a[0], y: a[1], fuel: a[2], main: !!a[3], lvl: a[4], mod: !!a[5], lm: a[6], cap: a[7], bmod: a[8] || null, town: a[9] >= 0 ? a[9] : undefined }));
     s.ch.forEach(id => { if (W.sites[id]) W.sites[id].opened = true; });
     if (s.so) G.store = { x: s.so[0], y: s.so[1], logs: s.so[2], planks: s.so[3], lvl: s.so[4], up: s.so[5], saws: s.so[6], coal: s.so[7], bmod: s.so[8] || null, iron: s.so[9] || 0, stone: s.so[10] || 0, hides: s.so[11] || 0 };

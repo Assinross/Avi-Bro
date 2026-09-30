@@ -42,7 +42,7 @@
     AB.FX.toast(App.touch ? 'Выживите 99 ночей! Голубые шарики — опыт' : 'Выживите 99 ночей! Собирайте голубые шарики опыта — они открывают боевые навыки', '#ffe7a8');
     AB.FX.toast(App.touch ? 'Джойстик слева, тап — идти или взять. Оружие бьёт само' : 'Движение: левый клик / стрелки. Оружие бьёт само, топор сам рубит деревья', '#cfe0ff');
     App.pendingDump = null;
-    App.pendingPlant = null;
+   
     App.lvOpen = false; App.aoRef = null; App.aoWasOpen = false;
     App.buildMode = null;
     // сброс переходного UI, чтобы прошлая игра не просвечивала в новую
@@ -78,14 +78,23 @@
   App.me = function () { return App.G ? App.G.players.find(p => p.id === App.myId) : null; };
 
   function startSolo() {
+    AB.setDifficulty(App.diff);
     const G = AB.Sim.create((Math.random() * 1e9) | 0, 'solo');
     AB.Sim.addPlayer(G, 0, playerName(), App.prof);
     beginGame(G, 'solo', 0);
   }
 
   // ----- выбор профессии
-  function chooseProf(next, back) {
+  // Сложность: «Аркада» по умолчанию, выбор запоминается. Гость играет на сложности хоста.
+  try { App.diff = localStorage.getItem('avibro-diff') || 'arcade'; } catch (e) { App.diff = 'arcade'; }
+  function showDiff() {
+    document.querySelectorAll('#diffBox .diff').forEach(b => b.classList.toggle('gold', b.dataset.diff === App.diff));
+    const d = AB.DIFFS[App.diff]; $('diffDesc').textContent = d ? d.desc : '';
+  }
+  function chooseProf(next, back, guest) {
     const cfg = C();
+    $('diffBox').classList.toggle('hidden', !!guest);
+    if (!guest) showDiff();
     const box = $('profCards');
     box.innerHTML = '';
     for (const key in cfg.PROFESSIONS) {
@@ -128,6 +137,7 @@
         if (m.t === 'hello') {
           let G = App.G;
           if (App.state !== 'play' || App.mode !== 'host') {
+            AB.setDifficulty(App.diff);
             G = AB.Sim.create(hostSeed, 'host');
             AB.Sim.addPlayer(G, 0, name, App.prof);
             AB.Sim.addPlayer(G, 1, (m.name || 'Друг').slice(0, 12), m.prof);
@@ -138,7 +148,7 @@
             else { p.name = (m.name || p.name).slice(0, 12); p.left = false; }
             AB.Sim.msg(G, `${p.name} подключился!`, -1, '#8fe08a');
           }
-          AB.Net.send({ t: 'init', seed: G.seed, id: 1 });
+          AB.Net.send({ t: 'init', seed: G.seed, id: 1, df: App.diff });
           AB.Net.send(AB.Sim.snapshot(G, true));
         } else if (App.mode === 'host' && App.G) {
           const p = App.G.players.find(q => q.id === 1);
@@ -179,6 +189,7 @@
       data(m) {
         if (m.t === 'full') { $('joinStatus').textContent = 'В комнате уже два игрока.'; return; }
         if (m.t === 'init') {
+          AB.setDifficulty(m.df || 'hardcore');
           G = AB.Sim.create(m.seed, 'guest');
           App.myId = m.id;
           App.pendingGuest = G;
@@ -220,7 +231,7 @@
         const el = document.createElement('div'); el.className = 'room';
         el.innerHTML = `<span><b>${String(rm.name || 'Игрок').replace(/[<>&]/g, '')}</b>${rm.prof ? ' · ' + String(rm.prof).replace(/[<>&]/g, '') : ''}${rm.full ? ' · <span class="note">занята</span>' : ''}</span>`;
         const b = document.createElement('button'); b.className = 'btn small gold'; b.textContent = 'Войти'; b.disabled = rm.full;
-        b.addEventListener('click', () => { AB.Sound.play('click', 1); clearTimeout(App.roomsT); chooseProf(() => startJoin(rm.code), 'coop'); });
+        b.addEventListener('click', () => { AB.Sound.play('click', 1); clearTimeout(App.roomsT); chooseProf(() => startJoin(rm.code), 'coop', true); });
         el.appendChild(b); box.appendChild(el);
       });
     }).catch(() => { /* */ }).finally(() => { App.roomsT = setTimeout(pollRooms, 1500); });
@@ -261,8 +272,6 @@
       if (k === 'KeyU') command('upnear');
       if (k === 'KeyH') command('build3');
       if (k === 'KeyE') command('eat');
-      if (k === 'KeyR') command('plant');
-      if (k === 'KeyG') command('bed');
       if (k === 'KeyF') setAutoPick(!App.autoPick);
       if (k === 'CapsLock') setRunAlways(!App.runAlways, true);
     });
@@ -307,17 +316,6 @@
           else if (K) { App.pendingDump = ref; App.pendingPick = null; App.moveTarget = { x: K.x, y: K.y + 30 }; App.clickMark = { x: K.x, y: K.y, t: 1 }; }
           return;
         }
-        // ПКМ по грядке — посадить семя (если далеко — сначала подойти)
-        {
-          const pl = App.G.plots.find(q => AB.dist(mw.x, mw.y, q.x, q.y) < 34);
-          if (pl && me && !me.dead && !App.paused) {
-            if (pl.crop) return;
-            AB.Sound.play('click', 1);
-            if (AB.dist(me.x, me.y, pl.x, pl.y) <= C().PLANT_RANGE) sendCmd('plant', 'p' + pl.id);
-            else { App.pendingPlant = pl.id; App.pendingPick = null; App.pendingDump = null; App.moveTarget = { x: pl.x, y: pl.y + 16 }; App.clickMark = { x: pl.x, y: pl.y, t: 1 }; }
-            return;
-          }
-        }
         App.selRef = ref;
         App.bpSig = null;
         if (App.selRef) AB.Sound.play('click', 1);
@@ -339,7 +337,7 @@
         else { App.pendingPick = d.id; App.moveTarget = { x: d.x, y: d.y }; App.clickMark = { x: d.x, y: d.y, t: 1 }; }
         return;
       }
-      App.pendingPick = null; App.pendingDump = null; App.pendingPlant = null;
+      App.pendingPick = null; App.pendingDump = null;
       if (tap) { const mw = mouseWorld(); App.moveTarget = { x: mw.x, y: mw.y }; App.clickMark = { x: mw.x, y: mw.y, t: 1 }; }
       else App.mouse.down = true;
     }
@@ -954,12 +952,12 @@
   function togglePause() {
     App.paused = !App.paused;
     show(App.paused ? 'pause' : null);
-    $('pauseNote').textContent = App.mode === 'solo' ? 'Игра на паузе' : 'В игре вдвоём время не останавливается!';
+    $('pauseNote').textContent = (App.mode === 'solo' ? 'Игра на паузе' : 'В игре вдвоём время не останавливается!') + ` · Сложность: ${(AB.DIFFS[AB.difficulty] || {}).name || ''}`;
   }
 
   function controlLocal(me, dt) {
     // смерть чистит очередь действий, иначе после возрождения уводит
-    if (!me || me.dead) { App.pendingDump = null; App.pendingPlant = null; App.pendingPick = null; App.moveTarget = null; return; }
+    if (!me || me.dead) { App.pendingDump = null; App.pendingPick = null; App.moveTarget = null; return; }
     // упёрлись в туман войны — подсказка (не чаще раза в 6 с)
     if (me.fowHit && App.G && App.G.clock - me.fowHit < 0.2 && !(App.fowToast > performance.now())) {
       App.fowToast = performance.now() + 6000;
@@ -979,7 +977,7 @@
     if (K.has('ArrowUp') || K.has('KeyW')) dy -= 1;
     if (K.has('ArrowDown') || K.has('KeyS')) dy += 1;
     // сенсорный джойстик
-    if (App.joy && App.joy.moved) { const jx = App.joy.x - App.joy.ox, jy = App.joy.y - App.joy.oy; if (Math.hypot(jx, jy) > 8) { dx = jx; dy = jy; App.pendingPick = null; App.pendingDump = null; App.pendingPlant = null; } }
+    if (App.joy && App.joy.moved) { const jx = App.joy.x - App.joy.ox, jy = App.joy.y - App.joy.oy; if (Math.hypot(jx, jy) > 8) { dx = jx; dy = jy; App.pendingPick = null; App.pendingDump = null; } }
     const mw = mouseWorld();
     if (dx || dy) App.moveTarget = null;
     else {
@@ -1004,12 +1002,6 @@
         if (!f || !(me.inv.wood > 0) || (dx === 0 && dy === 0 && !App.moveTarget)) App.pendingDump = null;
         else if (AB.dist(me.x, me.y, f.x, f.y) <= C().FIRE_DUMP_RANGE * 0.9) { sendCmd('dumpfire', App.pendingDump); App.pendingDump = null; App.moveTarget = null; dx = 0; dy = 0; }
       }
-    }
-    // подошли к грядке по ПКМ — сажаем в неё
-    if (App.pendingPlant !== null && App.pendingPlant !== undefined) {
-      const pl = App.G.plots.find(q => q.id === App.pendingPlant);
-      if (!pl || pl.crop || (dx === 0 && dy === 0 && !App.moveTarget)) App.pendingPlant = null;
-      else if (AB.dist(me.x, me.y, pl.x, pl.y) <= C().PLANT_RANGE * 0.9) { sendCmd('plant', 'p' + pl.id); App.pendingPlant = null; App.moveTarget = null; dx = 0; dy = 0; }
     }
     if (App.pendingPick) {
       const d = App.G.drops.find(q => q.id === App.pendingPick);
@@ -1193,6 +1185,7 @@
     $('name2').addEventListener('input', () => $('name').value = $('name2').value);
     const bind = (id, fn) => $(id).addEventListener('click', () => { AB.Sound.unlock(); AB.Sound.play('click', 1); fn(); });
     try { App.prof = localStorage.getItem('avibro-prof') || 'hunter'; } catch (e) { App.prof = 'hunter'; }
+    document.querySelectorAll('#diffBox .diff').forEach(b => b.addEventListener('click', () => { AB.Sound.play('click', 1); App.diff = b.dataset.diff; try { localStorage.setItem('avibro-diff', App.diff); } catch (e) { /* */ } showDiff(); }));
     bind('btnSolo', () => chooseProf(startSolo, 'menu'));
     bind('btnReroll', reroll);
     bind('bpClose', () => { App.selRef = null; });
@@ -1232,7 +1225,7 @@
     });
     bind('btnHelp', () => show('help'));
     bind('btnHost', () => chooseProf(startHost, 'coop'));
-    bind('btnJoin', () => { const code = $('code').value; if (code.replace(/\D/g, '').length < 3) { $('coopErr').textContent = 'Введите код комнаты'; return; } chooseProf(() => startJoin(code), 'coop'); });
+    bind('btnJoin', () => { const code = $('code').value; if (code.replace(/\D/g, '').length < 3) { $('coopErr').textContent = 'Введите код комнаты'; return; } chooseProf(() => startJoin(code), 'coop', true); });
     document.querySelectorAll('[data-back]').forEach(b => b.addEventListener('click', () => { AB.Net.close(); show(b.dataset.back); }));
     bind('btnCopy', () => { const i = $('roomLink'); i.select(); try { navigator.clipboard.writeText(i.value); } catch (e) { document.execCommand('copy'); } $('btnCopy').textContent = 'Скопировано!'; setTimeout(() => $('btnCopy').textContent = 'Копировать', 1500); });
     bind('btnSoloFromLobby', () => { AB.Net.close(); startSolo(); });
@@ -1255,7 +1248,7 @@
       const b = $('btnInvite');
       b.textContent = `Присоединиться к комнате ${room}`;
       b.classList.remove('hidden');
-      b.addEventListener('click', () => { AB.Sound.unlock(); $('code').value = room; chooseProf(() => startJoin(room), 'menu'); b.classList.add('hidden'); });
+      b.addEventListener('click', () => { AB.Sound.unlock(); $('code').value = room; chooseProf(() => startJoin(room), 'menu', true); b.classList.add('hidden'); });
       try { const u = new URL(location.href); u.searchParams.delete('room'); history.replaceState(null, '', u.pathname + (u.search || '')); } catch (e) { /* */ }
     }
     requestAnimationFrame(frame);

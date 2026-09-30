@@ -19,7 +19,7 @@
       forest: new Float32Array(N * N),
       trees: [], rocks: [], bushes: [], sites: [], decor: [],
       camp: { tx: N >> 1, ty: N >> 1, x: (N >> 1) * T + T / 2, y: (N >> 1) * T + T / 2 },
-      plots: [], fires: [],
+      fires: [],
     };
     const idx = (x, y) => y * N + x;
     const inb = (x, y) => x >= 0 && y >= 0 && x < N && y < N;
@@ -287,12 +287,8 @@
       }
     });
 
-    // ---- лагерь: костёр и грядки
+    // ---- лагерь: костёр
     W.fires.push({ x: W.camp.x, y: W.camp.y, main: true });
-    const P = cfg.START_GARDEN_PLOTS;
-    for (let k = 0; k < P; k++) {
-      W.plots.push({ x: W.camp.x + 90 + (k % 2) * 40, y: W.camp.y - 40 + Math.floor(k / 2) * 44 });
-    }
     // декор лагеря
     W.decor.push({ x: W.camp.x - 80, y: W.camp.y - 50, kind: 'tent', v: 0 });
     W.decor.push({ x: W.camp.x + 30, y: W.camp.y + 70, kind: 'stump_seat', v: 0 });

@@ -94,4 +94,24 @@ window.AB = window.AB || {};
     ctx.drawImage(c, Math.round(px - fx * c.width), Math.round(py - fy * c.height));
     ctx.setTransform(m);
   };
+
+  /* Сложность. config.js — «Хардкор»; «Аркада» заменяет часть значений из arcade.js.
+     Переключается перед началом игры (у гостя — как у хоста). */
+  const BASE = JSON.parse(JSON.stringify(window.CONFIG));
+  const isObj = (v) => v && typeof v === 'object' && !Array.isArray(v);
+  function merge(dst, src) { for (const k in src) { if (isObj(src[k]) && isObj(dst[k])) merge(dst[k], src[k]); else dst[k] = JSON.parse(JSON.stringify(src[k])); } }
+  AB.DIFFS = {
+    arcade: { name: (window.ARCADE && window.ARCADE.name) || 'Аркада', desc: (window.ARCADE && window.ARCADE.desc) || '' },
+    hardcore: { name: 'Хардкор', desc: 'Честная выживалка: меньше здоровья, монстры бьют больнее, голод сильнее.' },
+  };
+  AB.difficulty = 'hardcore';
+  AB.setDifficulty = function (id) {
+    if (!AB.DIFFS[id]) id = 'arcade';
+    const C = window.CONFIG;
+    for (const k of Object.keys(C)) delete C[k];
+    merge(C, BASE);
+    if (id === 'arcade' && window.ARCADE && window.ARCADE.set) merge(C, window.ARCADE.set);
+    AB.difficulty = id;
+    return id;
+  };
 })(window.AB);

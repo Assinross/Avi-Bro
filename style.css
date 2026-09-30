@@ -283,3 +283,6 @@ body.touch #trader { justify-content: flex-end; align-items: flex-end; padding-b
 .srvbox code { background: rgba(0,0,0,0.4); padding: 1px 5px; border-radius: 5px; }
 .srvbox .row a.btn { text-decoration: none; text-align: center; flex: 1; }
 #btnUpdate,#btnStop{width:100%;white-space:normal}
+
+.diffbox{margin:4px 0 10px}.diffs{display:flex;gap:8px;justify-content:center;margin:4px 0}.diffs .btn{min-width:120px}
+.diffbox .mchead{text-align:center}

@@ -44,10 +44,10 @@ window.CONFIG = {
       { role: 'furrier', name: 'Меховщик', look: 'fur',     gear: ['head', 'body', 'hands'] },
       { role: 'fisher',  name: 'Рыбак',    look: 'fisher',  goods: ['cooked_meat', 'coal', 'cooked_carrot'] } ] },
     east:  { name: 'Стойбище',             origin: 'кочевников',   traders: [
-      { role: 'shaman',  name: 'Шаман',    look: 'shaman',  goods: ['seed_carrot', 'seed_pumpkin', 'xp', 'berry'] },
+      { role: 'shaman',  name: 'Шаман',    look: 'shaman',  goods: ['xp', 'berry', 'cooked_meat'] },
       { role: 'tanner',  name: 'Кожевник', look: 'tanner',  gear: ['feet', 'legs', 'hands'] } ] },
     south: { name: 'Деревня на деревьях',  origin: 'лесных людей', traders: [
-      { role: 'herbal',  name: 'Травница', look: 'herbal',  goods: ['cooked_pumpkin', 'cooked_carrot', 'seed_pumpkin', 'xp'] },
+      { role: 'herbal',  name: 'Травница', look: 'herbal',  goods: ['cooked_pumpkin', 'cooked_carrot', 'berry', 'xp'] },
       { role: 'ranger',  name: 'Следопыт', look: 'ranger',  gear: ['head', 'feet', 'legs'] } ] },
     west:  { name: 'Каменный город',       origin: 'горожан',      traders: [
       { role: 'smith',   name: 'Кузнец',   look: 'smith',   gear: ['head', 'body', 'legs'], goods: ['iron'] },
@@ -59,8 +59,6 @@ window.CONFIG = {
     cooked_carrot:  { name: 'Печёная морковь', n: 3,  price: 5 },
     cooked_pumpkin: { name: 'Печёная тыква',   n: 2,  price: 9 },
     berry:          { name: 'Ягоды',           n: 5,  price: 3 },
-    seed_carrot:    { name: 'Семена моркови',  n: 2,  price: 5 },
-    seed_pumpkin:   { name: 'Семена тыквы',    n: 1,  price: 6 },
     coal:           { name: 'Уголь',           n: 2,  price: 7 },
     iron:           { name: 'Железо',          n: 1,  price: 16 },
     stone:          { name: 'Камень',          n: 3,  price: 8 },
@@ -161,13 +159,13 @@ window.CONFIG = {
               [['spider', 'spider', 'spitter', 'ghoul'], ['spitter', 'spitter', 'spider']],
               [['crone', 'spitter', 'spider', 'spider'], ['spitter', 'spitter', 'ghoul', 'ghoul']],
               [['crone', 'spitter', 'spitter', 'ghoul'], ['crone', 'crone', 'spider', 'spider']]],
-      loot: { seeds: 2, cooked: 2 } },       // зелья… то есть семена и горячая похлёбка
+      loot: { xp: 1.2 } },                   // зелья колдуньи — больше опыта
     mushrooms: { name: 'Грибная поляна',      color: '#ff8ab0', boss: 'shroom',   bossName: 'Грибной король',
       packs: [[['shroom', 'shroom'], ['shroom', 'spider']],
               [['shroom', 'shroom', 'shroom'], ['shroom', 'shroom', 'spider', 'spider']],
               [['shroom', 'shroom', 'shroom', 'spitter'], ['shroom', 'shroom', 'shroom', 'shroom']],
               [['shroom', 'shroom', 'shroom', 'shroom', 'spitter'], ['shroom', 'shroom', 'shroom', 'brute']]],
-      loot: { seeds: 3, berry: 4 } },
+      loot: { coin: 1.2 } },
     bears:     { name: 'Медвежья берлога',    color: '#c89060', boss: 'bear',     bossName: 'Медведь-шатун',
       packs: [[['bear'], ['wolf', 'wolf', 'wolf']],
               [['bear', 'wolf'], ['bear', 'wolf', 'wolf']],
@@ -215,6 +213,10 @@ window.CONFIG = {
   AUTO_EAT_AT: 0.1,           // Сытость упала до 10% и в рюкзаке есть еда — герой ест сам
   PLAYER_RADIUS: 9,           // Радиус столкновения игрока (герой на 20% меньше прежнего)
   PLAYER_SCALE: 0.8,          // Масштаб рисунка героя
+  // СЛОЖНОСТЬ. Все значения в этом файле — режим «Хардкор». Режим «Аркада» (по умолчанию)
+  // берёт их и заменяет часть из файла arcade.js. Выбор — на экране выбора профессии.
+  PLAYER_DAMAGE_MULT: 1,      // Множитель всего урона по монстрам (оружие, навыки, турели, костёр)
+  MONSTER_DAMAGE_MULT: 1,     // Множитель урона монстров по героям
   PLAYER_MAX_HP: 100,         // Максимальное здоровье
   PLAYER_MAX_FOOD: 100,       // Максимальная сытость
   FOOD_DRAIN: 0.32,           // Потеря сытости в секунду
@@ -233,9 +235,9 @@ window.CONFIG = {
   BUILD_RANGE: 170,           // Максимальное расстояние от игрока до места постройки
   CLICK_STOP_DIST: 6,         // На каком расстоянии от точки клика игрок останавливается
   BACKPACK_START: 7,          // Вместимость рюкзака: место занимают только МАТЕРИАЛЫ (бревна, доски, шкуры).
-                              // Еда, семена и монеты места не занимают.
+                              // Еда и монеты места не занимают.
   BACKPACK_FULL_MSG: 6,       // Как часто (с) напоминать, что рюкзак полон
-  START_ITEMS: { wood: 0, meat: 1, berry: 3, seed_carrot: 1 }, // Стартовый инвентарь
+  START_ITEMS: { wood: 0, meat: 1, berry: 3 }, // Стартовый инвентарь
 
   /* ------------------------ ТОПОР (РУБКА ДЕРЕВЬЕВ) ------------------- *
    * Топор — ИНСТРУМЕНТ, а не оружие: он только рубит деревья, монстров не бьёт.   */
@@ -393,32 +395,32 @@ window.CONFIG = {
   /* ------------------------------ МОНСТРЫ --------------------------- *
    * hp — здоровье; speed — скорость; damage — урон за удар; attackCd — пауза
    * sight — радиус обнаружения игрока; radius — размер тела
-   * meat — [мин, макс] выпадающего мяса; seedChance — шанс семени (0..1)
+   * meat — [мин, макс] выпадающего мяса
    * hide — шанс выпадения шкуры (сдаётся в лавку охотника);
    * fearFire — боится света костра; undead — нежить (костёр жжёт её сильнее)
    * суперудары монстров — см. MONSTER_SPECIALS
    * ranged — стреляет издалека: { range — дистанция, cd — пауза, speed — скорость плевка } */
   MONSTERS: {
-    wolf:    { name: 'Волк',          hp: 32,  speed: 128, damage: 5,  attackCd: 0.8,  /* урон был 7: со слабым начальным оружием один волк съедал половину здоровья */ sight: 230, radius: 12, meat: [1, 2], seedChance: 0.03, hide: 0.12 },
-    ghoul:   { name: 'Упырь',         hp: 55,  speed: 78,  damage: 11, attackCd: 1.0, sight: 190, radius: 12, meat: [0, 1], seedChance: 0.05, undead: true },
-    shade:   { name: 'Тень',          hp: 40,  speed: 108, damage: 9,  attackCd: 0.9, sight: 600, radius: 12, meat: [0, 0], seedChance: 0.02, fearFire: true, undead: true },
-    spider:  { name: 'Паук',          hp: 16,  speed: 150, damage: 4,  attackCd: 0.6, sight: 280, radius: 9,  meat: [0, 1], seedChance: 0.02, hide: 0.05 },
-    alpha:   { name: 'Вожак',         hp: 120, speed: 150, damage: 14, attackCd: 0.7, sight: 300, radius: 15, meat: [2, 3], seedChance: 0.25, hide: 0.4 },
-    spitter: { name: 'Плевун',        hp: 45,  speed: 70,  damage: 10, attackCd: 1.0, sight: 320, radius: 12, meat: [0, 1], seedChance: 0.08, undead: true, ranged: { range: 230, cd: 2.2, speed: 230 } },
-    brute:   { name: 'Громила',       hp: 240, speed: 92,  damage: 22, attackCd: 1.3, sight: 270, radius: 21, meat: [3, 5], seedChance: 0.35 },
+    wolf:    { name: 'Волк',          hp: 32,  speed: 128, damage: 5,  attackCd: 0.8,  /* урон был 7: со слабым начальным оружием один волк съедал половину здоровья */ sight: 230, radius: 12, meat: [1, 2], hide: 0.12 },
+    ghoul:   { name: 'Упырь',         hp: 55,  speed: 78,  damage: 11, attackCd: 1.0, sight: 190, radius: 12, meat: [0, 1], undead: true },
+    shade:   { name: 'Тень',          hp: 40,  speed: 108, damage: 9,  attackCd: 0.9, sight: 600, radius: 12, meat: [0, 0], fearFire: true, undead: true },
+    spider:  { name: 'Паук',          hp: 16,  speed: 150, damage: 4,  attackCd: 0.6, sight: 280, radius: 9,  meat: [0, 1], hide: 0.05 },
+    alpha:   { name: 'Вожак',         hp: 120, speed: 150, damage: 14, attackCd: 0.7, sight: 300, radius: 15, meat: [2, 3], hide: 0.4 },
+    spitter: { name: 'Плевун',        hp: 45,  speed: 70,  damage: 10, attackCd: 1.0, sight: 320, radius: 12, meat: [0, 1], undead: true, ranged: { range: 230, cd: 2.2, speed: 230 } },
+    brute:   { name: 'Громила',       hp: 240, speed: 92,  damage: 22, attackCd: 1.3, sight: 270, radius: 21, meat: [3, 5] },
     // НЕЖИТЬ: бродит ночью вместо волков. Еды не даёт (meat [0,0]), только монеты и опыт
-    skeleton: { name: 'Скелет',        hp: 34,  speed: 120, damage: 6,  attackCd: 0.9, /* урон был 8 */ sight: 260, radius: 12, meat: [0, 0], seedChance: 0, undead: true },
-    zombie:   { name: 'Зомби',         hp: 70,  speed: 60,  damage: 12, attackCd: 1.2, sight: 220, radius: 13, meat: [0, 0], seedChance: 0, undead: true },
-    archer:   { name: 'Скелет-лучник', hp: 35,  speed: 75,  damage: 9,  attackCd: 1.0, sight: 300, radius: 12, meat: [0, 0], seedChance: 0, undead: true, ranged: { range: 220, cd: 2.5, speed: 240 } },
-    lich:     { name: 'Лич',           hp: 160, speed: 65,  damage: 16, attackCd: 1.2, sight: 340, radius: 15, meat: [0, 0], seedChance: 0, undead: true, ranged: { range: 260, cd: 2.8, speed: 260 } },
+    skeleton: { name: 'Скелет',        hp: 34,  speed: 120, damage: 6,  attackCd: 0.9, /* урон был 8 */ sight: 260, radius: 12, meat: [0, 0], undead: true },
+    zombie:   { name: 'Зомби',         hp: 70,  speed: 60,  damage: 12, attackCd: 1.2, sight: 220, radius: 13, meat: [0, 0], undead: true },
+    archer:   { name: 'Скелет-лучник', hp: 35,  speed: 75,  damage: 9,  attackCd: 1.0, sight: 300, radius: 12, meat: [0, 0], undead: true, ranged: { range: 220, cd: 2.5, speed: 240 } },
+    lich:     { name: 'Лич',           hp: 160, speed: 65,  damage: 16, attackCd: 1.2, sight: 340, radius: 15, meat: [0, 0], undead: true, ranged: { range: 260, cd: 2.8, speed: 260 } },
     // ОБИТАТЕЛИ ЛОКАЦИЙ (охраняют сундуки, по лесу не бродят)
-    bandit:   { name: 'Разбойник',     hp: 55,  speed: 112, damage: 10, attackCd: 0.9, sight: 260, radius: 12, meat: [0, 1], seedChance: 0.05 },
-    robber:   { name: 'Арбалетчик',    hp: 40,  speed: 88,  damage: 9,  attackCd: 1.0, sight: 300, radius: 12, meat: [0, 0], seedChance: 0.04, ranged: { range: 240, cd: 2.3, speed: 300, look: 'bolt' } },
-    alien:    { name: 'Пришелец',      hp: 42,  speed: 96,  damage: 9,  attackCd: 1.0, sight: 290, radius: 11, meat: [0, 0], seedChance: 0.02, ranged: { range: 230, cd: 1.9, speed: 280, look: 'laser' } },
-    bonewolf: { name: 'Костяной волк', hp: 38,  speed: 136, damage: 7,  attackCd: 0.8, sight: 250, radius: 12, meat: [0, 0], seedChance: 0, undead: true, hide: 0.1 },
-    crone:    { name: 'Колдунья',      hp: 60,  speed: 72,  damage: 12, attackCd: 1.1, sight: 300, radius: 12, meat: [0, 0], seedChance: 0.3, ranged: { range: 260, cd: 2.4, speed: 220, look: 'hex' } },
-    shroom:   { name: 'Грибовик',      hp: 60,  speed: 70,  damage: 9,  attackCd: 1.0, sight: 220, radius: 13, meat: [0, 0], seedChance: 0.12 },
-    bear:     { name: 'Медведь',       hp: 150, speed: 108, damage: 16, attackCd: 1.2, sight: 240, radius: 18, meat: [3, 5], seedChance: 0.05, hide: 0.8 },
+    bandit:   { name: 'Разбойник',     hp: 55,  speed: 112, damage: 10, attackCd: 0.9, sight: 260, radius: 12, meat: [0, 1] },
+    robber:   { name: 'Арбалетчик',    hp: 40,  speed: 88,  damage: 9,  attackCd: 1.0, sight: 300, radius: 12, meat: [0, 0], ranged: { range: 240, cd: 2.3, speed: 300, look: 'bolt' } },
+    alien:    { name: 'Пришелец',      hp: 42,  speed: 96,  damage: 9,  attackCd: 1.0, sight: 290, radius: 11, meat: [0, 0], ranged: { range: 230, cd: 1.9, speed: 280, look: 'laser' } },
+    bonewolf: { name: 'Костяной волк', hp: 38,  speed: 136, damage: 7,  attackCd: 0.8, sight: 250, radius: 12, meat: [0, 0], undead: true, hide: 0.1 },
+    crone:    { name: 'Колдунья',      hp: 60,  speed: 72,  damage: 12, attackCd: 1.1, sight: 300, radius: 12, meat: [0, 0], ranged: { range: 260, cd: 2.4, speed: 220, look: 'hex' } },
+    shroom:   { name: 'Грибовик',      hp: 60,  speed: 70,  damage: 9,  attackCd: 1.0, sight: 220, radius: 13, meat: [0, 0] },
+    bear:     { name: 'Медведь',       hp: 150, speed: 108, damage: 16, attackCd: 1.2, sight: 240, radius: 18, meat: [3, 5], hide: 0.8 },
   },
   MEAT_DROP_MULT: 0.2,        // Множитель выпадения мяса (0.2 = в 5 раз меньше, чем указано в meat)
   // Рост монстров с каждой ночью n: множитель = 1 + LIN·(n−1) + SQ·(n−1)².
@@ -533,7 +535,7 @@ window.CONFIG = {
     types: { giant: ['bear', 'wolf'], packlord: ['wolf', 'wolf', 'alpha'], witch: ['spider', 'ghoul', 'shade'], golem: ['skeleton', 'zombie', 'skeleton'] },
     elite: { every: 16, first: 5, n: 2, max: 3 },  // боссы лагерей зовут стражу из своей локации
   },
-  BOSS_REWARD: { meat: 2, wood: 12, seeds: 3, hides: 2, coal: 2, iron: 2, bonusLevel: 1 }, // Награда за босса (bonusLevel — сколько доп. умений каждому игроку)
+  BOSS_REWARD: { meat: 2, wood: 12, hides: 2, coal: 2, iron: 2, bonusLevel: 1 }, // Награда за босса (bonusLevel — сколько доп. умений каждому игроку)
 
   /* ------------------------------- ЕДА ------------------------------ *
    * food — сколько сытости восстанавливает; hp — изменение здоровья
@@ -567,15 +569,7 @@ window.CONFIG = {
   BERRY_REGROW_TIME: 120,     // Через сколько секунд на кусте вырастают ягоды
   BERRIES_PER_BUSH: 2,        // Сколько ягод даёт куст
 
-  /* ------------------------------ ОГОРОД ---------------------------- *
-   * grow — время созревания; yield — [мин, макс] урожай; seed — ключ семени */
-  CROPS: {
-    carrot:  { name: 'Морковь', seed: 'seed_carrot',  grow: 110, yield: [2, 4] },
-    pumpkin: { name: 'Тыква',   seed: 'seed_pumpkin', grow: 220, yield: [1, 3] },
-  },
-  START_GARDEN_PLOTS: 4,      // Сколько грядок уже есть в лагере
-  GARDEN_BED_COST: 8,         // Сколько дерева стоит новая грядка (клавиша G)
-  PLANT_RANGE: 90,            // С какого расстояния можно посадить семя (клавиша R)
+  // Огорода (грядок и семян) в игре больше нет: морковь и тыкву продают торговцы поселений.
 
   /* ---------------------------- СНАРЯЖЕНИЕ --------------------------- *
    * Главная награда сундуков — одежда. 5 ячеек: голова, куртка, перчатки, штаны, обувь.
@@ -631,7 +625,7 @@ window.CONFIG = {
 
   /* ------------------------------ ПОГОДА ---------------------------- *
    * Погода сменяется сама каждые changeEvery секунд. w — как часто выпадает (вес).
-   * Множители (1 — без изменений): fireBurn — прогорание костра, crop — рост грядок,
+   * Множители (1 — без изменений): fireBurn — прогорание костра,
    * hunger — голод, speed — скорость всех (игроков и монстров), monSpeed — только монстров,
    * vision — дальность обзора игрока, sight — как далеко монстры замечают игрока.
    * dayOnly — такая погода бывает только днём (ночью сменится сама).
@@ -642,16 +636,16 @@ window.CONFIG = {
     firstClear: 150,          // Первые секунды игры всегда ясно
     types: {
       clear: { name: 'Ясно',     icon: '☀', color: '#ffd24a', w: 36 },
-      rain:  { name: 'Дождь',    icon: '☂', color: '#8fc8ff', w: 18, fireBurn: 1.6, crop: 1.5, vision: 0.9,
-               desc: 'Дождь: костёр прогорает быстрее, грядки растут быстрее' },
-      storm: { name: 'Гроза',    icon: '⚡', color: '#c8b0ff', w: 8,  fireBurn: 2, crop: 1.5, vision: 0.82,
+      rain:  { name: 'Дождь',    icon: '☂', color: '#8fc8ff', w: 18, fireBurn: 1.6, vision: 0.9,
+               desc: 'Дождь: костёр прогорает быстрее' },
+      storm: { name: 'Гроза',    icon: '⚡', color: '#c8b0ff', w: 8,  fireBurn: 2, vision: 0.82,
                lightning: { every: [4, 9], windup: 1.4, radius: 70, monFrac: 0.45, bossFrac: 0.06, playerFrac: 0.14 },
                desc: 'Гроза! Молнии бьют в землю — уходите из светлых кругов (монстрам тоже достаётся)' },
       fog:   { name: 'Туман',    icon: '≋', color: '#c8d0c8', w: 12, vision: 0.6, sight: 0.6,
                desc: 'Туман: видно недалеко, но и монстры замечают вас позже' },
-      snow:  { name: 'Снегопад', icon: '❄', color: '#e8f4ff', w: 10, speed: 0.88, hunger: 1.35, fireBurn: 1.3, crop: 0.6, vision: 0.9,
-               desc: 'Снегопад: все ходят медленнее, голод сильнее, грядки растут медленнее' },
-      heat:  { name: 'Зной',     icon: '☼', color: '#ff9a4a', w: 10, hunger: 1.5, crop: 0.7, fireBurn: 0.7, monSpeed: 0.88, dayOnly: true,
+      snow:  { name: 'Снегопад', icon: '❄', color: '#e8f4ff', w: 10, speed: 0.88, hunger: 1.35, fireBurn: 1.3, vision: 0.9,
+               desc: 'Снегопад: все ходят медленнее, голод сильнее' },
+      heat:  { name: 'Зной',     icon: '☼', color: '#ff9a4a', w: 10, hunger: 1.5, fireBurn: 0.7, monSpeed: 0.88, dayOnly: true,
                desc: 'Зной: быстрее голодаете, монстры вялые, костёр прогорает медленнее' },
     },
   },
@@ -682,7 +676,6 @@ window.CONFIG = {
 
   /* --------------------------- СУНДУКИ ------------------------------ */
   CHEST_OPEN_RADIUS: 34,      // Подойди так близко — сундук откроется сам
-  CHEST_SEEDS: [1, 3],        // Сколько семян лежит в сундуке [мин, макс]
   CHEST_COAL: [1, 2],         // Уголь в логовах монстров (сундуках охраняемых руин): [мин, макс] (+1 на дальних локациях)
   CHEST_BAG_CHANCE: 0.45,     // Шанс, что сундук расширяет рюкзак
   CHEST_BAG_BASE: 1,          // Расширение рюкзака из сундука: это + уровень локации (0..3)
@@ -831,7 +824,6 @@ window.CONFIG = {
     tower:  { name: 'Лазер',       damage: 7, engScale: 1.5, cooldown: 0.6, range: 250 }, // вышка без пушки начинает стрелять лазером
     wall:   { name: 'Электрозабор', damage: 10, engScale: 2, slow: 30 }, // бьёт током монстров, которые касаются частокола
     fire:   { name: 'Маяк',        light: 40, shadeDps: 15 }, // +% света костра, тени в свете горят
-    plot:   { name: 'Автополив',   grow: 100 },               // +% скорости роста грядки
   },
   // Здания — препятствия: радиусы столкновения лагерных построек (постройки игроков — radius в STRUCTURES)
   OBSTACLE_RADIUS: { kitchen: 26, mill: 30, fire: 16, merchant: 22 },
@@ -885,7 +877,7 @@ window.CONFIG = {
     killHeal: ['Лечение за убийство', false], chain: ['Шанс цепной молнии', true], slow: ['Замедление при ударе', true],
     knock: ['Отбрасывание', false], drones: ['Дроны', false], mines: ['Мины', false], aura: ['Огненная аура/с', false],
     meteor: ['Метеориты', false], lightning: ['Удары молний', false], blades: ['Клинки', false],
-    cropBonus: ['Урожай', true], bag: ['Вместимость рюкзака', false], fireHeal: ['Лечение у костра', true], buildCost: ['Скидка на постройки', true],
+    bag: ['Вместимость рюкзака', false], fireHeal: ['Лечение у костра', true], buildCost: ['Скидка на постройки', true],
     markBonus: ['Урон по меткам', true], structHp: ['Прочность построек', true],
     turretDmg: ['Урон турелей', true], turretMax: ['Доп. турели', false], droneSpd: ['Скорость дронов', true],
     syn_loophole: ['Бойницы: дальность охотника у построек', true], syn_modular: ['Сила модулей на постройках', true], syn_mount: ['Урон пушек на вышках', true],
@@ -947,7 +939,6 @@ window.CONFIG = {
     { id: 'fury',     name: 'Ярость',           icon: '♨', min: 3, stats: { atkSpd: [0, 0, 25, 35], armor: [0, 0, -2, -2] } },
     { id: 'eye',      name: 'Глаз охотника',    icon: '◉', stats: { crit: [2, 3, 4, 5], ranged: [0.5, 1, 1.5, 2] } },
     { id: 'warrior',  name: 'Воин',             icon: '⛉', stats: { melee: [0.5, 1, 1.5, 2], maxHp: [5, 8, 10, 15] } },
-    { id: 'garden',   name: 'Садовод',          icon: '✿', stats: { cropBonus: [25, 40, 60, 80] } },
     { id: 'keeper',   name: 'Хранитель огня',   icon: '♁', stats: { fireHeal: [25, 50, 75, 100] } },
     { id: 'skin',     name: 'Толстая кожа',     icon: '▤', stats: { armor: [2, 3, 4, 6], speed: [-3, -3, -3, -3] } },
     // --- личные умения профессий
@@ -1043,8 +1034,6 @@ window.CONFIG = {
   TOWNHALL: { cost: 25, hp: 300, radius: 24, upkeepDiscount: 30, taxBase: 3, taxPerStructs: 4 }, // (налог был 2 — ратуша не окупалась на малой базе)
   // Товары торговца для всех (кроме умений — они только для охотника)
   MERCHANT_GOODS: [
-    { id: 'seed_carrot',  name: 'Семена моркови', price: 3 },
-    { id: 'seed_pumpkin', name: 'Семена тыквы',   price: 6 },
     { id: 'bag',          name: 'Рюкзак +2',      price: 20, once: true },
     { id: 'pickaxe',      name: 'Кирка',          price: 55, once: true }, // кирка для камня и железа (одна на игрока)
   ],

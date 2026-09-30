@@ -784,7 +784,7 @@
     const bx = tr.x + 26, by = tr.y + 2;
     S().ell(ctx, bx, by + 2, 18, 4, 'rgba(0,0,0,0.3)');
     ctx.fillStyle = '#140c08'; ctx.fillRect(bx - 16, by - 16, 32, 18); ctx.fillStyle = '#8a6a44'; ctx.fillRect(bx - 15, by - 15, 30, 16); ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.fillRect(bx - 15, by - 8, 30, 1);
-    const ic = S().icons, show = tr.look === 'smith' ? ['iron', 'stone'] : tr.look === 'fisher' ? ['cooked_meat', 'coal'] : tr.look === 'shaman' || tr.look === 'herbal' ? ['seed_pumpkin', 'berry'] : tr.look === 'grocer' ? ['plank', 'coal'] : ['hide', 'hide'];
+    const ic = S().icons, show = tr.look === 'smith' ? ['iron', 'stone'] : tr.look === 'fisher' ? ['cooked_meat', 'coal'] : tr.look === 'shaman' || tr.look === 'herbal' ? ['cooked_pumpkin', 'berry'] : tr.look === 'grocer' ? ['plank', 'coal'] : ['hide', 'hide'];
     show.forEach((k, i) => { if (ic[k]) ctx.drawImage(ic[k], bx - 13 + i * 13, by - 26, 12, 12); });
     humanoid(ctx, { vx: 0, vy: 0, st: 'idle', atk: 0, id: tr.id }, t, tr.x, tr.y, a, 0, false, '#0c0806', L);
     // табличка
@@ -1483,7 +1483,7 @@
   function drawMerchant(ctx, M, t) {
     const x = M.x, y = M.y, bob = Math.sin(t * 2) * 1;
     Bd().draw(ctx, 'wagon', x, y);
-    ctx.drawImage(S().icons.seed_pumpkin, x + 18, y - 40, 11, 11); ctx.drawImage(S().icons.hide, x + 29, y - 40, 12, 12);
+    ctx.drawImage(S().icons.berry, x + 18, y - 40, 11, 11); ctx.drawImage(S().icons.hide, x + 29, y - 40, 12, 12);
     // фонарь светится
     ctx.save(); ctx.globalCompositeOperation = 'lighter'; S().circle(ctx, x + 60.5, y - 37, 7 + Math.sin(t * 6) * 0.8, 'rgba(255,210,90,0.35)'); ctx.restore();
     // сам торговец: плащ, широкополая шляпа, посох
@@ -1658,24 +1658,6 @@
       for (const [dx, dy, rs] of [[-0.6, 0.1, 0.7], [0.6, 0.15, 0.7], [0, -0.35, 0.85]]) {
         S().circle(ctx, x + sway + dx * lr, y - h + dy * lr, lr * rs + 1, '#10200f');
         S().circle(ctx, x + sway + dx * lr, y - h + dy * lr, lr * rs, dy < 0 ? '#6fa84a' : '#4f8a3a');
-      }
-    }
-  }
-  function drawPlot(ctx, pl, t, near) {
-    const x = pl.x, y = pl.y;
-    ctx.fillStyle = '#2a1a0e'; roundRect(ctx, x - 18, y - 13, 36, 26, 3); ctx.fill();
-    ctx.fillStyle = '#6b4a2e'; roundRect(ctx, x - 17, y - 12, 34, 24, 3); ctx.fill();
-    ctx.fillStyle = '#4a2e18'; ctx.fillRect(x - 14, y - 9, 28, 18);
-    ctx.fillStyle = '#5e3c20'; for (let i = 0; i < 3; i++) ctx.fillRect(x - 14, y - 7 + i * 6, 28, 2.5);
-    if (pl.crop) {
-      const cd = C().CROPS[pl.crop];
-      if (!cd) return;
-      const stage = pl.ready ? 3 : Math.min(2, Math.floor((pl.t / cd.grow) * 3));
-      for (let i = -1; i <= 1; i += 2) S().drawCrop(ctx, x + i * 7, y + 2, pl.crop, stage, t);
-      if (pl.ready) { ctx.globalAlpha = 0.5 + Math.sin(t * 4) * 0.3; S().circle(ctx, x + 12, y - 16, 2, '#fff6a0'); ctx.globalAlpha = 1; }
-      else if (near) {
-        const w = 30; ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(x - w / 2 - 1, y + 14, w + 2, 5);
-        ctx.fillStyle = '#8fd45a'; ctx.fillRect(x - w / 2, y + 15, w * Math.min(1, pl.t / cd.grow), 3);
       }
     }
   }
@@ -1924,7 +1906,6 @@
     for (const d of W.decor) if (!FLAT_DECOR.has(d.kind) && !(d.lv > fLv) && d.x > x0 && d.x < x1 && d.y > y0 && d.y < y1 && seen(d.x, d.y - 40, 130)) vis.push({ y: d.y, k: 4, o: d });
     for (const b of (G.bolts || [])) drawBoltWarn(ctx, b, t);
     if (ui && ui.sel) { const b = AB.Sim.buildingByRef(G, ui.sel); if (b) selRing(ctx, b.o.x, b.o.y, (b.o.r || 30) + 14, t); }
-    for (const pl of G.plots) if (pl.x > x0 && pl.x < x1 && pl.y > y0 && pl.y < y1) { drawPlot(ctx, pl, t, me && AB.dist2(me.x, me.y, pl.x, pl.y) < 150 * 150); if (pl.mod) drawModuleLight(ctx, pl.x + 16, pl.y - 12, t); }
     for (const mn of G.mines) drawMine(ctx, mn, t);
     for (const te of G.tele) drawTele(ctx, te, t);
     for (const s of G.structs) if (s.x > x0 && s.x < x1 && s.y > y0 && s.y < y1) vis.push({ y: s.y, k: 9, o: s });
@@ -2487,7 +2468,7 @@
         const bc2 = (v) => Math.max(1, Math.round(v * (1 - Math.min(80, st.buildCost || 0) / 100)));
         const woodHave = AB.Sim.woodOf(G, me);
         R.buildBlocked = null;
-        const pal = [{ cmd: 'bed', key: 'G', name: 'Грядка', cost: bc2(cfg.GARDEN_BED_COST) }];
+        const pal = [];
         if (st.structBuild > 0) { pal.push({ cmd: 'build1', key: 'T', name: 'Частокол', cost: bc2(cfg.STRUCTURES.wall.cost) }); pal.push({ cmd: 'build2', key: 'Y', name: 'Вышка', cost: bc2(cfg.STRUCTURES.tower.cost) }); }
         else if (st.turretBuild > 0) pal.push({ cmd: 'build1', key: 'T', name: 'Турель', cost: bc2(cfg.STRUCTURES.turret.cost) });
         else if (st.moduleBuild > 0) pal.push({ cmd: 'build1', key: 'T', name: 'Модуль', cost: cfg.MODULE_COST });
@@ -2555,7 +2536,6 @@
         [`Пережито ночей: ${Math.max(0, ti.day - 1)}`, ti.day > 1],
         [`Боевые навыки: ${AB.Sim.abLearned(me)} / ${cfg.ABILITY_MAX}`, AB.Sim.abLearned(me) >= cfg.ABILITY_MAX],
         [`Сундуки: ${opened} / ${G.W.sites.length}`, opened >= G.W.sites.length],
-        [`Грядок засажено: ${G.plots.filter(p => p.crop).length}`, G.plots.some(p => p.crop)],
         [`Монстров убито: ${G.stats.kills}`, null],
       ];
       panel(ctx, SW - 244, 68, 230, 28 + lines.length * 22);
@@ -2643,7 +2623,7 @@
       }
       // подсказки
       const st = me.st || {}, bc = (v) => Math.max(1, Math.round(v * (1 - Math.min(80, st.buildCost || 0) / 100)));
-      const hints = [['Пробел', AB.App && AB.App.runAlways ? 'Шагом' : 'Бег'], ['Caps', AB.App && AB.App.runAlways ? 'Всегда бегом ✓' : 'Всегда бегом'], ['E', 'Съесть'], ['R', 'Посадить'], ['G', `Грядка (${bc(cfg.GARDEN_BED_COST)})`], ['F', 'Автоподбор']];
+      const hints = [['Пробел', AB.App && AB.App.runAlways ? 'Шагом' : 'Бег'], ['Caps', AB.App && AB.App.runAlways ? 'Всегда бегом ✓' : 'Всегда бегом'], ['E', 'Съесть'], ['F', 'Автоподбор']];
       if (me.aq > 0) hints.push(['K', 'Навык']);
       if (st.structBuild > 0) { hints.push(['T', `Частокол (${bc(cfg.STRUCTURES.wall.cost)})`]); hints.push(['Y', `Вышка (${bc(cfg.STRUCTURES.tower.cost)})`]); }
       else if (st.turretBuild > 0) hints.push(['T', `Турель/пушка (${bc(cfg.STRUCTURES.turret.cost)})`]);
@@ -2799,7 +2779,7 @@
     if (me) {
       const st = me.st || {}, bc2 = (v) => Math.max(1, Math.round(v * (1 - Math.min(80, st.buildCost || 0) / 100)));
       const woodHave = AB.Sim.woodOf(G, me);
-      const pal = [{ cmd: 'bed', name: 'Грядка', cost: bc2(cfg.GARDEN_BED_COST) }];
+      const pal = [];
       if (st.structBuild > 0) { pal.push({ cmd: 'build1', name: 'Частокол', cost: bc2(cfg.STRUCTURES.wall.cost) }); pal.push({ cmd: 'build2', name: 'Вышка', cost: bc2(cfg.STRUCTURES.tower.cost) }); }
       else if (st.turretBuild > 0) pal.push({ cmd: 'build1', name: 'Турель', cost: bc2(cfg.STRUCTURES.turret.cost) });
       else if (st.moduleBuild > 0) pal.push({ cmd: 'build1', name: 'Модуль', cost: cfg.MODULE_COST });
@@ -2822,7 +2802,7 @@
         px += bw + gp;
       });
       ctx.font = '600 11px "Nunito", system-ui'; ctx.textAlign = 'right'; ctx.fillStyle = '#cfd8cc';
-      ctx.fillText('Выберите постройку, затем коснитесь земли', SW - 10, py0 + bh + 12);
+      ctx.fillText(pal.length ? 'Выберите постройку, затем коснитесь земли' : 'Строить нечего: постройки профессии уже стоят', SW - 10, py0 + bh + 12);
       swallow(SW - 8 - totw, py0, totw, bh);
       }
     }
@@ -2844,7 +2824,7 @@
       }
       let yy = py + 30 + rows * (cs + 4);
       if (foods.length) {
-        ctx.textAlign = 'left'; ctx.font = '600 11px "Nunito", system-ui'; ctx.fillStyle = '#cfd8cc'; ctx.fillText('Еда и семена (коснитесь еды — съесть):', px + 12, yy + 6);
+        ctx.textAlign = 'left'; ctx.font = '600 11px "Nunito", system-ui'; ctx.fillStyle = '#cfd8cc'; ctx.fillText('Еда (коснитесь — съесть):', px + 12, yy + 6);
         foods.slice(0, 7).forEach((it, i) => {
           const x = px + 8 + i * (cs + 4), y = yy + 16;
           ctx.fillStyle = 'rgba(0,0,0,0.35)'; roundRect(ctx, x, y, cs, cs, 6); ctx.fill();
@@ -2864,7 +2844,7 @@
     if (panelOpen === 'map') { const sz = Math.min(200, SH - py0 - 150, SW - 24); minimap(ctx, G, me, SW, SH, { x: SW - 14 - sz, y: py0 + 6, sz }); swallow(SW - 20 - sz, py0, sz + 12, sz + 12); }
     if (me && panelOpen === 'map') {
       const opened = G.W.sites.filter(s => s.opened).length;
-      const lines = [[`Пережито ночей: ${Math.max(0, ti.day - 1)} из ${cfg.NIGHTS_TO_WIN}`], [`Боевые навыки: ${AB.Sim.abLearned(me)} / ${cfg.ABILITY_MAX}`], [`Сундуки: ${opened} / ${G.W.sites.length}`], [`Грядок засажено: ${G.plots.filter(p => p.crop).length}`], [`Монстров убито: ${G.stats.kills}`], [`Умений: ${(me.skills || []).length} · костёр ур. ${G.fireLevel || 1}`]];
+      const lines = [[`Пережито ночей: ${Math.max(0, ti.day - 1)} из ${cfg.NIGHTS_TO_WIN}`], [`Боевые навыки: ${AB.Sim.abLearned(me)} / ${cfg.ABILITY_MAX}`], [`Сундуки: ${opened} / ${G.W.sites.length}`], [`Монстров убито: ${G.stats.kills}`], [`Умений: ${(me.skills || []).length} · костёр ур. ${G.fireLevel || 1}`]];
       // цели — рядом с картой: слева от неё на широком экране, под ней на узком
       const msz = Math.min(200, SH - py0 - 150, SW - 24), pw = 230, ph = 18 + lines.length * 20;
       const wide = SW - msz - 30 - pw > 220;
