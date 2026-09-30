@@ -38,7 +38,7 @@
     g.players = G.players.map(p => { const o = {}; for (const k in p) if (!SKIP_P.has(k)) o[k] = p[k]; return o; });
     const w = { tr: [], bu: [], or: [], sites: [] };
     W.trees.forEach(t => {
-      if (t.gone) return; // поляна разросшейся локации - восстановится из уровня костра
+      if (t.gone && t.id < W.treeBase) return; // поляна разросшейся локации - восстановится из уровня костра (побеги нужны: иначе дыра в W.trees)
       if (!(t.dead || t.hp < cfg.TREE_HP || t.id >= W.treeBase)) return;
       const o = {}; TREE_F.forEach(f => { if (t[f] !== undefined) o[f] = t[f]; }); w.tr.push(o);
     });
@@ -79,6 +79,7 @@
     });
     (data.w.sites || []).forEach(id => { if (W.sites[id]) W.sites[id].opened = true; });
     if ((G.fireLevel || 1) > 1) AB.growSites(W, G.fireLevel); // поляны локаций - как при росте костра, без новой стражи
+    if (mode !== 'guest') { G.monsters = []; AB.Sim.spawnGuards(G); } // стража по сохранённому дню и костру, а не 1-го дня
     G.team = AB.Skills.team(G);
     return G;
   };

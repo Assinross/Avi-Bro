@@ -32,12 +32,14 @@
     G.tstock = {}; if (mode !== 'guest') Sim.restockTowns(G);
     W.G = G; // для столкновений со зданиями
     W.treeBase = W.trees.length; // деревья с id >= treeBase - выросшие побеги (их нет в мире из зерна)
-    if (mode !== 'guest') {
-      W.sites.forEach((s) => {
-        s.guards.forEach((type, k) => spawnGuard(G, s, type, (k / s.guards.length) * TAU, s.elite ? 0 : 55));
-      });
-    }
+    if (mode !== 'guest') Sim.spawnGuards(G);
     return G;
+  };
+  // Стража всех локаций - по текущему дню и уровню костра (новый мир и загрузка сохранения)
+  Sim.spawnGuards = function (G) {
+    G.W.sites.forEach((s) => {
+      s.guards.forEach((type, k) => spawnGuard(G, s, type, (k / s.guards.length) * TAU, s.elite ? 0 : 55));
+    });
   };
 
   // Страж локации. Одиночный босс лагеря (s.elite) — крупный, с именем и суммарным здоровьем группы.
