@@ -1264,7 +1264,7 @@
       if (m.dying > 0) m.dying -= dt;
     }
     for (const p of G.projs) { p.x += p.vx * dt; p.y += p.vy * dt; }
-    for (const t of G.W.trees) if (t.shake > 0) t.shake = Math.max(0, t.shake - dt);
+    if (G.W.shaking) for (const t of G.W.shaking) { t.shake = Math.max(0, t.shake - dt); if (!t.shake) G.W.shaking.delete(t); } // не все 25 тыс. деревьев каждый кадр
     for (const o of (G.W.ores || [])) if (o.shake > 0) o.shake = Math.max(0, o.shake - dt);
   }
 

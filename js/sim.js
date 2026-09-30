@@ -882,7 +882,7 @@
       if (tree) {
         p.chopCd = cfg.AXE_COOLDOWN;
         p.sw = 0.3; p.sk = 'axe'; p.sa = Math.atan2(tree.y - p.y, tree.x - p.x);
-        tree.hp -= Sim.axeDmg(p, G); tree.shake = 0.35;
+        tree.hp -= Sim.axeDmg(p, G); tree.shake = 0.35; if (G.W.treeAct) G.W.treeAct.add(tree);
         G.treeDirty.add(tree.id);
         Sim.fx(G, { k: 'chop', x: tree.x, y: tree.y - 10, id: tree.id });
         if (tree.hp <= 1e-6) {
@@ -1454,6 +1454,11 @@
   function updateMonsters(G, dt) {
     const cfg = C(), W = G.W, T = G.team;
     const list = G.monsters;
+    // сетка для расталкивания: раньше каждый монстр сверялся со всеми (O(n²) - треть времени шага).
+    // Ячейка - два наибольших радиуса + запас на движение за шаг, поэтому соседи из 3x3 ячеек - все, кто может касаться
+    let maxR = 0; for (const m of list) if (m.r > maxR) maxR = m.r;
+    const cell = maxR * 2 + 40, grid = new Map();
+    for (const m of list) { const k = Math.floor(m.x / cell) * 4096 + Math.floor(m.y / cell); let a = grid.get(k); if (!a) grid.set(k, a = []); a.push(m); }
     const fenceDps = T.syn_fence || 0;
     for (let i = list.length - 1; i >= 0; i--) {
       const m = list[i];
@@ -1557,7 +1562,7 @@
       m.cs += (want * turnK - m.cs) * Math.min(1, cfg.MONSTER_ACCEL * dt);
       let mvx = Math.cos(m.hd) * m.cs * dt, mvy = Math.sin(m.hd) * m.cs * dt;
       m.a = m.hd;
-      separate(m, list, (dx, dy) => { mvx += dx; mvy += dy; });
+      separate(m, grid, cell, (dx, dy) => { mvx += dx; mvy += dy; });
       const ox = m.x, oy = m.y;
       const r = AB.resolveCollision(W, m.x + mvx, m.y + mvy, m.r);
       m.x = r[0]; m.y = r[1];
@@ -1666,14 +1671,19 @@
     m.atk = Math.max(0, (m.atk || 0) - dt);
   }
 
-  function separate(m, list, add) {
-    for (let j = 0; j < list.length; j++) {
-      const o = list[j];
-      if (o === m) continue;
-      const dx = m.x - o.x, dy = m.y - o.y, rr = m.r + o.r;
-      if (Math.abs(dx) > rr || Math.abs(dy) > rr) continue;
-      const d = Math.hypot(dx, dy);
-      if (d < rr && d > 0.01) { const push = (rr - d) * (o.boss ? 0.9 : 0.5); add((dx / d) * push, (dy / d) * push); }
+  function separate(m, grid, cell, add) {
+    const cx = Math.floor(m.x / cell), cy = Math.floor(m.y / cell);
+    for (let gx = cx - 1; gx <= cx + 1; gx++) for (let gy = cy - 1; gy <= cy + 1; gy++) {
+      const list = grid.get(gx * 4096 + gy);
+      if (!list) continue;
+      for (let j = 0; j < list.length; j++) {
+        const o = list[j];
+        if (o === m) continue;
+        const dx = m.x - o.x, dy = m.y - o.y, rr = m.r + o.r;
+        if (Math.abs(dx) > rr || Math.abs(dy) > rr) continue;
+        const d = Math.hypot(dx, dy);
+        if (d < rr && d > 0.01) { const push = (rr - d) * (o.boss ? 0.9 : 0.5); add((dx / d) * push, (dy / d) * push); }
+      }
     }
   }
 
@@ -1920,6 +1930,8 @@
     for (let i = G.drops.length - 1; i >= 0; i--) {
       const d = G.drops[i];
       d.age += dt;
+      // старое и вдали от всех исчезает незаметно: иначе за 99 ночей копятся тысячи (память, сеть, сохранения)
+      if (cfg.DROP_LIFE && d.age > cfg.DROP_LIFE && !G.players.some(p => !p.left && AB.dist2(d.x, d.y, p.x, p.y) < 1500 * 1500)) { G.drops.splice(i, 1); continue; }
       const auto = (cfg.AUTO_PICKUP_ITEMS || []).includes(d.k);
       if (d.age < 0.35) continue;
       let best = null, bd = Infinity, br = 0;
@@ -1949,8 +1961,12 @@
 
   function updateWorld(G, dt) {
     const cfg = C(), W = G.W;
-    for (const t of W.trees) {
-      if (t.gone) continue; // на этом месте теперь поляна локации
+    // только "активные" деревья (срублены, растут, трясутся): перебор всех ~25 тыс. каждый шаг был четвертью времени.
+    // Раз в 5 с набор пересобирается полным проходом - на случай, если дерево изменилось где-то ещё
+    G.treeScanT = (G.treeScanT || 0) - dt;
+    if (!W.treeAct || G.treeScanT <= 0) { G.treeScanT = 5; W.treeAct = new Set(W.trees.filter(t => t && !t.gone && (t.dead || t.shake > 0))); }
+    for (const t of W.treeAct) {
+      if (t.gone || (!t.dead && !(t.shake > 0))) { W.treeAct.delete(t); continue; } // поляна локации или дерево успокоилось
       if (t.shake > 0) t.shake = Math.max(0, t.shake - dt);
       if (t.dead) {
         t.regrow -= dt;
@@ -2187,7 +2203,7 @@
       if (G.structs.some(s => AB.dist2(s.x, s.y, x, y) < 60 * 60) || G.players.some(p => AB.dist2(p.x, p.y, x, y) < 60 * 60)) continue;
       const bi = W.biome ? W.biome[i] : 0, BL = bi && W.bmix[i] > 0.5 ? C().BIOMES[AB.biomeKey(bi)].trees : null;
       const t = { id: W.trees.length, x, y, tx, ty, v: BL ? BL[Math.floor(rnd() * BL.length)] : Math.floor(rnd() * 6), s: 0.85 + rnd() * 0.4, hp: 0, dead: true, sap: 0, sg: G.clock, regrow: Sim.saplingTime(), shake: 0, border: false, wild: true };
-      W.trees.push(t); W.treeAt[i] = t.id; W.solid[i] = AB.S_TREE;
+      W.trees.push(t); W.treeAt[i] = t.id; W.solid[i] = AB.S_TREE; if (W.treeAct) W.treeAct.add(t);
       G.sapCount = (G.sapCount || 0) + 1;
       G.treeDirty.add(t.id);
       return;
@@ -2763,7 +2779,7 @@
         t = { id: a[0], x: a[5], y: a[6], tx: a[7], ty: a[8], v: a[9], s: a[10], hp: 0, dead: true, shake: 0 };
         W.trees[a[0]] = t; W.treeAt[a[8] * W.N + a[7]] = a[0]; W.solid[a[8] * W.N + a[7]] = AB.S_TREE;
       }
-      if (a[1] < t.hp && !a[2]) t.shake = 0.35;
+      if (a[1] < t.hp && !a[2]) { t.shake = 0.35; (W.shaking || (W.shaking = new Set())).add(t); } // затухание - в main.js, только у трясущихся
       t.hp = a[1]; t.dead = !!a[2]; t.sap = a[3] === 1 ? 0 : a[3] === -1 ? -1 : undefined; t.sg = a[4];
     });
     s.bu.forEach(a => { const b = W.bushes[a[0]]; if (b) b.berries = a[1]; });
