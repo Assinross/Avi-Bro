@@ -9,7 +9,7 @@
   };
 
   /* ============================ ЭКРАНЫ ============================ */
-  const screens = ['menu', 'coop', 'lobby', 'joining', 'help', 'pause', 'over', 'prof'];
+  const screens = ['menu', 'cont', 'coop', 'lobby', 'joining', 'help', 'pause', 'over', 'prof'];
   function show(id) {
     screens.forEach(s => $(s).classList.toggle('hidden', s !== id));
     document.body.classList.toggle('in-game', id === null);
@@ -80,8 +80,31 @@
   function startSolo() {
     AB.setDifficulty(App.diff);
     const G = AB.Sim.create((Math.random() * 1e9) | 0, 'solo');
-    AB.Sim.addPlayer(G, 0, playerName(), App.prof);
+    AB.Sim.addPlayer(G, 0, playerName(), App.prof).uid = AB.Save.uid();
+    App.saveKey = AB.Save.keySolo();
     beginGame(G, 'solo', 0);
+  }
+
+  // Продолжить одиночную игру из сохранения
+  function continueSolo(d) {
+    let G;
+    try { G = AB.Save.unpack(d, 'solo'); } catch (e) { show('menu'); $('menuMsg').textContent = 'Сохранение не загрузилось: ' + e.message; return; }
+    const me = G.players.find(q => q.id === 0);
+    if (me) { me.name = playerName(); me.uid = AB.Save.uid(); }
+    App.saveKey = AB.Save.keySolo();
+    beginGame(G, 'solo', 0);
+  }
+
+  // Сохранить текущую игру: только одиночная и хост; после поражения - нет (остаётся рассвет).
+  // sync - при закрытии вкладки, manual - кнопка "Сохранить" (показать результат)
+  function saveGame(sync, manual) {
+    const G = App.G;
+    if (!G || !App.saveKey || (App.mode !== 'solo' && App.mode !== 'host') || G.over === 'lose') return;
+    let d;
+    try { d = AB.Save.pack(G, App.saveKey); } catch (e) { AB.FX.toast('Не удалось сохранить: ' + e.message, '#ff9d7a'); return; }
+    if (sync) { AB.Save.writeSync(d); return; }
+    AB.Save.write(d).then(() => { if (manual) AB.FX.toast('Сохранено ✓', '#8fe08a'); })
+      .catch(e => AB.FX.toast((e && e.message) || 'Не удалось сохранить', '#ff9d7a'));
   }
 
   // ----- выбор профессии
@@ -178,6 +201,7 @@
 
   // ----- гость
   function startJoin(code) {
+    App.saveKey = null;
     code = (code || '').replace(/\D/g, '');
     if (code.length < 3) { $('coopErr').textContent = 'Введите код комнаты'; return; }
     show('joining');
@@ -953,6 +977,7 @@
     App.paused = !App.paused;
     show(App.paused ? 'pause' : null);
     $('pauseNote').textContent = (App.mode === 'solo' ? 'Игра на паузе' : 'В игре вдвоём время не останавливается!') + ` · Сложность: ${(AB.DIFFS[AB.difficulty] || {}).name || ''}`;
+    $('btnSave').classList.toggle('hidden', !App.saveKey || App.mode === 'guest');
   }
 
   function controlLocal(me, dt) {
@@ -1080,6 +1105,7 @@
       controlLocal(me, dt);
       if (App.mode === 'solo' || App.mode === 'host') {
         AB.Sim.update(G, dt);
+        if (G.saveReq) { G.saveReq = false; saveGame(); }
         if (App.mode === 'host' && AB.Net.open) {
           App.sendT -= dt;
           if (App.sendT <= 0) { App.sendT = 1 / C().NET_SNAPSHOT_HZ; AB.Net.send(AB.Sim.snapshot(G, false)); }
@@ -1169,7 +1195,7 @@
 
   /* ============================ ИНИЦИАЛИЗАЦИЯ ============================ */
   function init() {
-    AB.Net.detect().then(sv => {
+    App.netReady = AB.Net.detect().then(sv => {
       if (sv) { const el = $('netInfo'); el.textContent = `Свой сервер: игра вдвоём без интернета. Ссылка для второго ПК: ${(sv.links && sv.links[0]) || location.origin}`; el.classList.remove('hidden'); }
     });
     AB.Sprites.init();
@@ -1186,7 +1212,17 @@
     const bind = (id, fn) => $(id).addEventListener('click', () => { AB.Sound.unlock(); AB.Sound.play('click', 1); fn(); });
     try { App.prof = localStorage.getItem('avibro-prof') || 'hunter'; } catch (e) { App.prof = 'hunter'; }
     document.querySelectorAll('#diffBox .diff').forEach(b => b.addEventListener('click', () => { AB.Sound.play('click', 1); App.diff = b.dataset.diff; try { localStorage.setItem('avibro-diff', App.diff); } catch (e) { /* */ } showDiff(); }));
-    bind('btnSolo', () => chooseProf(startSolo, 'menu'));
+    bind('btnSolo', () => {
+      // сервер должен быть уже определён - иначе сохранение ищется не в том хранилище
+      App.netReady.then(() => AB.Save.load(AB.Save.keySolo())).then(d => {
+        if (!AB.Save.ok(d)) { chooseProf(startSolo, 'menu'); return; }
+        App.contData = d;
+        $('contNote').textContent = AB.Save.label(d);
+        show('cont');
+      });
+    });
+    bind('btnCont', () => { const d = App.contData; App.contData = null; if (d) continueSolo(d); });
+    bind('btnNew', () => chooseProf(startSolo, 'cont'));
     bind('btnReroll', reroll);
     bind('bpClose', () => { App.selRef = null; });
     bind('btnLater', () => { App.abDefer = true; App.lvOpen = false; App.lvSig = null; });
@@ -1235,8 +1271,10 @@
     setupGearUI();
     bind('btnFull', () => App.goFull());
     bind('btnBuildClose', () => { if (App.showBuild) toggleBuild(); });
-    bind('btnQuit', () => endToMenu());
-    bind('btnMenu', () => endToMenu());
+    bind('btnQuit', () => { saveGame(); endToMenu(); });
+    bind('btnMenu', () => { saveGame(); endToMenu(); });
+    bind('btnSave', () => saveGame(false, true));
+    window.addEventListener('beforeunload', () => { if (App.state === 'play') saveGame(true); });
     bind('btnRetry', () => chooseProf(startSolo, 'menu'));
     $('code').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('btnJoin').click(); });
 

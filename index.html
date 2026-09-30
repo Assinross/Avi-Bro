@@ -33,6 +33,18 @@
     </div>
   </div>
 
+  <!-- Один игрок: продолжить сохранение или начать новую -->
+  <div id="cont" class="screen hidden">
+    <div class="card">
+      <h2>Один игрок</h2>
+      <p id="contNote" class="note"></p>
+      <button id="btnCont" class="btn gold">Продолжить</button>
+      <button id="btnNew" class="btn">Новая игра</button>
+      <p class="note">Новая игра заменит это сохранение при первом сохранении.</p>
+      <button class="btn ghost" data-back="menu">Назад</button>
+    </div>
+  </div>
+
   <!-- Выбор: создать / подключиться -->
   <div id="coop" class="screen hidden">
     <div class="card">
@@ -324,6 +336,7 @@
       <button id="btnPauseBuild" class="btn ghost touchonly">Моя сборка</button>
       <button id="btnPauseGear" class="btn ghost touchonly">Снаряжение</button>
       <button id="btnFull" class="btn ghost touchonly">Во весь экран</button>
+      <button id="btnSave" class="btn ghost">Сохранить</button>
       <button id="btnQuit" class="btn ghost">Выйти в меню</button>
     </div>
   </div>
