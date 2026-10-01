@@ -94,6 +94,7 @@
     if (me) { me.name = playerName(); if (!key) me.uid = AB.Save.uid(); }
     App.saveKey = key || AB.Save.keySolo();
     beginGame(G, 'solo', 0);
+    AB.Render.exploredLoad(d.mm); // миникарта - как была при сохранении
   }
 
   // Сохранить текущую игру: только одиночная и хост; после поражения - нет (остаётся рассвет).
@@ -102,7 +103,7 @@
     const G = App.G;
     if (!G || !App.saveKey || (App.mode !== 'solo' && App.mode !== 'host') || G.over === 'lose') return;
     let d;
-    try { d = AB.Save.pack(G, App.saveKey); } catch (e) { AB.FX.toast('Не удалось сохранить: ' + e.message, '#ff9d7a'); return; }
+    try { d = AB.Save.pack(G, App.saveKey); d.mm = AB.Render.exploredDump(); } catch (e) { AB.FX.toast('Не удалось сохранить: ' + e.message, '#ff9d7a'); return; } // mm - открытая часть миникарты
     if (sync) { AB.Save.writeSync(d); return; }
     AB.Save.write(d).then(() => { if (manual) AB.FX.toast('Сохранено ✓', '#8fe08a'); })
       .catch(e => AB.FX.toast((e && e.message) || 'Не удалось сохранить', '#ff9d7a'));
@@ -166,6 +167,7 @@
       }
       App.saveKey = gm.uid === 'anon' ? null : AB.Save.keyPair(AB.Save.uid(), gm.uid); // старая версия у гостя - без сохранений
       beginGame(G, 'host', 0);
+      if (d) AB.Render.exploredLoad(d.mm); // миникарта хоста - как была при сохранении
       AB.Net.send({ t: 'init', seed: G.seed, wg: G.wg, id: 1, df: AB.difficulty });
       AB.Net.send(AB.Sim.snapshot(G, true));
     };
@@ -404,6 +406,9 @@
     function secondaryAt() {
         // в режиме стройки ПКМ отменяет его
         if (App.buildMode) { App.buildMode = null; return; }
+        // ПКМ по ячейке рюкзака - уничтожить предмет
+        const ui = uiHit(App.mouse.x, App.mouse.y);
+        if (ui && ui.c === 'dropk') { AB.Sound.play('click', 1); sendCmd('destroyk', ui.v); return; }
         const mw = mouseWorld();
         const ref = AB.Sim.buildingAt(App.G, mw.x, mw.y);
         const me = App.me();

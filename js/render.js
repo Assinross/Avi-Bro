@@ -299,6 +299,24 @@
       mini.dirty = true;
     }
   };
+  // Открытая часть миникарты для сохранения: серии «закрыто, открыто, закрыто…» по всем клеткам (область сплошная - строка короткая)
+  R.exploredDump = function () {
+    if (!mini) return null;
+    const e = mini.explored, runs = []; let cur = 0, n = 0;
+    for (let i = 0; i < e.length; i++) { if (e[i] === cur) n++; else { runs.push(n); cur = e[i]; n = 1; } }
+    runs.push(n);
+    return runs.join(',');
+  };
+  R.exploredLoad = function (str) {
+    if (!mini || typeof str !== 'string') return;
+    const e = mini.explored; let i = 0, cur = 0;
+    for (const s of str.split(',')) {
+      const n = +s || 0;
+      if (cur) for (let k = i; k < Math.min(e.length, i + n); k++) { e[k] = 1; for (let c = 0; c < 4; c++) mini.img.data[k * 4 + c] = mini.base[k * 4 + c]; }
+      i += n; cur = 1 - cur;
+    }
+    mini.dirty = true;
+  };
   R.isExplored = function (W, x, y) { if (!mini) return false; const tx = Math.floor(x / W.T), ty = Math.floor(y / W.T); return !!mini.explored[ty * W.N + tx]; };
 
   /* ============================ ПЕРСОНАЖИ ============================ */
@@ -2728,8 +2746,8 @@
         panel(ctx, px, py, pw, ph);
         ctx.font = 'bold 13px "Nunito", system-ui'; ctx.textAlign = 'left'; ctx.fillStyle = used >= cap ? '#ff8a6a' : '#fff';
         ctx.fillText(`Рюкзак ${used}/${cap}`, px + 12, py + 16);
-        ctx.font = '600 10px "Nunito", system-ui'; ctx.fillStyle = '#aab4aa'; ctx.textAlign = 'right';
-        ctx.fillText('клик — выбросить', px + pw - 12, py + 16);
+        ctx.font = '600 9px "Nunito", system-ui'; ctx.fillStyle = '#aab4aa'; ctx.textAlign = 'right';
+        ctx.fillText('ЛКМ — выбросить · ПКМ — удалить', px + pw - 10, py + 16);
         for (let i = 0; i < cap; i++) {
           const cx = px + 8 + (i % per) * (cs + 4), cy = py + 28 + Math.floor(i / per) * (cs + 4);
           ctx.fillStyle = 'rgba(0,0,0,0.45)'; roundRect(ctx, cx, cy, cs, cs, 6); ctx.fill();

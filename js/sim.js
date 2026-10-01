@@ -1954,6 +1954,7 @@
       for (const p of G.players) {
         if (p.dead || p.left || (d.o !== undefined && d.o !== p.id)) continue;
         if (!auto && !p.ap) continue; // автоподбор выключен у этого игрока — только кликом
+        if (d.np === p.id && d.age < (cfg.DROP_NOPICK || 6)) continue; // сам выбросил - автоподбор не возвращает
         const mr = (auto ? cfg.XP_MAGNET : cfg.MAGNET_RADIUS) * (1 + p.st.pickup / 100);
         const dd = AB.dist(d.x, d.y, p.x, p.y);
         if (dd < mr && dd < bd) { bd = dd; best = p; br = mr; }
@@ -1961,7 +1962,7 @@
       if (!best) continue;
       if (Sim.bagItem(d.k) && Sim.bagUsed(best) >= Sim.bagCap(best)) {
         best._fullT = (best._fullT || 0) - dt;
-        if (best._fullT <= 0 && bd < cfg.PICKUP_RADIUS * 2) { best._fullT = cfg.BACKPACK_FULL_MSG; Sim.msg(G, `Рюкзак полон (${Sim.bagCap(best)})! Бревна — на лесопилку или в костёр, камень и железо — на склад`, best.id, '#ffb36b'); }
+        if (cfg.BACKPACK_FULL_MSG && best._fullT <= 0 && bd < cfg.PICKUP_RADIUS * 2) { best._fullT = cfg.BACKPACK_FULL_MSG; Sim.msg(G, `Рюкзак полон (${Sim.bagCap(best)})! Бревна — на лесопилку или в костёр, камень и железо — на склад`, best.id, '#ffb36b'); }
         continue;
       }
       if (bd < cfg.PICKUP_RADIUS) {
@@ -2321,7 +2322,13 @@
     if (c === 'dropk') {
       if (!(p.inv[x] > 0) || x === 'coin') return;
       p.inv[x]--;
-      G.drops.push({ id: G.nextId++, k: x, x: p.x + (rnd() - 0.5) * 20, y: p.y + 14 + rnd() * 8, t: 0, age: 0 });
+      G.drops.push({ id: G.nextId++, k: x, x: p.x + (rnd() - 0.5) * 20, y: p.y + 14 + rnd() * 8, t: 0, age: 0, np: p.id });
+      return;
+    }
+    if (c === 'destroyk') { // правый клик по ячейке рюкзака: уничтожить, не выбрасывая
+      if (!(p.inv[x] > 0) || x === 'coin') return;
+      p.inv[x]--;
+      Sim.fx(G, { k: 'rustle', x: p.x, y: p.y });
       return;
     }
     if (c === 'eatk') { eatFood(G, p, x); return; }
@@ -2424,7 +2431,7 @@
       G.drops.splice(G.drops.indexOf(q), 1); got++;
     }
     if (got) Sim.fx(G, { k: 'pick', x: d.x, y: d.y, it: d.k, pid: p.id, n: got });
-    if (full) Sim.msg(G, `Рюкзак полон (${Sim.bagCap(p)})! Бревна — на лесопилку, шкуры — в лавку, или выбросьте лишнее (клик по ячейке рюкзака)`, p.id, '#ffb36b');
+    if (full && cfg.BACKPACK_FULL_MSG) Sim.msg(G, `Рюкзак полон (${Sim.bagCap(p)})! Бревна — на лесопилку, шкуры — в лавку, или выбросьте лишнее (клик по ячейке рюкзака)`, p.id, '#ffb36b');
   }
 
   // ---------- Здания: описание, уровни, улучшения ----------
