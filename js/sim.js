@@ -548,6 +548,8 @@
   };
   Sim.fireMaxLevel = () => C().FIRE_LEVEL_STEPS.length;
   // Подбросить единицу топлива; возвращает false, если костёр полон
+  // Топливо пойдёт в дело: главный костёр ещё растёт по уровням (излишек поднимает уровень) или влезает в шкалу без остатка
+  Sim.fuelFits = (G, f, val) => (f.main && G.fireLevel < Sim.fireMaxLevel()) || f.fuel + val <= Sim.fireCap(G, f);
   Sim.feedFire = function (G, f, val) {
     const cfg = C();
     let cap = Sim.fireCap(G, f);
@@ -804,11 +806,13 @@
           p.hp = Math.min(p.mhp, p.hp + cfg.FIRE_HEAL * (1 + cfg.FIRE_LEVEL_HEAL * (lv - 1)) * (1 + st.fireHeal / 100) * (Sim.hasMod(f, 'hearth') ? 2 : 1) * dt);
         }
         if (f.town === undefined && d < cfg.FIRE_FEED_RADIUS && p.feedCd <= 0) {
-          // сначала уголь, потом бревна
-          const k = ['coal', 'wood'].find(q => (p.inv[q] || 0) > 0);
-          if (k && Sim.feedFire(G, f, cfg.FUEL_VALUES[k])) {
-            p.inv[k]--; p.feedCd = cfg.FIRE_FEED_INTERVAL;
-            Sim.fx(G, { k: 'feed', x: f.x, y: f.y });
+          // подошёл к костру - сразу отдаёт весь уголь, потом все бревна (сколько влезет без потерь)
+          let n = 0;
+          for (const k of ['coal', 'wood']) while ((p.inv[k] || 0) > 0 && Sim.fuelFits(G, f, cfg.FUEL_VALUES[k]) && Sim.feedFire(G, f, cfg.FUEL_VALUES[k])) { p.inv[k]--; n++; }
+          if (n) {
+            p.feedCd = cfg.FIRE_FEED_INTERVAL;
+            for (let i = 0; i < Math.min(4, n); i++) Sim.fx(G, { k: 'feed', x: f.x + (rnd() - 0.5) * 16, y: f.y });
+            if (n > 1) Sim.msg(G, `В костёр: ×${n} · шкала ${Math.floor(f.fuel)}/${Sim.fireCap(G, f)}`, p.id, '#ffb36b');
           }
         }
       }
@@ -2069,11 +2073,11 @@
       S.planks += n;
       Sim.fx(G, { k: 'saw', x: S.x, y: S.y });
     }
-    // уголь со склада сам уходит в прогорающий главный костёр
+    // уголь со склада сразу уходит в главный костёр; на последнем уровне - только когда влезает без потерь
     S.feedT -= dt;
     const f = G.fires.find(q => q.main);
-    if (f && S.coal > 0 && S.feedT <= 0 && f.fuel < Sim.fireCap(G, f) * 0.25) {
-      S.feedT = 2; S.coal--; Sim.feedFire(G, f, cfg.FUEL_VALUES.coal);
+    if (f && S.coal > 0 && S.feedT <= 0 && Sim.fuelFits(G, f, cfg.FUEL_VALUES.coal)) {
+      S.feedT = 0.5; S.coal--; Sim.feedFire(G, f, cfg.FUEL_VALUES.coal);
       Sim.fx(G, { k: 'feed', x: f.x, y: f.y });
     }
   }
