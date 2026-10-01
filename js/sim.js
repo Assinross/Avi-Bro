@@ -696,6 +696,7 @@
     let kept = 0; for (let i = 0; i < meat; i++) if (rnd() < (cfg.MEAT_DROP_MULT !== undefined ? cfg.MEAT_DROP_MULT : 1)) kept++;
     // бонус охотника — после мульта: гарантированный доп. кусок с шансом meatBonus (раньше съедался ×0.2)
     if (mb > 0 && rnd() * 100 < mb) kept++;
+    if (cfg.MEAT_MIN_ONE && kept === 0 && def.meat[0] > 0) kept = 1; // волк без мяса - слишком голодно
     if (kept > 0) Sim.dropItem(G, 'meat', kept, m.x, m.y, 12, p);
     const depth = Sim.depth(G, m.x, m.y);
     // опыт растёт с ночью (G.day = номер дня, ночь N идёт в день N): ночь 1 ≈ ×1.0
