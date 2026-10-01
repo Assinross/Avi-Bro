@@ -546,7 +546,7 @@ window.CONFIG = {
   FOOD: {
     berry:          { name: 'Ягоды',              food: 8,  hp: 1 },
     carrot:         { name: 'Сырая морковь',      food: 12, hp: -1 },
-    meat:           { name: 'Сырое мясо',         food: 22, hp: -1 },
+    meat:           { name: 'Сырое мясо',         food: 22, hp: -10 }, // сырое мясо сильно вредит - лучше жарить на кухне
     pumpkin:        { name: 'Сырая тыква',        food: 30, hp: -2 },
     cooked_carrot:  { name: 'Печёная морковь',    food: 18, hp: 3 },
     cooked_meat:    { name: 'Жареное мясо',       food: 30, hp: 5 },
