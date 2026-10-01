@@ -1885,6 +1885,7 @@
     const ex0 = cam.x - R.w / z / 2, ex1 = cam.x + R.w / z / 2, ey0 = cam.y - R.h / z / 2, ey1 = cam.y + R.h / z / 2; // ровно экран
     ctx.beginPath();
     let shN = 0;
+    const casters = R.lowQ ? null : []; // тени: x, y, высота, ширина, дерево(1) - см. drawShadows
     const qy0 = Math.max(0, Math.floor((ey0 - 14) / T)), qy1 = Math.min(W.N - 1, Math.floor((ey1 + 170) / T));
     const qx0 = Math.max(0, Math.floor((ex0 - 80) / T)), qx1 = Math.min(W.N - 1, Math.floor((ex1 + 80) / T));
     for (let ty = qy0; ty <= qy1; ty++) for (let tx = qx0; tx <= qx1; tx++) {
@@ -1893,14 +1894,25 @@
       if (ti >= 0) {
         const tr = W.trees[ti], ts = tr.s;
         if (tr.y > ey0 - 12 && tr.y - 150 * ts < ey1 && tr.x + 70 * ts > ex0 && tr.x - 70 * ts < ex1 && seen(tr.x, tr.y - 60 * ts, 80 * ts)) {
-          if (!tr.dead) { const rx = (tr.v < 3 ? 36 : 26) * ts; ctx.moveTo(tr.x + 8 + rx, tr.y - 2); ctx.ellipse(tr.x + 8, tr.y - 2, rx, 13 * ts, 0, 0, TAU); shN++; }
+          if (!tr.dead) { const rx = (tr.v < 3 ? 36 : 26) * ts; if (casters) casters.push(tr.x, tr.y, 80 * ts, rx, 1); else { ctx.moveTo(tr.x + 8 + rx, tr.y - 2); ctx.ellipse(tr.x + 8, tr.y - 2, rx, 13 * ts, 0, 0, TAU); shN++; } }
+          else if (casters && !tr.gone) casters.push(tr.x, tr.y, 10 * ts, 9 * ts, 0); // пень
           vis.push({ y: tr.y, k: 0, o: tr });
         }
       }
       const ri = W.rockAt[i];
-      if (ri >= 0) { const rk = W.rocks[ri]; if (rk.y > ey0 - 20 && rk.y - 70 < ey1 && seen(rk.x, rk.y - 10, 40)) vis.push({ y: rk.y, k: 1, o: rk }); }
+      if (ri >= 0) { const rk = W.rocks[ri]; if (rk.y > ey0 - 20 && rk.y - 70 < ey1 && seen(rk.x, rk.y - 10, 40)) { vis.push({ y: rk.y, k: 1, o: rk }); if (casters && !rk.dead) casters.push(rk.x, rk.y, 22, 14, 0); } }
     }
     if (shN) { ctx.fillStyle = 'rgba(5,15,8,0.3)'; ctx.fill(); }
+    if (casters) {
+      const inV = (o, m) => o.x > ex0 - m && o.x < ex1 + m && o.y > ey0 - m && o.y < ey1 + m * 2;
+      for (const b of W.bushes) if (inV(b, 40)) casters.push(b.x, b.y, 16, 13, 0);
+      for (const st of G.structs) if (inV(st, 120)) casters.push(st.x, st.y, ((OCC_BOX_H[st.kind]) || 40) * 0.7, st.r || 20, 0);
+      if (G.kitchen && inV(G.kitchen, 120)) casters.push(G.kitchen.x, G.kitchen.y, 42, 38, 0);
+      if (G.store && inV(G.store, 120)) casters.push(G.store.x, G.store.y, 45, 40, 0);
+      for (const p of G.players) if (!p.dead && inV(p, 60)) casters.push(p.x, p.y + 8, 34 * (cfg.PLAYER_SCALE || 1), 8, 0);
+      for (const m of G.monsters) if (!m.dying && inV(m, 80) && seen(m.x, m.y, m.r * 3)) casters.push(m.x, m.y + m.r * 0.5, m.r * 2.4, m.r * 0.75, 0);
+      drawShadows(ctx, G, casters, R._lights || []);
+    }
     for (const b of W.bushes) if (b.x > ex0 - 40 && b.x < ex1 + 40 && b.y > ey0 - 10 && b.y < ey1 + 50 && seen(b.x, b.y - 8, 30)) vis.push({ y: b.y, k: 2, o: b });
     for (const s of W.sites) if (s.x > x0 && s.x < x1 && s.y > y0 && s.y < y1) vis.push({ y: s.y, k: 3, o: s });
     for (const d of W.decor) if (!FLAT_DECOR.has(d.kind) && !(d.lv > fLv) && d.x > x0 && d.x < x1 && d.y > y0 && d.y < y1 && seen(d.x, d.y - 40, 130)) vis.push({ y: d.y, k: 4, o: d });
@@ -2104,6 +2116,48 @@
     for (const st of G.structs) if (st.kind === 'tower') out.push([st.x, st.y, C().STRUCTURES.tower.vision * (st.bmod === 'light' ? 1.6 : 1) + 10]);
     for (const l of lights) out.push([l[0], l[1], l[2] * 0.9 + 10]);
     return out;
+  }
+  // ---------- тени ----------
+  // Высота построек для теней (как у полупрозрачности OCC_BOX)
+  const OCC_BOX_H = { townhall: 112, workshop: 100, exchange: 100, shop: 86, tower: 128, wall: 44, turret: 38 };
+  // Днём - от солнца: утром на запад и длинные, к полудню короткие (вверх), к закату длинные на восток.
+  // Ночью - от ближайшего огня, если объект в его свете. Все тени - две заливки на кадр (дёшево).
+  function sunDir(G) {
+    const cfg = C(), ph = G.clock % (cfg.DAY_LENGTH + cfg.NIGHT_LENGTH), f = Math.min(1, ph / cfg.DAY_LENGTH);
+    const a = Math.PI * (1.08 + 0.84 * f);
+    return [Math.cos(a), Math.sin(a) * 0.55, 0.3 + 0.9 * Math.abs(f - 0.5) * 2];
+  }
+  // тень одного объекта в текущий контур: основание (x, y), высота h, полуширина w, направление (dx, dy), длина len
+  function addShadow(ctx, x, y, h, w, tree, dx, dy, len) {
+    const ox = dx * h * len, oy = dy * h * len, rot = Math.atan2(oy, ox), L = Math.hypot(ox, oy);
+    if (tree) { // крона (ствол под ней не рисуем - вдвое меньше фигур в контуре)
+      const cx = x + ox * 0.8, cy = y + oy * 0.8, rx = w * (1 + len * 0.12), ry = w * 0.62;
+      ctx.moveTo(cx + Math.cos(rot) * rx, cy + Math.sin(rot) * rx); ctx.ellipse(cx, cy, rx, ry, rot, 0, TAU);
+    } else {
+      const cx = x + ox * 0.5, cy = y + oy * 0.5, rx = L * 0.5 + w * 0.7, ry = w * 0.5;
+      ctx.moveTo(cx + Math.cos(rot) * rx, cy + Math.sin(rot) * rx); ctx.ellipse(cx, cy, rx, ry, rot, 0, TAU);
+    }
+  }
+  function drawShadows(ctx, G, cs, lights) {
+    const nf = G.nightF || 0, dayA = 0.24 * (1 - nf), nightA = 0.34 * nf;
+    if (dayA > 0.01) {
+      const [dx, dy, len] = sunDir(G);
+      ctx.beginPath();
+      for (let i = 0; i < cs.length; i += 5) addShadow(ctx, cs[i], cs[i + 1], cs[i + 2], cs[i + 3], cs[i + 4], dx, dy, len);
+      ctx.fillStyle = `rgba(8,18,10,${dayA})`; ctx.fill();
+    }
+    if (nightA > 0.01 && lights.length) {
+      ctx.beginPath(); let n = 0;
+      for (let i = 0; i < cs.length; i += 5) {
+        const x = cs[i], y = cs[i + 1];
+        let best = null, bk = 0.2; // в слабом свете тень не видна
+        for (const L of lights) { const d = Math.hypot(x - L[0], y - L[1]); if (d > 8 && d < L[2]) { const k = (L[3] || 1) * (1 - d / L[2]); if (k > bk) { bk = k; best = L; } } }
+        if (!best) continue;
+        const d = Math.hypot(x - best[0], y - best[1]);
+        addShadow(ctx, x, y, cs[i + 2], cs[i + 3], cs[i + 4], (x - best[0]) / d, (y - best[1]) / d, 0.5 + 1.4 * d / best[2]); n++;
+      }
+      if (n) { ctx.fillStyle = `rgba(4,6,10,${nightA})`; ctx.fill(); }
+    }
   }
   function lighting(G, me, cam, z, t) {
     const ctx = R.ctx, cfg = C(), W = G.W;
