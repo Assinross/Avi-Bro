@@ -2212,7 +2212,7 @@
     for (let k = 0; k < 20; k++) {
       const tx = cfg.BORDER_TILES + Math.floor(rnd() * (W.N - cfg.BORDER_TILES * 2)), ty = cfg.BORDER_TILES + Math.floor(rnd() * (W.N - cfg.BORDER_TILES * 2));
       const i = ty * W.N + tx;
-      if (W.ground[i] !== AB.G_GRASS || W.treeAt[i] >= 0 || W.rockAt[i] >= 0 || W.solid[i]) continue;
+      if (W.ground[i] !== AB.G_GRASS || W.treeAt[i] >= 0 || W.rockAt[i] >= 0 || W.solid[i] || (W.meadow && W.meadow[i])) continue;
       if (rnd() > W.forest[i] * 1.4) continue;
       const x = tx * W.T + W.T / 2 + (rnd() - 0.5) * 10, y = ty * W.T + W.T / 2 + (rnd() - 0.5) * 10;
       if (AB.dist(x, y, W.camp.x, W.camp.y) < terr) continue;

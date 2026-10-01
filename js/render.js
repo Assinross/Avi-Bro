@@ -971,7 +971,7 @@
   }
 
   /* ---------- убранство локаций ---------- */
-  const FLAT_DECOR = new Set(['bones', 'rubble', 'crater', 'ribcage', 'fring', 'fishbones', 'bonepile', 'herbs', 'boardwalk']);
+  const FLAT_DECOR = new Set(['flowers', 'bones', 'rubble', 'crater', 'ribcage', 'fring', 'fishbones', 'bonepile', 'herbs', 'boardwalk']);
   // [насколько выше опоры источник, радиус, сила]
   const DECOR_LIGHT = { bfire: [-10, 150, 0.9], cauldron: [-18, 100, 0.6], crystal: [-12, 80, 0.5], jack: [-10, 70, 0.55], saucer: [-30, 120, 0.5], gmush: [-60, 70, 0.3], glowcap: [-30, 80, 0.45] };
   // за чем может спрятаться монстр: [полуширина, высота]
@@ -1741,6 +1741,16 @@
   function drawFlatDecor(ctx, d, t) {
     if (SITE_FLAT[d.kind]) { SITE_FLAT[d.kind](ctx, d, t || 0); return; }
     if (AB.Towns && AB.Towns.drawFlat(ctx, d)) return;
+    if (d.kind === 'flowers') { // цветы луга: головки качаются на ветру
+      for (let k = 0; k < 4; k++) {
+        const h = (d.v * 997 + k * 131) % 1, ox = (h - 0.5) * 22, oy = (((h * 7.13) % 1) - 0.5) * 14;
+        const sw = Math.sin(t * 2 + d.x * 0.05 + k) * 1.2, x = d.x + ox, y = d.y + oy;
+        ctx.strokeStyle = '#3f7a2a'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + sw, y - 6); ctx.stroke();
+        const col = ['#f4f4ec', '#ffd84a', '#c89af0', '#f08ab0'][(k + Math.floor(d.v * 4)) % 4];
+        S().circle(ctx, x + sw, y - 7, 2.2, col); S().circle(ctx, x + sw, y - 7, 0.9, '#e0a020');
+      }
+      return;
+    }
     if (d.kind === 'bones') {
       ctx.strokeStyle = '#d8d0bc'; ctx.lineWidth = 2.5; ctx.lineCap = 'round';
       ctx.beginPath(); ctx.moveTo(d.x - 8, d.y - 2); ctx.lineTo(d.x + 6, d.y + 3); ctx.moveTo(d.x - 4, d.y + 5); ctx.lineTo(d.x + 3, d.y - 4); ctx.stroke();

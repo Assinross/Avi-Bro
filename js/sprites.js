@@ -125,7 +125,43 @@
     return { c, ox: bx, oy: by };
   }
 
+  // Берёза (12, 13): тонкий белый ствол с чёрными чёрточками, лёгкая светлая крона
+  function makeBirch(v) {
+    const W = 120, H = 150, c = AB.canvas(W, H), ctx = c.getContext('2d');
+    const rng = AB.rng(5000 + v * 53), bx = W / 2, by = H - 10, h = 74, w = 8;
+    ctx.fillStyle = '#2a2622'; ctx.fillRect(bx - w / 2 - 1.5, by - h, w + 3, h + 2);
+    const g = ctx.createLinearGradient(bx - w / 2, 0, bx + w / 2, 0);
+    g.addColorStop(0, '#f6f4ec'); g.addColorStop(0.6, '#dedacd'); g.addColorStop(1, '#a8a498');
+    ctx.fillStyle = g; ctx.fillRect(bx - w / 2, by - h, w, h);
+    ctx.fillStyle = '#26221e';
+    for (let i = 0; i < 11; i++) { const ww = 2 + rng() * 4; ctx.fillRect(Math.round(bx - w / 2 + rng() * (w - ww)), Math.round(by - 6 - rng() * (h - 10)), Math.round(ww), 2); }
+    ctx.strokeStyle = '#3a3430'; ctx.lineWidth = 1.6;
+    for (const s of [-1, 1]) { ctx.beginPath(); ctx.moveTo(bx, by - h + 20); ctx.lineTo(bx + s * 17, by - h + 5); ctx.stroke(); }
+    const pal = v === 12 ? { outline: '#1c2a10', dark: '#4a7a2a', mid: '#78a83c', light: '#b4d468' } : { outline: '#20280e', dark: '#5a8028', mid: '#8ab040', light: '#c8dc70' };
+    leafCluster(ctx, rng, bx - 15, by - h - 4, 19, pal, 5);
+    leafCluster(ctx, rng, bx + 15, by - h - 1, 17, pal, 5);
+    leafCluster(ctx, rng, bx, by - h - 20, 22, pal, 6);
+    return { c, ox: bx, oy: by };
+  }
+  // Сосна (14, 15): высокий рыжий ствол с отслаивающейся корой, тёмная крона «зонтиком» наверху
+  function makeScotsPine(v) {
+    const W = 120, H = 150, c = AB.canvas(W, H), ctx = c.getContext('2d');
+    const rng = AB.rng(6000 + v * 59), bx = W / 2, by = H - 10, h = 92, w = 9;
+    ctx.fillStyle = '#1e120a'; ctx.fillRect(bx - w / 2 - 2, by - h, w + 4, h + 2);
+    const g = ctx.createLinearGradient(bx - w / 2, 0, bx + w / 2, 0);
+    g.addColorStop(0, '#d08048'); g.addColorStop(0.5, '#a85a2c'); g.addColorStop(1, '#6e3a1a');
+    ctx.fillStyle = g; ctx.fillRect(bx - w / 2, by - h, w, h);
+    for (let i = 0; i < 12; i++) { ctx.fillStyle = rng() < 0.5 ? '#e8a066' : '#5a2c12'; ctx.fillRect(Math.round(bx - w / 2 + rng() * (w - 2)), Math.round(by - 4 - rng() * (h - 8)), 2, 3); }
+    ctx.strokeStyle = '#3a2214'; ctx.lineWidth = 2;
+    for (let i = 0; i < 3; i++) { const yy = by - 30 - i * 16, s = i % 2 ? 1 : -1; ctx.beginPath(); ctx.moveTo(bx, yy); ctx.lineTo(bx + s * 7, yy - 4); ctx.stroke(); } // сучки
+    const pal = v === 14 ? { outline: '#0c180e', dark: '#1d3822', mid: '#2c5630', light: '#4a7a44' } : { outline: '#0e1a0c', dark: '#22401f', mid: '#33602c', light: '#557f40' };
+    leafCluster(ctx, rng, bx - 19, by - h - 2, 18, pal, 5);
+    leafCluster(ctx, rng, bx + 18, by - h - 6, 17, pal, 5);
+    leafCluster(ctx, rng, bx, by - h - 13, 21, pal, 6);
+    return { c, ox: bx, oy: by };
+  }
   function makeTree(v) {
+    if (v >= 12) return v < 14 ? makeBirch(v) : makeScotsPine(v);
     if (v >= 6) return makeBiomeTree(v);
     const W = 120, H = 150, c = AB.canvas(W, H), ctx = c.getContext('2d');
     const rng = AB.rng(1000 + v * 77);
@@ -556,7 +592,7 @@
   }
 
   S.init = function () {
-    S.trees = []; for (let v = 0; v < 12; v++) S.trees.push(makeTree(v));
+    S.trees = []; for (let v = 0; v < 16; v++) S.trees.push(makeTree(v)); // 12-13 берёзы, 14-15 сосны
     S.stump = makeStump();
     S.rocks = [0, 1, 2].map(v => makeRock(v, false));
     S.ruins = [0, 1, 2].map(v => makeRock(v, true, v / 2));

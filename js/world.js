@@ -11,6 +11,7 @@
   AB.WGEN = 2;
   AB.generateWorld = function (seed, wg) {
     wg = wg || AB.WGEN;
+    const GROVE = window.CONFIG.GROVE || { scale: 0.07, birch: 0.62, pine: 0.66, meadow: 0.88 };
     const cfg = C();
     const N = cfg.WORLD_SIZE_TILES, T = cfg.TILE;
     const r = AB.rng(seed);
@@ -240,9 +241,26 @@
       let v = Math.floor(AB.hash2(x, y, seed + 12) * 6);
       const bi = W.biome[i];
       if (bi && W.bmix[i] > AB.hash2(x, y, seed + 14)) { const L = cfg.BIOMES[BKEYS[bi]].trees; v = L[Math.floor(AB.hash2(x, y, seed + 15) * L.length) % L.length]; }
+      else if (wg >= 2) { // рощи пятнами: берёзовые (12, 13) и сосновые боры (14, 15)
+        if (AB.noise(x * GROVE.scale, y * GROVE.scale, seed + 101) > GROVE.birch) v = 12 + Math.floor(AB.hash2(x, y, seed + 16) * 2);
+        else if (AB.noise(x * GROVE.scale * 0.9, y * GROVE.scale * 0.9, seed + 202) > GROVE.pine) v = 14 + Math.floor(AB.hash2(x, y, seed + 17) * 2);
+      }
       W.treeAt[i] = W.trees.length;
       W.trees.push({ id: W.trees.length, x: px, y: py, tx: x, ty: y, v, s: 0.85 + AB.hash2(x, y, seed + 13) * 0.4, hp: cfg.TREE_HP, dead: false, regrow: 0, shake: 0, border });
       W.solid[i] = AB.S_TREE;
+    }
+
+    // ---- цветущий луг в сердцевине берёзовых рощ (генератор v2): деревья там «убраны», как на полянах локаций -
+    //      номера деревьев не меняются, сохранения не съезжают; на лугу цветы и не прорастают побеги
+    W.meadow = new Uint8Array(N * N);
+    if (wg >= 2) for (let y = cfg.BORDER_TILES; y < N - cfg.BORDER_TILES; y++) for (let x = cfg.BORDER_TILES; x < N - cfg.BORDER_TILES; x++) {
+      const i = idx(x, y);
+      if (W.ground[i] !== AB.G_GRASS || reserved[i] || W.biome[i] && W.bmix[i] > 0.3) continue;
+      if (AB.noise(x * GROVE.scale, y * GROVE.scale, seed + 101) < GROVE.meadow) continue;
+      const ti = W.treeAt[i];
+      if (ti >= 0) { const t = W.trees[ti]; t.gone = true; t.dead = true; W.treeAt[i] = -1; W.solid[i] = AB.S_NONE; }
+      W.meadow[i] = 1;
+      if (AB.hash2(x, y, seed + 18) < 0.55) W.decor.push({ x: x * T + T / 2 + (AB.hash2(x, y, seed + 19) - 0.5) * 12, y: y * T + T / 2 + (AB.hash2(x, y, seed + 20) - 0.5) * 12, kind: 'flowers', v: AB.hash2(x, y, seed + 21), lv: 0 });
     }
 
     // ---- убранство локаций: у каждого вида своё. lv — с какого уровня костра предмет появляется
