@@ -2738,7 +2738,7 @@
       {
         const cap = AB.Sim.bagCap(me), used = AB.Sim.bagUsed(me);
         const cells = [];
-        ['wood', 'hide', 'coal', 'iron', 'stone'].forEach(k => { for (let i = 0; i < (me.inv[k] || 0); i++) cells.push(k); });
+        AB.Sim.BAG_ORDER.forEach(k => { for (let i = 0; i < (me.inv[k] || 0); i++) cells.push(k); });
         const per = 7, cs = 34, rows = Math.ceil(cap / per);
         const foods = Object.keys(cfg.FOOD).filter(k => (me.inv[k] || 0) > 0); // еда места не занимает - отдельной строкой
         const px = 14, pw = per * (cs + 4) + 16, ph = 46 + rows * (cs + 4) + 20 + (foods.length ? 52 : 0);
@@ -2746,8 +2746,8 @@
         panel(ctx, px, py, pw, ph);
         ctx.font = 'bold 13px "Nunito", system-ui'; ctx.textAlign = 'left'; ctx.fillStyle = used >= cap ? '#ff8a6a' : '#fff';
         ctx.fillText(`Рюкзак ${used}/${cap}`, px + 12, py + 16);
-        ctx.font = '600 9px "Nunito", system-ui'; ctx.fillStyle = '#aab4aa'; ctx.textAlign = 'right';
-        ctx.fillText('ЛКМ — выбросить · ПКМ — удалить', px + pw - 10, py + 16);
+        ctx.font = '600 10px "Nunito", system-ui'; ctx.fillStyle = '#aab4aa'; ctx.textAlign = 'right';
+        ctx.fillText('клик — выбросить', px + pw - 12, py + 16);
         for (let i = 0; i < cap; i++) {
           const cx = px + 8 + (i % per) * (cs + 4), cy = py + 28 + Math.floor(i / per) * (cs + 4);
           ctx.fillStyle = 'rgba(0,0,0,0.45)'; roundRect(ctx, cx, cy, cs, cs, 6); ctx.fill();

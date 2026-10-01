@@ -472,6 +472,9 @@
     p.inv[k] = (p.inv[k] || 0) + n;
     return true;
   }
+  // Порядок ячеек рюкзака на панели; для замены выпадает крайний правый предмет другого вида
+  Sim.BAG_ORDER = ['wood', 'hide', 'coal', 'iron', 'stone'];
+  Sim.bagRightmost = (p, not) => Sim.BAG_ORDER.slice().reverse().find(k => k !== not && (p.inv[k] || 0) > 0) || null;
   // Рюкзак: дерево и еда занимают место
   Sim.bagItem = (k) => k === 'wood' || k === 'hide' || k === 'coal' || k === 'iron' || k === 'stone';
   Sim.bagUsed = (p) => { let n = 0; for (const k in p.inv) if (Sim.bagItem(k)) n += p.inv[k] || 0; return n; };
@@ -2325,12 +2328,6 @@
       G.drops.push({ id: G.nextId++, k: x, x: p.x + (rnd() - 0.5) * 20, y: p.y + 14 + rnd() * 8, t: 0, age: 0, np: p.id });
       return;
     }
-    if (c === 'destroyk') { // правый клик по ячейке рюкзака: уничтожить, не выбрасывая
-      if (!(p.inv[x] > 0) || x === 'coin') return;
-      p.inv[x]--;
-      Sim.fx(G, { k: 'rustle', x: p.x, y: p.y });
-      return;
-    }
     if (c === 'eatk') { eatFood(G, p, x); return; }
     if (c === 'upnear') { upgradeNear(G, p, typeof x === 'string' ? x : null); return; }
     if (c === 'bup') { upgradeNear(G, p, y, x); return; }
@@ -2427,7 +2424,16 @@
     const group = G.drops.filter(q => q.k === d.k && AB.dist2(q.x, q.y, d.x, d.y) < 40 * 40);
     let got = 0, full = false;
     for (const q of group) {
-      if (!giveItem(G, p, q.k, 1)) { full = true; break; }
+      if (!giveItem(G, p, q.k, 1)) {
+        // рюкзак полон: кликнутый предмет берём, а крайний правый другого вида выпадает (автоподбор его 6 с не трогает)
+        const old = q === d && Sim.bagItem(q.k) ? Sim.bagRightmost(p, q.k) : null;
+        if (old) {
+          p.inv[old]--;
+          G.drops.push({ id: G.nextId++, k: old, x: p.x + (rnd() - 0.5) * 20, y: p.y + 14 + rnd() * 8, t: 0, age: 0, np: p.id });
+          if (giveItem(G, p, q.k, 1)) { G.drops.splice(G.drops.indexOf(q), 1); got++; }
+        }
+        full = true; break;
+      }
       G.drops.splice(G.drops.indexOf(q), 1); got++;
     }
     if (got) Sim.fx(G, { k: 'pick', x: d.x, y: d.y, it: d.k, pid: p.id, n: got });

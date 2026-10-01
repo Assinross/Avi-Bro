@@ -406,9 +406,6 @@
     function secondaryAt() {
         // в режиме стройки ПКМ отменяет его
         if (App.buildMode) { App.buildMode = null; return; }
-        // ПКМ по ячейке рюкзака - уничтожить предмет
-        const ui = uiHit(App.mouse.x, App.mouse.y);
-        if (ui && ui.c === 'dropk') { AB.Sound.play('click', 1); sendCmd('destroyk', ui.v); return; }
         const mw = mouseWorld();
         const ref = AB.Sim.buildingAt(App.G, mw.x, mw.y);
         const me = App.me();
