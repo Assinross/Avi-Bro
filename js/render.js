@@ -315,11 +315,11 @@
   function gearLook(p) {
     const o = outfitOf(p), eq = p.eq || {}, B = (it) => it ? AB.Sim.itemBase(it) : null;
     const hb = B(eq.head), bb = B(eq.body), hn = B(eq.hands), lg = B(eq.legs), ft = B(eq.feet);
-    const rc = (it) => it ? C().GEAR.rarity[it.r].color : null;
+    const rc = (it) => it && it.r >= 1 ? C().GEAR.rarity[it.r].color : null; // окантовка - только у вещей выше обычной
     return {
       o, body: bb ? bb.c : o.body, bodyD: bb ? shade(bb.c, 0.62) : o.bodyD, bodyId: bb ? bb.id : null,
       head: hb ? hb.look : o.hat === 'helmet' ? 'helmP' : o.hat === 'phones' ? 'phones' : 'hoodP', headC: hb ? hb.c : o.hood, headD: hb ? shade(hb.c, 0.65) : o.hoodD,
-      hand: hn ? hn.c : o.skin, legs: lg ? lg.c : '#4a3f33', legsId: lg ? lg.id : null, boot: ft ? ft.c : '#4a3526',
+      hand: hn ? hn.c : o.skin, legs: lg ? lg.c : '#4a3f33', legsId: lg ? lg.id : null, boot: ft ? ft.c : '#4a3526', handsId: hn ? hn.id : null, feetId: ft ? ft.id : null,
       legend: Object.values(eq).some(it => it && it.r >= 3), trims: [eq.head, eq.body, eq.hands, eq.legs, eq.feet].map(rc),
     };
   }
@@ -362,6 +362,7 @@
     const ph = p._walk || 0, mv = p.moving && !p.dead;
     const bob = mv ? Math.abs(Math.sin(ph)) * 1.6 : Math.sin(t * 2) * 0.4;
     const O = '#120c08';
+    const detail = !R.lowQ; // детали одежды и искры - не в облегчённой графике
     ctx.save();
     ctx.translate(x, y); ctx.scale(K, K); ctx.translate(-x, -y);
     if (p.dead) { ctx.globalAlpha = 0.5; ctx.translate(x, y); ctx.rotate(1.3); ctx.translate(-x, -y); }
@@ -377,7 +378,15 @@
       ctx.strokeStyle = O; ctx.lineWidth = 5.4; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(hx0, hy0); ctx.lineTo(fx, fy - 1.5); ctx.stroke();
       ctx.strokeStyle = L.legsId === 'baggy' ? L.legs : L.legs; ctx.lineWidth = L.legsId === 'baggy' ? 4.4 : 3.4; ctx.stroke();
       if (L.legsId === 'greave') { ctx.strokeStyle = '#c8d0d8'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(AB.lerp(hx0, fx, 0.45) - 1.5, AB.lerp(hy0, fy, 0.45)); ctx.lineTo(AB.lerp(hx0, fx, 0.45) + 1.5, AB.lerp(hy0, fy, 0.45)); ctx.stroke(); }
+      if (detail) {
+        const kx = AB.lerp(hx0, fx, 0.45), ky = AB.lerp(hy0, fy, 0.45);
+        if (L.legsId === 'greave') { S().circle(ctx, kx, ky, 2.3, O); S().circle(ctx, kx, ky, 1.7, '#c8d0d8'); } // наколенник
+        else if (L.legsId === 'baggy') { ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth = 0.7; ctx.beginPath(); ctx.moveTo(kx - 1.6, ky - 1); ctx.lineTo(kx + 1.6, ky + 0.6); ctx.stroke(); } // складка
+        if (L.feetId === 'jboots') { ctx.strokeStyle = O; ctx.lineWidth = 4.6; ctx.beginPath(); ctx.moveTo(AB.lerp(fx, hx0, 0.5), AB.lerp(fy - 1.5, hy0, 0.5)); ctx.lineTo(fx, fy - 1.5); ctx.stroke(); ctx.strokeStyle = L.boot; ctx.lineWidth = 3.4; ctx.stroke(); } // голенище
+      }
       S().ell(ctx, fx, fy, 3.8, 2.9, O); S().ell(ctx, fx, fy - 0.6, 2.8, 2, L.boot); S().ell(ctx, fx - 0.6, fy - 1.2, 1.2, 0.6, 'rgba(255,255,255,0.25)');
+      if (detail && L.feetId === 'mocs') { ctx.strokeStyle = shade(L.boot, 0.7); ctx.lineWidth = 0.7; for (const d of [-1.6, 0, 1.6]) { ctx.beginPath(); ctx.moveTo(fx + d, fy + 1.4); ctx.lineTo(fx + d * 1.2, fy + 3); ctx.stroke(); } } // бахрома
+      if (detail && L.trims[4]) { ctx.strokeStyle = L.trims[4]; ctx.lineWidth = 0.8; ctx.beginPath(); ctx.ellipse(fx, fy - 0.6, 3.2, 2.3, 0, 0, TAU); ctx.stroke(); }
     }
     const facingUp = Math.sin(a) < -0.35;
     // рюкзак (сзади)
@@ -385,6 +394,12 @@
     const drawPack = () => { ctx.fillStyle = O; roundRect(ctx, bx - 7, bky - 7, 14, 13, 3); ctx.fill(); ctx.fillStyle = o.pack; roundRect(ctx, bx - 6, bky - 6, 12, 11, 3); ctx.fill(); ctx.fillStyle = 'rgba(255,255,255,0.15)'; ctx.fillRect(bx - 5, bky - 5, 10, 2); ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(bx - 1, bky - 6, 2, 11); };
     if (!facingUp) drawPack();
     // тело
+    if (detail && L.bodyId === 'robe') { // подол качается при ходьбе
+      const sw2 = mv ? Math.sin(ph) * 1.6 : Math.sin(t * 1.5) * 0.5;
+      ctx.beginPath(); ctx.moveTo(x - 9, by + 1); ctx.quadraticCurveTo(x - 11 + sw2, by + 8, x - 10 + sw2, by + 12); ctx.lineTo(x + 10 + sw2, by + 12); ctx.quadraticCurveTo(x + 11 + sw2, by + 8, x + 9, by + 1); ctx.closePath();
+      ctx.fillStyle = L.bodyD; ctx.fill(); ctx.strokeStyle = O; ctx.lineWidth = 1.3; ctx.stroke();
+      if (L.trims[1]) { ctx.strokeStyle = L.trims[1]; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x - 10 + sw2, by + 11.3); ctx.lineTo(x + 10 + sw2, by + 11.3); ctx.stroke(); }
+    }
     S().circle(ctx, x, by, 10.5, O);
     const g = ctx.createRadialGradient(x - 3, by - 4, 1, x, by, 10);
     g.addColorStop(0, L.body); g.addColorStop(1, L.bodyD);
@@ -393,6 +408,13 @@
     else if (L.bodyId === 'robe') { ctx.fillStyle = '#d8b050'; ctx.fillRect(x - 1, by - 8, 2, 16); }
     else if (L.bodyId === 'vest') { ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.fillRect(x - 5, by - 6, 1.5, 10); ctx.fillRect(x + 3.5, by - 6, 1.5, 10); }
     else if (L.bodyId === 'jacket') { ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(x - 0.6, by - 7, 1.2, 12); for (let i = -4; i <= 2; i += 3) S().circle(ctx, x + 2, by + i, 0.8, '#d8c8a0'); }
+    if (detail) {
+      if (L.bodyId === 'mail') for (const sd of [-1, 1]) { S().ell(ctx, x + sd * 8.6, by - 4, 3.9, 3, O); S().ell(ctx, x + sd * 8.6, by - 4.4, 3.1, 2.2, '#b4bec8'); S().ell(ctx, x + sd * 8.2, by - 5.2, 1.2, 0.6, 'rgba(255,255,255,0.5)'); } // наплечники
+      else if (L.bodyId === 'vest') { ctx.fillStyle = 'rgba(0,0,0,0.28)'; ctx.fillRect(x - 6.5, by - 1, 3.2, 2.6); ctx.fillRect(x + 3.3, by - 1, 3.2, 2.6); } // карманы
+      else if (L.bodyId === 'jacket') { ctx.strokeStyle = shade(L.body, 1.35); ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(x - 4.5, by - 8); ctx.lineTo(x, by - 3.5); ctx.lineTo(x + 4.5, by - 8); ctx.stroke(); } // воротник
+      else if (L.bodyId === 'shirt') { ctx.strokeStyle = 'rgba(80,50,30,0.7)'; ctx.lineWidth = 0.6; for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.moveTo(x - 1.2, by - 7 + i * 1.6); ctx.lineTo(x + 1.2, by - 6 + i * 1.6); ctx.moveTo(x + 1.2, by - 7 + i * 1.6); ctx.lineTo(x - 1.2, by - 6 + i * 1.6); ctx.stroke(); } } // шнуровка
+      if (L.trims[1]) { ctx.strokeStyle = L.trims[1]; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.arc(x, by, 9.4, Math.PI * 0.12, Math.PI * 0.88); ctx.stroke(); } // окантовка цветом редкости
+    }
     // ремень с пряжкой
     ctx.fillStyle = '#2a1a10'; ctx.fillRect(x - 8, by + 1.5, 16, 2.4); ctx.fillStyle = '#d8b050'; ctx.fillRect(x - 1.3, by + 1.3, 2.6, 2.8);
     ctx.fillStyle = 'rgba(255,255,255,0.12)'; ctx.beginPath(); ctx.arc(x - 3, by - 4, 3.5, 0, TAU); ctx.fill();
@@ -401,7 +423,12 @@
     let wa = a;
     if (swinging) { wa = p.sa; const k = 1 - p.sw / 0.3; wa += AB.lerp(-1.3, 1.1, AB.smooth(Math.min(1, k * 1.4))); }
     const hx = x + Math.cos(wa + 0.35) * 10, hy = by + Math.sin(wa + 0.35) * 7;
-    const hand = (hx2, hy2) => { S().circle(ctx, hx2, hy2, 3.7, O); S().circle(ctx, hx2, hy2, 2.8, L.hand); S().circle(ctx, hx2 - 0.8, hy2 - 0.8, 0.9, 'rgba(255,255,255,0.3)'); };
+    const hand = (hx2, hy2) => {
+      if (detail && L.handsId === 'mitts') { S().circle(ctx, hx2, hy2, 4.6, O); S().circle(ctx, hx2, hy2, 3.9, '#efe6d0'); } // меховая оторочка
+      S().circle(ctx, hx2, hy2, 3.7, O); S().circle(ctx, hx2, hy2, 2.8, L.hand); S().circle(ctx, hx2 - 0.8, hy2 - 0.8, 0.9, 'rgba(255,255,255,0.3)');
+      if (detail && L.handsId === 'bracer') { ctx.strokeStyle = '#d0d8e0'; ctx.lineWidth = 1.1; ctx.beginPath(); ctx.arc(hx2, hy2, 3.3, 0, TAU); ctx.stroke(); } // металлический щиток
+      if (detail && L.trims[2]) { ctx.strokeStyle = L.trims[2]; ctx.lineWidth = 0.7; ctx.beginPath(); ctx.arc(hx2, hy2, 4.1, 0, TAU); ctx.stroke(); }
+    };
     const drawWeaponHand = () => { ctx.save(); ctx.translate(hx, hy); ctx.rotate(wa); if (p.sk === 'pick' && p.sw > 0) drawPickaxe(ctx); else drawAxe(ctx); ctx.restore(); hand(hx, hy); };
     const lhx = x + Math.cos(wa - 0.9) * 9, lhy = by + Math.sin(wa - 0.9) * 6;
     if (facingUp) drawWeaponHand();
@@ -419,7 +446,17 @@
       ctx.fillStyle = 'rgba(220,120,110,0.5)'; ctx.fillRect(Math.round(x - 5 + ex), Math.round(hy2 + 3 + ey), 2, 1); ctx.fillRect(Math.round(x + 3.5 + ex), Math.round(hy2 + 3 + ey), 2, 1);
     }
     drawHeadwear(ctx, L, x, hy2, a, facingUp, t);
+    if (detail && L.trims[0] && !facingUp) { S().circle(ctx, x + Math.cos(a) * 2, hy2 - 5.5, 1.7, O); S().circle(ctx, x + Math.cos(a) * 2, hy2 - 5.5, 1.1, L.trims[0]); } // камешек редкости
     if (facingUp) drawPack(); else drawWeaponHand();
+    if (detail && L.legend && !p.dead) { // искры легендарных вещей
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      for (let i = 0; i < 3; i++) {
+        const an = t * 1.4 + i * 2.1, al = 0.35 + 0.35 * Math.sin(t * 5 + i * 1.7);
+        const sx = x + Math.cos(an) * 13, sy = by - 4 + Math.sin(an) * 9, r = 1.6 + al;
+        ctx.fillStyle = `rgba(255,200,110,${al})`; ctx.fillRect(sx - r, sy - 0.4, r * 2, 0.8); ctx.fillRect(sx - 0.4, sy - r, 0.8, r * 2);
+      }
+      ctx.restore();
+    }
     ctx.restore();
     if (p.hurt > 0) { ctx.save(); ctx.globalAlpha = p.hurt * 1.5; S().circle(ctx, x, y - 12 * K, 15 * K, 'rgba(255,60,60,0.35)'); ctx.restore(); }
     if (p.slowT > 0 && !p.dead) {
