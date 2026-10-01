@@ -2067,7 +2067,7 @@
       S.saws[i] += dt * k;
       if (S.saws[i] < M.sawTime) continue;
       S.saws.splice(i, 1);
-      if (Sim.hasMod(S, 'coal') && (++S.coalCnt) % 3 === 0) { S.coal = (S.coal || 0) + 1; Sim.fx(G, { k: 'saw', x: S.x, y: S.y }); continue; }
+      if (Sim.hasMod(S, 'coal') && (++S.coalCnt) % (cfg.MILL.coalEvery || 20) === 0) { S.coal = (S.coal || 0) + 1; Sim.fx(G, { k: 'saw', x: S.x, y: S.y }); continue; }
       let n = M.planksPerLog;
       if (Sim.hasMod(S, 'eco') && rnd() < 0.35) n++;
       S.planks += n;
