@@ -2159,6 +2159,19 @@
       if (n) { ctx.fillStyle = `rgba(4,6,10,${nightA})`; ctx.fill(); }
     }
   }
+  // Цветокоррекция по времени суток + виньетка (в маленьком слое тьмы - почти бесплатно):
+  // золотистый рассвет, нейтральный полдень, тёплый закат, синеватая ночь
+  function grade(c, G, fw, fh) {
+    const cfg = C(), ph = G.clock % (cfg.DAY_LENGTH + cfg.NIGHT_LENGTH), f = Math.min(1, ph / cfg.DAY_LENGTH), nf = G.nightF || 0;
+    const morn = ph < cfg.DAY_LENGTH ? Math.max(0, (0.2 - f) / 0.2) : 0;
+    const eve = ph < cfg.DAY_LENGTH ? Math.max(0, (f - 0.72) / 0.28) * (1 - nf * 0.7) : 0;
+    if (morn > 0.01) { c.fillStyle = `rgba(255,190,110,${0.12 * morn})`; c.fillRect(0, 0, fw, fh); }
+    if (eve > 0.01) { c.fillStyle = `rgba(255,120,55,${0.18 * eve})`; c.fillRect(0, 0, fw, fh); }
+    if (nf > 0.01) { c.fillStyle = `rgba(30,60,150,${0.09 * nf})`; c.fillRect(0, 0, fw, fh); }
+    const g = c.createRadialGradient(fw / 2, fh / 2, Math.min(fw, fh) * 0.45, fw / 2, fh / 2, Math.hypot(fw, fh) * 0.55);
+    g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, `rgba(0,0,0,${0.28 + 0.1 * nf})`);
+    c.fillStyle = g; c.fillRect(0, 0, fw, fh);
+  }
   function lighting(G, me, cam, z, t) {
     const ctx = R.ctx, cfg = C(), W = G.W;
     const nf = G.nightF;
@@ -2259,6 +2272,7 @@
       blot(dctx, GLOW, sx, sy, r, (0.12 + 0.14 * nf) * l[3]);
     }
     dctx.globalAlpha = 1;
+    if (!R.lowQ) grade(dctx, G, fw, fh);
     dctx.drawImage(R.fogC, 0, 0);
     // --- на экран
     ctx.save();
