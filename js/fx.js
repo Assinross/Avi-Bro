@@ -38,7 +38,9 @@
       case 'chop':
         burst(ev.x, ev.y + 8, 6, ['#c8a06a', '#8a5a30', '#e0c08a'], 110, { size: 1.1 });
         burst(ev.x, ev.y - 30, 3, ['#4f8a3a', '#6fa84a', '#2e5e2a'], 60, { type: 'leaf', g: 40, life: 2.2, up: 0.2 });
-        Sound.play('chop', near); break;
+        Sound.play('chop', near);
+        if (AB.Render && AB.Render.onChop && near > 0.3) AB.Render.onChop(ev); // вороны и белка - только рядом с героем
+        break;
       case 'mine':
         burst(ev.x, ev.y, 7, ev.o === 'iron' ? ['#5a5f66', '#8a9098', '#c86a3a', '#e0e6ea'] : ['#8a8478', '#b8b0a0', '#d8d0c0'], 120, { size: 1.1 });
         burst(ev.x, ev.y - 4, 3, ['#fff2c0', '#ffd24a'], 140, { type: 'spark', g: 200, life: 0.35 });
@@ -211,6 +213,7 @@
         case 'chop': noise(0.12, V * 0.9, 900, 2); tone(140, 0.08, 'triangle', V * 0.5, 0.6); break;
         case 'mine': noise(0.08, V * 0.8, 2600, 3); tone(1100 + Math.random() * 300, 0.07, 'square', V * 0.12, 0.3); tone(320, 0.06, 'triangle', V * 0.3, 0.6); break;
         case 'fell': noise(0.5, V, 300, 0.8); tone(90, 0.4, 'sine', V * 0.6, 0.5); break;
+        case 'caw': for (let i = 0; i < 2; i++) { noise(0.1, V * 0.35, 1300, 4, i * 0.18); tone(520, 0.11, 'sawtooth', V * 0.12, 0.7, i * 0.18); } break; // карканье
         case 'swing': noise(0.12, V * 0.4, 2400, 1.5); break;
         case 'bow': tone(420, 0.1, 'triangle', V * 0.4, 0.5); noise(0.08, V * 0.3, 3000, 2); break;
         case 'gun': noise(0.25, V * 1.3, 700, 0.7); tone(120, 0.15, 'square', V * 0.3, 0.3); break;

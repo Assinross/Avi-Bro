@@ -1878,6 +1878,61 @@
   }
 
   /* ============================ КАДР ============================ */
+  // ---------- живность (только картинка, на игру не влияет) ----------
+  // стайки мелких птиц днём, вороны с потревоженного дерева, белка перебегает к соседнему дереву
+  const flyers = [], squirrels = [];
+  let flockT = 15;
+  R.onChop = function (ev) { // FX вызывает при ударе топором (у хоста и у гостя)
+    if (R.lowQ || !G_ref || ev.id === undefined) return;
+    const W = G_ref.W, tr = W.trees[ev.id];
+    if (!tr || tr.dead || tr.gone) return;
+    if (Math.random() < 1 / 7) { // вороны
+      const n = 2 + Math.floor(Math.random() * 3);
+      for (let i = 0; i < n; i++) {
+        const a = -Math.PI / 2 + (Math.random() - 0.5) * 2.4, sp = 120 + Math.random() * 60;
+        flyers.push({ x: tr.x + (Math.random() - 0.5) * 30, y: tr.y, h: 60 * tr.s + Math.random() * 25, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp * 0.4 - 20, climb: 35, life: 4, crow: true, ph: Math.random() * 6 });
+      }
+      AB.Sound.play('caw', 0.8);
+    }
+    if (Math.random() < 1 / 12) { // белка к соседнему дереву
+      let best = null;
+      for (let dy = -6; dy <= 6; dy++) for (let dx = -6; dx <= 6; dx++) {
+        const tx = tr.tx + dx, ty = tr.ty + dy; if (tx < 0 || ty < 0 || tx >= W.N || ty >= W.N) continue;
+        const j = W.treeAt[ty * W.N + tx]; if (j < 0 || j === tr.id) continue;
+        const o = W.trees[j], d = Math.hypot(o.x - tr.x, o.y - tr.y);
+        if (!o.dead && d > 70 && (!best || Math.random() < 0.3)) best = o;
+      }
+      if (best) squirrels.push({ x0: tr.x, y0: tr.y, x1: best.x, y1: best.y, t: 0, dur: Math.hypot(best.x - tr.x, best.y - tr.y) / 170 });
+    }
+  };
+  function updateCritters(G, cam, z, dt) {
+    if (R.lowQ) { flyers.length = 0; squirrels.length = 0; return; }
+    flockT -= dt;
+    if (flockT <= 0 && (G.nightF || 0) < 0.4) { // стайка пролетает через экран
+      flockT = 20 + Math.random() * 20;
+      const dir = Math.random() < 0.5 ? 1 : -1, vw = R.w / z / 2, vh = R.h / z / 2;
+      const x0 = cam.x - dir * (vw + 80), y0 = cam.y + (Math.random() - 0.5) * vh * 1.4, n = 3 + Math.floor(Math.random() * 4), vy = (Math.random() - 0.5) * 40;
+      for (let i = 0; i < n; i++) flyers.push({ x: x0 - dir * Math.random() * 60, y: y0 + (Math.random() - 0.5) * 50, h: 90 + Math.random() * 30, vx: dir * (170 + Math.random() * 25), vy, climb: 0, life: (vw * 2 + 260) / 170, ph: Math.random() * 6 });
+    }
+    for (let i = flyers.length - 1; i >= 0; i--) { const f = flyers[i]; f.x += f.vx * dt; f.y += f.vy * dt; f.h += f.climb * dt; f.life -= dt; if (f.life <= 0) flyers.splice(i, 1); }
+    for (let i = squirrels.length - 1; i >= 0; i--) { const q = squirrels[i]; q.t += dt; if (q.t >= q.dur) squirrels.splice(i, 1); }
+  }
+  function drawCritters(ctx, t) {
+    for (const q of squirrels) {
+      const k = Math.min(1, q.t / q.dur), x = AB.lerp(q.x0, q.x1, k), y = AB.lerp(q.y0, q.y1, k) - Math.abs(Math.sin(k * Math.PI * Math.max(2, Math.round(q.dur * 4)))) * 7, s = q.x1 >= q.x0 ? 1 : -1;
+      S().ell(ctx, x, AB.lerp(q.y0, q.y1, k) + 2, 4, 1.5, 'rgba(0,0,0,0.25)');
+      ctx.save(); ctx.translate(x, y); ctx.scale(s, 1);
+      ctx.fillStyle = '#b8683a'; ctx.beginPath(); ctx.ellipse(-5, -6, 3.2, 5, -0.5, 0, TAU); ctx.fill(); // пушистый хвост
+      S().ell(ctx, 0, -3, 4, 2.8, '#a0582a'); S().circle(ctx, 3.5, -5, 2.2, '#a0582a'); S().circle(ctx, 4.4, -5.6, 0.6, '#111');
+      ctx.restore();
+    }
+    for (const f of flyers) {
+      const by = f.y - f.h, w = f.crow ? 7 : 3.6, fl = Math.sin(t * (f.crow ? 14 : 20) + f.ph) * w * 0.8;
+      if (!f.crow) S().ell(ctx, f.x, f.y, 2.5, 1, 'rgba(0,0,0,0.15)');
+      ctx.strokeStyle = f.crow ? '#121214' : '#3a3028'; ctx.lineWidth = f.crow ? 2.8 : 1.5; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(f.x - w, by - fl); ctx.lineTo(f.x, by); ctx.lineTo(f.x + w, by - fl); ctx.stroke();
+    }
+  }
   // следы на снегу (добавляет main.js по шагам героев)
   const prints = [], PRINT_LIFE = 20;
   R.addPrint = function (x, y, a) { if (R.lowQ) return; prints.push({ x, y, a, t: R.time }); if (prints.length > 300) prints.shift(); };
@@ -2110,6 +2165,7 @@
       }
       if (p.st.aura > 0) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.strokeStyle = `rgba(255,140,40,${0.25 + Math.sin(t * 5) * 0.1})`; ctx.lineWidth = 3; ctx.beginPath(); ctx.ellipse(p.x, p.y + 2, C().AURA_RADIUS, C().AURA_RADIUS * 0.55, 0, 0, TAU); ctx.stroke(); ctx.restore(); }
     }
+    updateCritters(G, cam, z, Math.min(dt, 0.05)); drawCritters(ctx, t);
     for (const p of AB.FX.parts) if (p.t !== 'spark' && p.t !== 'flash' && p.t !== 'firefly' && p.t !== 'bolt' && p.t !== 'beam' && p.t !== 'arc') drawParticle(ctx, p);
     // метка движения по клику
     if (ui && ui.clickMark && ui.clickMark.t > 0) {
