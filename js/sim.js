@@ -16,11 +16,12 @@
 
   const Sim = AB.Sim = {};
 
-  Sim.create = function (seed, mode) {
+  Sim.create = function (seed, mode, wg) {
     const cfg = C();
-    const W = AB.generateWorld(seed);
+    wg = wg || AB.WGEN;
+    const W = AB.generateWorld(seed, wg);
     const G = {
-      seed, W, mode, clock: 0, day: 1, isNight: false, nightF: 0,
+      seed, wg, W, mode, clock: 0, day: 1, isNight: false, nightF: 0,
       players: [], monsters: [], projs: [], drops: [], eprojs: [], tele: [], structs: [], mines: [], bots: [],
       fires: W.fires.map((f, i) => ({ id: i, x: f.x, y: f.y, fuel: f.town !== undefined ? cfg.FIRE_FUEL_MAX : cfg.FIRE_FUEL_START, main: f.main, town: f.town, lvl: 1, mod: false, lm: 1 })),
       nextId: 1, spawnT: 2, fxOut: [], treeDirty: new Set(), bushDirty: new Set(),

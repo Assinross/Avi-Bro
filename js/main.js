@@ -166,7 +166,7 @@
       }
       App.saveKey = gm.uid === 'anon' ? null : AB.Save.keyPair(AB.Save.uid(), gm.uid); // старая версия у гостя - без сохранений
       beginGame(G, 'host', 0);
-      AB.Net.send({ t: 'init', seed: G.seed, id: 1, df: AB.difficulty });
+      AB.Net.send({ t: 'init', seed: G.seed, wg: G.wg, id: 1, df: AB.difficulty });
       AB.Net.send(AB.Sim.snapshot(G, true));
     };
     $('btnLobbyCont').onclick = () => { const L = App.lobbyGuest; if (L) hostStart(L.save, L); };
@@ -193,7 +193,7 @@
             if (!p) { p = AB.Sim.addPlayer(G, 1, gm.name, gm.prof); p.uid = gm.uid; }
             else { p.name = gm.name; p.left = false; }
             AB.Sim.msg(G, `${p.name} подключился!`, -1, '#8fe08a');
-            AB.Net.send({ t: 'init', seed: G.seed, id: 1, df: AB.difficulty });
+            AB.Net.send({ t: 'init', seed: G.seed, wg: G.wg, id: 1, df: AB.difficulty });
             AB.Net.send(AB.Sim.snapshot(G, true));
             return;
           }
@@ -252,7 +252,7 @@
         if (m.t === 'deny') { AB.Net.close(); if (App.state === 'play') endToMenu(m.s); else $('joinStatus').textContent = m.s; return; }
         if (m.t === 'init') {
           AB.setDifficulty(m.df || 'hardcore');
-          G = AB.Sim.create(m.seed, 'guest');
+          G = AB.Sim.create(m.seed, 'guest', m.wg || 1); // мир той же версии генератора, что у хоста
           App.myId = m.id;
           App.pendingGuest = G;
         } else if (m.t === 's' && (G || App.G)) {

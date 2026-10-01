@@ -56,7 +56,7 @@
   // ---------- распаковка: свежий мир из зерна + сохранённое ----------
   Save.unpack = function (data, mode) {
     AB.setDifficulty(data.diff);
-    const G = AB.Sim.create(data.seed, mode); // стража локаций уже заселена
+    const G = AB.Sim.create(data.seed, mode, (data.g && data.g.wg) || 1); // мир своей версии генератора (старые - 1); стража уже заселена
     const W = G.W, n0 = G.nextId;
     for (const k in data.g) if (k !== 'players') G[k] = data.g[k];
     G.players = data.g.players.map(p => Object.assign({ tx: p.x, ty: p.y, moving: false, run: false, left: false }, p));

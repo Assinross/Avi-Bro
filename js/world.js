@@ -6,7 +6,11 @@
   // Типы препятствий
   AB.S_NONE = 0; AB.S_WATER = 1; AB.S_ROCK = 2; AB.S_TREE = 3;
 
-  AB.generateWorld = function (seed) {
+  // Версия генератора: 1 - как было; 2 - локации не встают на границы колец тумана войны.
+  // Старые сохранения строят мир своей версией, чтобы номера деревьев не съехали
+  AB.WGEN = 2;
+  AB.generateWorld = function (seed, wg) {
+    wg = wg || AB.WGEN;
     const cfg = C();
     const N = cfg.WORLD_SIZE_TILES, T = cfg.TILE;
     const r = AB.rng(seed);
@@ -60,6 +64,8 @@
       const m = cfg.BORDER_TILES + cfg.LOOT_SITE_RADIUS + (cfg.HIDDEN_RING || 0) + 2;
       if (sx < m || sy < m || sx >= N - m || sy >= N - m) continue;
       if (siteList.some(s => Math.hypot(s.tx - sx, s.ty - sy) < spacing)) continue;
+      // локация (сундук и стража) целиком в одном кольце тумана: при росте костра не открывается наполовину
+      if (wg >= 2) { const dp = Math.hypot(sx - cx, sy - cy) * cfg.TILE, mg = (cfg.SITE_SEAM_MARGIN || 4) * cfg.TILE; if ((cfg.FOW_RADIUS || []).some(R => Math.abs(dp - R) < mg)) continue; }
       siteList.push({ tx: sx, ty: sy, dist: Math.hypot(sx - cx, sy - cy) });
     }
     siteList.sort((a, b) => a.dist - b.dist);
