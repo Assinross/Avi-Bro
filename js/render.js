@@ -1860,6 +1860,9 @@
   }
 
   /* ============================ КАДР ============================ */
+  // следы на снегу (добавляет main.js по шагам героев)
+  const prints = [], PRINT_LIFE = 20;
+  R.addPrint = function (x, y, a) { if (R.lowQ) return; prints.push({ x, y, a, t: R.time }); if (prints.length > 300) prints.shift(); };
   R.draw = function (G, me, cam, dt, ui) {
     G_ref = G;
     const ctx = R.ctx, W = G.W, cfg = C();
@@ -1923,6 +1926,12 @@
     // плоские объекты
     const fLv = G.fireLevel || 1;
     for (const d of W.decor) if (!(d.lv > fLv) && d.x > x0 && d.x < x1 && d.y > y0 && d.y < y1 && seen(d.x, d.y, 80)) drawFlatDecor(ctx, d, t);
+    // следы на снегу тают за PRINT_LIFE секунд
+    while (prints.length && t - prints[0].t > PRINT_LIFE) prints.shift();
+    for (const pr of prints) if (pr.x > x0 && pr.x < x1 && pr.y > y0 && pr.y < y1) {
+      ctx.fillStyle = `rgba(232,240,252,${0.6 * (1 - (t - pr.t) / PRINT_LIFE)})`; // утоптанный снег
+      ctx.beginPath(); ctx.ellipse(pr.x, pr.y, 3.6, 2.2, pr.a, 0, TAU); ctx.fill();
+    }
     // тени деревьев (одним контуром — одна заливка на все деревья)
     const vis = [];
     const ex0 = cam.x - R.w / z / 2, ex1 = cam.x + R.w / z / 2, ey0 = cam.y - R.h / z / 2, ey1 = cam.y + R.h / z / 2; // ровно экран
@@ -1987,6 +1996,7 @@
     const SEE = 0.45; // прозрачность препятствия, за которым кто-то стоит
     const OCC_BOX = { townhall: [66, 112], workshop: [52, 100], exchange: [50, 100], shop: [50, 86], tower: [26, 128], wall: [20, 44], turret: [14, 38] };
     const see = (on) => { if (on) ctx.globalAlpha = SEE; };
+    const windK = { storm: 2.4, rain: 1.5, snow: 1.2 }[(G.wx && G.wx.id) || ''] || 0.8; // сила ветра для крон
     for (const v of vis) {
       const o = v.o;
       switch (v.k) {
@@ -2002,6 +2012,12 @@
           if (o.shake > 0) {
             ctx.save(); ctx.translate(o.x, o.y); ctx.rotate(Math.sin(t * 50) * o.shake * 0.12); ctx.translate(-o.x, -o.y);
             drawSprite(ctx, tree, o.x, o.y, o.s, alpha); ctx.restore();
+          } else if (!R.lowQ) { // крона качается на ветру, каждое дерево в своей фазе; в грозу сильнее
+            const sh = (Math.sin(t * 1.3 + o.x * 0.013 + o.y * 0.007) * 1.4 + Math.sin(t * 2.9 + o.x * 0.05) * 0.4) * windK;
+            const s2 = o.s / (tree.k || 1);
+            if (alpha !== undefined) ctx.globalAlpha = alpha;
+            AB.blitSway(ctx, tree.c, o.x - tree.ox * s2, o.y - tree.oy * s2, tree.c.width * s2, tree.c.height * s2, tree.ox * s2, tree.oy * s2, sh, 0.32);
+            if (alpha !== undefined) ctx.globalAlpha = 1;
           } else drawSprite(ctx, tree, o.x, o.y, o.s, alpha);
           break;
         }
@@ -2017,7 +2033,17 @@
           } else { const rsp = o.kind === 'ruin' ? (sp.ruins || [])[o.v] : (sp.rocks || [])[o.v]; if (rsp) drawSprite(ctx, rsp, o.x, o.y + 10 * o.s, o.s); }
           ctx.globalAlpha = 1;
           break;
-        case 2: drawSprite(ctx, o.berries ? sp.bushBerries : sp.bush, o.x, o.y + 6); break;
+        case 2: {
+          let jx = 0; // куст вздрагивает, когда сквозь него проходят
+          if (!R.lowQ) {
+            if (G.players.some(p => !p.dead && AB.dist2(p.x, p.y, o.x, o.y) < 500) || G.monsters.some(m => !m.dying && AB.dist2(m.x, m.y, o.x, o.y) < 600)) o._rus = t;
+            const k = 1 - (t - (o._rus === undefined ? -9 : o._rus)) / 0.5; if (k > 0) jx = Math.sin(t * 38) * 1.8 * k;
+          }
+          if (jx) { ctx.save(); ctx.translate(jx, 0); }
+          drawSprite(ctx, o.berries ? sp.bushBerries : sp.bush, o.x, o.y + 6);
+          if (jx) ctx.restore();
+          break;
+        }
         case 3: {
           drawSprite(ctx, o.opened ? sp.chestOpen : sp.chest, o.x, o.y + 8);
           const guards = o.opened ? 0 : G.monsters.filter(m => m.site === o.id && !(m.dying > 0)).length;

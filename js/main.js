@@ -1275,6 +1275,15 @@
       e._walk += d * 0.22;
       if (e.type) e.moving = d > 0.2;
       e._lx = e.x; e._ly = e.y;
+      if (!e.type && d > 0.2 && d < 40 && !e.dead && !AB.Render.lowQ) { // шаги героя: пыль на бегу, следы на снегу
+        e._stepD = (e._stepD || 0) + d;
+        if (e._stepD >= 16) {
+          e._stepD = 0; e._foot = !e._foot;
+          const a = e.a || 0, side = e._foot ? 1 : -1, snow = G.wx && G.wx.id === 'snow';
+          if (snow) AB.Render.addPrint(e.x + Math.cos(a + Math.PI / 2) * side * 4, e.y + 8 + Math.sin(a + Math.PI / 2) * side * 2, a);
+          if (e.run) AB.FX.add({ t: 'smoke', x: e.x - Math.cos(a) * 6, y: e.y + 8, z: 0, vx: -Math.cos(a) * 18, vy: -Math.sin(a) * 8, vz: 6, g: 0, life: 0.5, size: 5, c: snow ? 'rgba(235,240,250,' : 'rgba(160,140,110,' });
+        }
+      }
     };
     G.players.forEach(step); G.monsters.forEach(step);
   }

@@ -72,22 +72,46 @@ window.AB = window.AB || {};
      масштаб экрана, и кладём её 1:1 в целые пиксели — это в 10–15 раз дешевле.
      (ax, ay) — точка привязки внутри картинки в единицах dw/dh (обычно «земля под предметом»). */
   AB.blitGen = 1;
+  // копия картинки в масштабе S (кэш на самой картинке, сбрасывается при смене масштаба экрана)
+  function scaledCopy(img, S) {
+    let mp = img._bc;
+    if (!mp || mp.gen !== AB.blitGen || mp.size > 32) { mp = img._bc = new Map(); mp.gen = AB.blitGen; }
+    let c = mp.get(S);
+    if (!c) {
+      c = document.createElement('canvas');
+      c.width = Math.max(1, Math.round(img.width * S)); c.height = Math.max(1, Math.round(img.height * S));
+      const g = c.getContext('2d'); g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+      g.drawImage(img, 0, 0, c.width, c.height);
+      mp.set(S, c);
+    }
+    return c;
+  }
+  /* Как blit, но верх картинки сдвинут на shift пикселей экрана (крона качается на ветру): нижняя доля keep стоит,
+     выше - 2 полосы со всё большим сдвигом. Без поворота: копии 1:1, такие же дешёвые, как blit. */
+  AB.blitSway = function (ctx, img, dx, dy, dw, dh, ax, ay, shift, keep) {
+    const m = ctx.getTransform(), iw = img.width, ih = img.height;
+    if (Math.abs(shift) < 0.5 || m.b !== 0 || m.c !== 0 || m.a <= 0 || Math.abs(m.a - m.d) > 1e-6 || !iw || !ih) { AB.blit(ctx, img, dx, dy, dw, dh, ax, ay); return; }
+    const S = Math.round(m.a * dw / iw * 20) / 20;
+    if (S <= 0) return;
+    const c = scaledCopy(img, S), W = c.width, H = c.height;
+    const X = Math.round(m.a * (dx + ax) + m.e - ax / dw * W), Y = Math.round(m.d * (dy + ay) + m.f - ay / dh * H);
+    const base = Math.round(H * (1 - keep)), N = 2, bh = Math.ceil(base / N);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(c, 0, base, W, H - base, X, Y + base, W, H - base);
+    for (let i = 0; i < N; i++) {
+      const y1 = base - i * bh, y0 = Math.max(0, y1 - bh);
+      if (y1 <= y0) continue;
+      ctx.drawImage(c, 0, y0, W, y1 - y0, X + Math.round(shift * (i + 1) / N), Y + y0, W, y1 - y0);
+    }
+    ctx.setTransform(m);
+  };
   AB.blit = function (ctx, img, dx, dy, dw, dh, ax, ay) {
     const m = ctx.getTransform();
     const iw = img.width, ih = img.height;
     if (m.b !== 0 || m.c !== 0 || m.a <= 0 || Math.abs(m.a - m.d) > 1e-6 || !iw || !ih) { ctx.drawImage(img, dx, dy, dw, dh); return; }
     const S = Math.round(m.a * dw / iw * 20) / 20;              // шаг масштаба ~4% — глазу незаметно
     if (S <= 0) return;
-    let mp = img._bc;
-    if (!mp || mp.gen !== AB.blitGen || mp.size > 32) { mp = img._bc = new Map(); mp.gen = AB.blitGen; }
-    let c = mp.get(S);
-    if (!c) {
-      c = document.createElement('canvas');
-      c.width = Math.max(1, Math.round(iw * S)); c.height = Math.max(1, Math.round(ih * S));
-      const g = c.getContext('2d'); g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
-      g.drawImage(img, 0, 0, c.width, c.height);
-      mp.set(S, c);
-    }
+    const c = scaledCopy(img, S);
     const px = m.a * (dx + ax) + m.e, py = m.d * (dy + ay) + m.f;   // точка привязки на экране
     const fx = ax / dw, fy = ay / dh;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
