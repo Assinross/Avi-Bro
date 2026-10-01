@@ -1212,7 +1212,15 @@
     giant:    { base: 'brute', scale: 1.55, pal: { skin: '#5a4a2a', skinD: '#3a2e18', skinL: '#7a6a3a' } },
     packlord: { base: 'wolf',  scale: 2.1,  pal: { fur: '#d8d4cc', furL: '#f4f0e8', furD: '#8a8478' } },
   };
+  // Босс меньше в BOSS_SIZE раз: весь рисунок в масштабе вокруг ног, внутрь - исходный радиус (аура не уменьшается дважды)
   function drawBoss(ctx, m, t) {
+    const k = C().BOSS_SIZE || 1;
+    if (k === 1) { drawBossBody(ctx, m, t); return; }
+    ctx.save(); ctx.translate(m.x, m.y); ctx.scale(k, k); ctx.translate(-m.x, -m.y);
+    drawBossBody(ctx, Object.assign({}, m, { r: m.r / k }), t);
+    ctx.restore();
+  }
+  function drawBossBody(ctx, m, t) {
     const x = m.x, y = m.y, a = m.a || 0, look = BOSS_LOOK[m.type];
     // аура босса
     ctx.save(); ctx.globalAlpha = 0.25 + Math.sin(t * 3) * 0.08;

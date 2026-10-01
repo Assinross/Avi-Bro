@@ -8,6 +8,10 @@
   AB.ITEM_KEYS = ITEM_KEYS;
   AB.monDef = (t) => C().MONSTERS[t] || C().BOSSES[t];
   AB.isBoss = (t) => !!C().BOSSES[t];
+  // Радиус монстра с учётом MONSTER_SIZE / BOSS_SIZE (у хоста и гостя одинаково)
+  AB.monRadius = (t) => AB.monDef(t).radius * (AB.isBoss(t) ? (C().BOSS_SIZE || 1) : (C().MONSTER_SIZE || 1));
+  // элита лагеря строится из обычного монстра: поправка, чтобы её размер шёл от BOSS_SIZE
+  const eliteK = () => (C().BOSS_SIZE || 1) / (C().MONSTER_SIZE || 1);
   const rnd = Math.random;
 
   const Sim = AB.Sim = {};
@@ -51,7 +55,7 @@
       const E = cfg.ELITE, lv = G.fireLevel || 1, SG = cfg.SITE_GROW;
       const hk = s.elite.hp * (1 + SG.eliteHpPerLevel * (lv - 1));
       m.hp *= hk; m.maxHp *= hk; m.dmg *= s.elite.dmg; m.speed *= E.speed;
-      m.es = E.scale + SG.eliteScalePerLevel * (lv - 1); m.r *= m.es; m.en = s.elite.name; m.xpk *= s.elite.n;
+      m.es = E.scale + SG.eliteScalePerLevel * (lv - 1); m.r *= m.es * eliteK(); m.en = s.elite.name; m.xpk *= s.elite.n;
     }
     return m;
   }
@@ -283,7 +287,7 @@
     const hm = Sim.hpMult(lv) * power, dm = Sim.dmgMult(lv) * Math.sqrt(power);
     const m = {
       id: G.nextId++, type, x, y, a: rnd() * TAU, hp: def.hp * hm, maxHp: def.hp * hm,
-      dmg: def.damage * dm, speed: def.speed * cfg.MOVE_SPEED_MULT * cfg.MONSTER_SPEED_MULT * (0.92 + rnd() * 0.16), r: def.radius,
+      dmg: def.damage * dm, speed: def.speed * cfg.MOVE_SPEED_MULT * cfg.MONSTER_SPEED_MULT * (0.92 + rnd() * 0.16), r: AB.monRadius(type),
       hd: rnd() * TAU, cs: 0, phase: rnd() * TAU, sp: null, spCd: 1 + rnd() * 2, chaseT: 0, pause: 0, lostT: 0,
       st: 'idle', guard: !!guard, hunter: false, home: { x, y }, atkCd: 0, hurt: 0,
       wT: rnd() * 3, wx: x, wy: y, stuck: 0, side: rnd() < 0.5 ? 1 : -1, vx: 0, vy: 0,
@@ -2764,8 +2768,8 @@
       m.guard = !!(f & 1); m.hunter = !!(f & 2); m.st = f & 4 ? 'chase' : 'idle'; m.atk = f & 8 ? 0.2 : 0;
       m.burn = f & 16 ? {} : null; m.slowT = f & 32 ? 1 : 0; m.mark = f & 128 ? 1 : 0; m.nodrop = !!(f & 256);
       m.act = f & 64 ? { k: a[10] } : null;
-      m.dying = a[9]; m.r = AB.monDef(m.type).radius; m.boss = AB.isBoss(m.type); m.lostT = m.lostT || 0;
-      if (a[11]) { m.es = a[11][0]; m.en = a[11][1]; m.r *= m.es; m.guard = true; } else { m.es = 0; m.en = null; }
+      m.dying = a[9]; m.r = AB.monRadius(m.type); m.boss = AB.isBoss(m.type); m.lostT = m.lostT || 0;
+      if (a[11]) { m.es = a[11][0]; m.en = a[11][1]; m.r *= m.es * eliteK(); m.guard = true; } else { m.es = 0; m.en = null; }
       m.lv = a[12] || 1; m.site = a[13] >= 0 ? a[13] : undefined;
       return m;
     });
