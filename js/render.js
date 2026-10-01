@@ -365,6 +365,11 @@
     const detail = !R.lowQ; // детали одежды и искры - не в облегчённой графике
     ctx.save();
     ctx.translate(x, y); ctx.scale(K, K); ctx.translate(-x, -y);
+    if (detail && !p.dead) { // наклон вперёд на ходу (на бегу сильнее), отдача в начале удара, «дыхание» на месте
+      const lean = mv ? Math.cos(a) * (p.run ? 0.13 : 0.06) : 0;
+      const rk = p.sw > 0.18 ? (p.sw - 0.18) / 0.12 : 0, sa = p.sa === undefined ? a : p.sa;
+      ctx.translate(x - Math.cos(sa) * rk * 1.6, y + 9 - Math.sin(sa) * rk * 1.2); ctx.rotate(lean); ctx.scale(1, 1 + (mv ? 0 : Math.sin(t * 2) * 0.015)); ctx.translate(-x, -(y + 9));
+    }
     if (p.dead) { ctx.globalAlpha = 0.5; ctx.translate(x, y); ctx.rotate(1.3); ctx.translate(-x, -y); }
     S().ell(ctx, x, y + 9, 12, 5, 'rgba(0,0,0,0.35)');
     if (L.legend && !p.dead) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; S().ell(ctx, x, y + 8, 15, 6, `rgba(255,150,60,${0.18 + Math.sin(t * 3) * 0.06})`); ctx.restore(); }
@@ -545,6 +550,7 @@
     const hurt = m.hurt > 0;
     ctx.save();
     if (m.dying > 0) ctx.globalAlpha = Math.min(1, m.dying);
+    if (hurt && !m._inner && !R.lowQ) { const h = Math.min(1, m.hurt * 8); ctx.translate(x, y); ctx.scale(1 + 0.12 * h, 1 - 0.1 * h); ctx.translate(-x, -y); } // сплющивание от удара
     const sc = m.r / 12;
     S().ell(ctx, x, y + 6 * sc, 13 * sc, 5 * sc, 'rgba(0,0,0,0.35)');
     if (m.nodrop && !m._inner) { // подмога босса (без добычи): лиловый круг призыва под ногами
