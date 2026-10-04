@@ -84,7 +84,7 @@
       case 'block': FX.text(ev.x, ev.y - 30, 'Щит', '#e0d0a0'); break;
       case 'trap': burst(ev.x, ev.y, 8, ['#c9d3da', '#8a9096'], 90); Sound.play('chop', near); break;
       case 'dive': burst(ev.tx, ev.ty, 5, ['#8a6a44', '#d8c8a8'], 90); Sound.play('swing', near * 0.6); break;
-      case 'xplvl': if (ev.pid === FX.myId) { FX.toast('Новый уровень опыта! Выберите боевой навык', '#6ac8ff'); Sound.play('chest', 1); }
+      case 'xplvl': if (ev.pid === FX.myId) { FX.toast(ev.m ? 'Новый уровень опыта! Выберите бонус мастерства' : 'Новый уровень опыта! Выберите боевой навык', ev.m ? '#ffd24a' : '#6ac8ff'); Sound.play('chest', 1); }
         burst(ev.x, ev.y - 20, 24, ['#6ac8ff', '#ffffff', '#3aa8ff'], 150, { type: 'spark', g: -60, life: 1.2 }); break;
       case 'hit': {
         const minor = ev.s === 'burn' || ev.s === 'aura' || ev.s === 'fence' || ev.s === 'fire';

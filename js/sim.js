@@ -411,6 +411,20 @@
     Sim.msg(G, `Рассвет! Пережито ночей: ${prevDay} из ${cfg.NIGHTS_TO_WIN}`, -1, '#ffd98a');
     if (G.W.towns && G.W.towns.length) Sim.restockTowns(G);
     G.monsters.forEach(m => { if (!m.boss) m.hunter = false; if (m.type === 'shade') m.dying = 1.2; });
+    // все живые монстры дорастают до новой ночи
+    if (cfg.MONSTER_DAWN_LEVEL) {
+      let up = 0;
+      for (const m of G.monsters) {
+        if (m.dying > 0 || !m.lv) continue;
+        let to = m.lv + cfg.MONSTER_DAWN_LEVEL;
+        if (m.guard && m.home) to = Math.max(m.lv, Sim.monLevel(G, m.home.x, m.home.y, true)); // стража — по своей локации
+        if (to <= m.lv) continue;
+        const kh = Sim.hpMult(to) / Sim.hpMult(m.lv), kd = Sim.dmgMult(to) / Sim.dmgMult(m.lv);
+        m.hp *= kh; m.maxHp *= kh; m.dmg *= kd; if (m.contact) m.contact *= kd;
+        m.lv = to; up++;
+      }
+      if (up) Sim.msg(G, 'Монстры окрепли: +1 уровень всем, кто пережил ночь', -1, '#ff9d7a');
+    }
     for (const p of G.players) {
       p.level++;
       p.queue.push(p.level % cfg.SUPER_EVERY === 0 ? 's' : 'n');
@@ -610,13 +624,13 @@
     }
   }
   // Опыт: шкала уровня опыта, при заполнении — выбор боевого навыка
-  Sim.xpNeed = (l) => { const X = C().XP_NEED, n = (l || 1) - 1; return Math.round(X.base + X.lin * n + X.sq * n * n); };
+  Sim.xpNeed = (l) => { const X = C().XP_NEED, n = (l || 1) - 1; return Math.round(Math.min(X.cap || Infinity, X.base + X.lin * n + X.sq * n * n)); };
   Sim.gainXp = function (G, p, v, noShare) {
     p.xp = (p.xp || 0) + v;
     if (!noShare && Sim.activeCount(G) > 1) for (const o of G.players) if (o !== p && !o.left) Sim.gainXp(G, o, v * C().XP_SHARE, true);
     while (p.xp >= Sim.xpNeed(p.xl)) {
       p.xp -= Sim.xpNeed(p.xl); p.xl++;
-      if (Sim.abCanGrow(p)) { p.aq++; Sim.fx(G, { k: 'xplvl', x: p.x, y: p.y, pid: p.id, n: p.xl }); }
+      if (Sim.abCanGrow(p)) { p.aq++; Sim.fx(G, { k: 'xplvl', x: p.x, y: p.y, pid: p.id, n: p.xl, m: Sim.abMaxed(p) ? 1 : 0 }); }
     }
     Sim.ensureAbOffers(G, p);
   };
@@ -1138,7 +1152,8 @@
   }
   // Сколько навыков взято (начальное оружие не считается)
   Sim.abLearned = (p) => (p.ab || []).filter(a => { const d = Sim.abDef(a.id); return !(d && d.start); }).length;
-  Sim.abCanGrow = (p) => Sim.abLearned(p) < C().ABILITY_MAX ? C().ABILITIES.some(d => !d.start && d.prof === p.prof && !(p.ab || []).some(a => a.id === d.id)) || (p.ab || []).some(a => a.lv < C().ABILITY_MAX_LEVEL) : (p.ab || []).some(a => a.lv < C().ABILITY_MAX_LEVEL);
+  Sim.abMaxed = (p) => !(Sim.abLearned(p) < C().ABILITY_MAX ? C().ABILITIES.some(d => !d.start && d.prof === p.prof && !(p.ab || []).some(a => a.id === d.id)) || (p.ab || []).some(a => a.lv < C().ABILITY_MAX_LEVEL) : (p.ab || []).some(a => a.lv < C().ABILITY_MAX_LEVEL));
+  Sim.abCanGrow = (p) => (C().MASTERY && C().MASTERY.length) ? true : Sim.abLearned(p) < C().ABILITY_MAX ? C().ABILITIES.some(d => !d.start && d.prof === p.prof && !(p.ab || []).some(a => a.id === d.id)) || (p.ab || []).some(a => a.lv < C().ABILITY_MAX_LEVEL) : (p.ab || []).some(a => a.lv < C().ABILITY_MAX_LEVEL);
   Sim.abIron = (lv) => (C().ABILITY_IRON || [])[lv - 1] || 0;
   // Варианты при повышении уровня опыта: новые навыки (пока их меньше ABILITY_MAX) и улучшения взятых
   Sim.makeAbOffers = function (G, p) {
@@ -1147,6 +1162,12 @@
     if (Sim.abLearned(p) < cfg.ABILITY_MAX) cfg.ABILITIES.filter(d => !d.start && d.prof === p.prof && !p.ab.some(a => a.id === d.id)).forEach(d => cand.push({ id: d.id, lv: 1, iron: 0, w: 1 }));
     p.ab.forEach(a => { if (a.lv < cfg.ABILITY_MAX_LEVEL) cand.push({ id: a.id, lv: a.lv + 1, iron: Sim.abIron(a.lv + 1), w: 2.2 }); });
     const pickW = (list) => { let r = rnd() * list.reduce((s2, c) => s2 + c.w, 0), k = 0; while (k < list.length - 1 && r > list[k].w) { r -= list[k].w; k++; } return list.splice(k, 1)[0]; };
+    // всё взято и прокачано — бонусы мастерства (бесконечная прокачка)
+    if (!cand.length && cfg.MASTERY) {
+      const pool = cfg.MASTERY.slice();
+      while (out.length < cfg.ABILITY_CHOICES && pool.length) { const d = pool.splice(Math.floor(rnd() * pool.length), 1)[0]; out.push({ id: d.id, lv: ((p.mast || {})[d.id] || 0) + 1, iron: 0, mast: 1 }); }
+      return out;
+    }
     while (out.length < cfg.ABILITY_CHOICES && cand.length) out.push(pickW(cand));
     // хотя бы один вариант без железа, если такой есть
     if (out.length && out.every(o => o.iron > Sim.ironOf(G, p))) { const free = cand.find(c => !c.iron); if (free) out[out.length - 1] = free; }
@@ -1172,6 +1193,15 @@
   function pickAbility(G, p, i) {
     const o = p.ao && p.ao[i];
     if (!o) return;
+    if (o.mast) { // бонус мастерства
+      const d = (C().MASTERY || []).find(q => q.id === o.id); if (!d) return;
+      p.mast = p.mast || {}; p.mast[o.id] = (p.mast[o.id] || 0) + 1;
+      AB.Skills.recalc(p);
+      p.aq = Math.max(0, p.aq - 1); p.ao = null; p.arr = 0;
+      Sim.fx(G, { k: 'skill', x: p.x, y: p.y, pid: p.id, s: `Мастерство: ${d.name} ×${p.mast[o.id]}`, t: 4 });
+      Sim.ensureAbOffers(G, p);
+      return;
+    }
     if (o.iron > Sim.ironOf(G, p)) { Sim.msg(G, `Нужно железа: ${o.iron} (у вас ${Sim.ironOf(G, p)}). Железо — в дальних и скрытых логовах`, p.id, '#ff9d7a'); return; }
     if (o.iron) Sim.spendIron(G, p, o.iron);
     const cur = p.ab.find(a => a.id === o.id);
@@ -1830,6 +1860,7 @@
   function updateTele(G, dt) {
     for (let i = G.tele.length - 1; i >= 0; i--) {
       const t = G.tele[i];
+      if (!t) continue; // список могли пересобрать (босс погиб от предыдущего удара)
       t.t += dt;
       if (t.t < t.dur) continue;
       G.tele.splice(i, 1);
@@ -2696,7 +2727,7 @@
         };
         // редко меняющееся (инвентарь, умения, снаряжение, предложения) - только при изменении и раз в NET_PX_REFRESH с
         const px = {
-          n: p.name, pr: p.prof, inv: p.inv, ab: p.ab.map(a => [a.id, a.lv]), xl: p.xl, aq: p.aq, ao: p.ao,
+          n: p.name, pr: p.prof, inv: p.inv, ab: p.ab.map(a => [a.id, a.lv]), xl: p.xl, aq: p.aq, ao: p.ao, ms: p.mast || {},
           mo: p.mo || [], ax: p.axe || 1, pk: p.pick || 0, bu: p.bagUp || 0, mg: p.mgBought || {}, lv: p.level, q: p.queue, of: p.offers, sks: p.skills.map(q => q.id + ':' + q.tier + ':' + (q.sup || 0)), st: stCompact(p.st), rr: p.rr, swl: p.swl, eq: p.eq || {}, wd: p.wd || [],
         };
         const js = JSON.stringify(px);
@@ -2766,7 +2797,7 @@
       p.xp = sp.xp; p.arr = sp.arr || 0; p.sh = sp.sh; p.slowT = sp.sl ? 1 : 0; p.slowPct = sp.sl || 0;
       const x = sp.px; // редко меняющееся приходит, только когда изменилось
       if (x) {
-        p.name = x.n; p.prof = x.pr; p.inv = x.inv; p.ab = x.ab.map(a => ({ id: a[0], lv: a[1] })); p.xl = x.xl; p.aq = x.aq; p.ao = x.ao;
+        p.name = x.n; p.prof = x.pr; p.inv = x.inv; p.ab = x.ab.map(a => ({ id: a[0], lv: a[1] })); p.xl = x.xl; p.aq = x.aq; p.ao = x.ao; p.mast = x.ms || {};
         p.eq = x.eq || {}; p.wd = x.wd || []; p.mo = x.mo; p.axe = x.ax; p.pick = x.pk || 0; p.bagUp = x.bu; p.mgBought = x.mg; p.level = x.lv; p.queue = x.q; p.offers = x.of; p.rr = x.rr; p.swl = x.swl;
         p.skills = x.sks.map(q => { const a = q.split(':'); return { id: a[0], tier: +a[1], sup: +a[2] }; });
         const st = {}; AB.Skills.statKeys().forEach(k => st[k] = x.st[k] || 0); p.st = st;

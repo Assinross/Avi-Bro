@@ -699,9 +699,29 @@
     if (sig === App.lvSig) return;
     App.lvSig = sig;
     rerollButton(me.arr);
-    $('lvTitle').textContent = `Уровень опыта ${me.xl}: боевой навык`;
+    const mastery = me.ao.some(o => o.mast);
+    $('lvTitle').textContent = mastery ? `Уровень опыта ${me.xl}: мастерство` : `Уровень опыта ${me.xl}: боевой навык`;
     $('lvTitle').className = 'lvtitle ab';
     const learned = AB.Sim.abLearned(me);
+    if (mastery) {
+      $('lvSub').textContent = 'Все боевые навыки прокачаны до максимума. Каждый уровень опыта теперь даёт бонус мастерства — их можно брать сколько угодно раз. ' + (me.aq > 1 ? `Ещё выборов: ${me.aq - 1}. ` : '') + 'Игра продолжается!';
+      const cards = $('lvCards'); cards.innerHTML = '';
+      const L = cfg.STAT_LABELS;
+      me.ao.forEach((o, i) => {
+        const d = (cfg.MASTERY || []).find(q => q.id === o.id); if (!d) return;
+        const have = (me.mast || {})[o.id] || 0;
+        const lines = Object.keys(d.stats).map(k => { const v = d.stats[k], tot = Math.round(v * (have + 1) * 100) / 100; return `${v > 0 ? '+' : ''}${v}${L[k] && L[k][1] ? '%' : ''} ${L[k] ? L[k][0] : k} <span style="color:var(--muted)">(всего ${tot}${L[k] && L[k][1] ? '%' : ''})</span>`; });
+        const el = document.createElement('div');
+        el.className = 'skill'; el.style.borderColor = '#ffd24a'; el.style.boxShadow = '0 0 14px #ffd24a44 inset';
+        el.innerHTML = `<div class="key">${i + 1}</div><div class="sico" style="color:#ffd24a">${d.icon}</div>
+          <div class="sname">${d.name}</div>
+          <div class="stier" style="color:#ffd24a">Мастерство${have ? ` · взято ×${have}` : ''}</div>
+          ${lines.map(l => `<div class="sline">${l}</div>`).join('')}`;
+        el.addEventListener('click', () => pickAbility(i));
+        cards.appendChild(el);
+      });
+      return;
+    }
     $('lvSub').textContent = `Навыков: ${learned} из ${cfg.ABILITY_MAX} (плюс начальное оружие). ` + (learned >= cfg.ABILITY_MAX ? 'Все слоты заняты — улучшайте взятые навыки. ' : 'Возьмите новый навык или улучшите взятый. ') + (me.aq > 1 ? `Ещё выборов: ${me.aq - 1}. ` : '') + 'Игра продолжается!';
     const cards = $('lvCards'); cards.innerHTML = '';
     me.ao.forEach((o, i) => {

@@ -2849,7 +2849,7 @@
           const bl = 0.6 + Math.sin(performance.now() / 140) * 0.4;
           const bx = hx + tw + 10, by = hy + 4;
           ctx.globalAlpha = bl; ctx.fillStyle = '#6ac8ff'; roundRect(ctx, bx, by, 150, 50, 10); ctx.fill(); ctx.globalAlpha = 1;
-          ctx.fillStyle = '#081420'; ctx.textAlign = 'center'; ctx.font = 'bold 13px "Nunito", system-ui'; ctx.fillText(`+${me.aq} боевой навык`, bx + 75, by + 18);
+          ctx.fillStyle = '#081420'; ctx.textAlign = 'center'; ctx.font = 'bold 13px "Nunito", system-ui'; ctx.fillText(`+${me.aq} ${me.ao && me.ao.some(o => o.mast) ? "мастерство" : "боевой навык"}`, bx + 75, by + 18);
           ctx.font = '600 11px "Nunito", system-ui'; ctx.fillText('K или клик — выбрать', bx + 75, by + 35);
           click(bx, by, 150, 50, 'abopen', 0);
         }
@@ -3148,7 +3148,7 @@
       // «+ умение» / «+ навык» — над шкалой опыта
       const pill = (x, y, w, txt, col, c) => { const bl = 0.65 + Math.sin(performance.now() / 140) * 0.35; ctx.globalAlpha = bl; ctx.fillStyle = col; roundRect(ctx, x, y, w, 28, 14); ctx.fill(); ctx.globalAlpha = 1; ctx.fillStyle = '#10160f'; ctx.textAlign = 'center'; ctx.font = 'bold 12px "Nunito", system-ui'; ctx.fillText(txt, x + w / 2, y + 14.5); click(x - 4, y - 4, w + 8, 36, c, 0); };
       if (ui.lvPlus > 0) pill(hx, hy - 58, 120, `+${ui.lvPlus} умение`, '#ffd24a', 'lvopen');
-      if (me.aq > 0 && me.ao) pill(hx + tw - 130, hy - 58, 130, `+${me.aq} боевой навык`, '#6ac8ff', 'abopen');
+      if (me.aq > 0 && me.ao) pill(hx + tw - 130, hy - 58, 130, `+${me.aq} ${me.ao.some(o => o.mast) ? "мастерство" : "боевой навык"}`, '#6ac8ff', 'abopen');
       // кнопка «Съесть» справа снизу
       {
         const r = 30, ex = SW - r - 14, ey = hy - r - 30;
