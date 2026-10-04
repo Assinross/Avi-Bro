@@ -115,6 +115,7 @@
   function showDiff() {
     document.querySelectorAll('#diffBox .diff').forEach(b => b.classList.toggle('gold', b.dataset.diff === App.diff));
     const d = AB.DIFFS[App.diff]; $('diffDesc').textContent = d ? d.desc : '';
+    const sr = $('survRecord'); if (sr) sr.textContent = App.diff === 'survival' && AB.Survival ? AB.Survival.recordLabel() : '';
   }
   function chooseProf(next, back, guest) {
     const cfg = C();
@@ -744,6 +745,7 @@
       el.innerHTML = `<div class="key">${i + 1}</div><div class="sico" style="color:${pc}">${def.icon}</div>
         <div class="sname">${def.name}</div>
         <div class="stier" style="color:${col}">${cur ? `${def.start ? 'Начальное оружие: ' : 'Улучшение: '}ур. ${cur.lv} → ${o.lv}` : 'Новый навык'}</div>
+        ${o.card && AB.Survival && AB.Survival.isMode() ? `<div class="stier" style="color:#ffd24a">Карта: ${AB.Survival.cardName(o.card)}</div><div class="sline">${AB.Survival.cardDesc(o.card)}</div>` : ''}
         <div class="snote">${def.desc}</div>
         ${lines.map(l => `<div class="sline">${l}</div>`).join('')}
         ${o.iron ? `<div class="iron${poor ? ' bad' : ''}">Нужно железа: ${o.iron} (есть ${iron})</div>` : ''}`;
@@ -1316,9 +1318,17 @@
     const win = G.over === 'win';
     $('overTitle').textContent = win ? 'ПОБЕДА!' : 'Лес победил…';
     $('overTitle').className = win ? 'win' : 'lose';
-    $('overText').textContent = win
-      ? `Вы пережили все ${C().NIGHTS_TO_WIN} ночей!`
-      : `Пережито ночей: ${Math.max(0, ti.day - 1)}. Монстров побеждено: ${G.stats.kills}.`;
+    if (AB.Survival && AB.Survival.isMode()) {
+      // Выживание: забег окончен - итоги и рекорд, сейв удаляется (перезагрузиться нельзя)
+      const end = AB.Survival.gameEnd(G, win);
+      $('overTitle').textContent = win ? 'ЛЕГЕНДА!' : 'Забег окончен';
+      $('overText').innerHTML = end.text;
+      try { if (App.saveKey) AB.Save.remove(App.saveKey); } catch (e) { /* */ }
+    } else {
+      $('overText').textContent = win
+        ? `Вы пережили все ${C().NIGHTS_TO_WIN} ночей!`
+        : `Пережито ночей: ${Math.max(0, ti.day - 1)}. Монстров побеждено: ${G.stats.kills}.`;
+    }
     $('btnRetry').classList.toggle('hidden', App.mode !== 'solo');
     const overG = G;
     setTimeout(() => { if (App.G === overG && overG.over) show('over'); }, 1200);

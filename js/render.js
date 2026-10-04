@@ -569,6 +569,15 @@
     ctx.save();
     if (m.dying > 0) ctx.globalAlpha = Math.min(1, m.dying);
     if (hurt && !m._inner && !R.lowQ) { const h = Math.min(1, m.hurt * 8); ctx.translate(x, y); ctx.scale(1 + 0.12 * h, 1 - 0.1 * h); ctx.translate(-x, -y); } // сплющивание от удара
+    // Выживание: поза замаха - обычный удар отклоняется назад и сжимается, супер раздувается и дрожит
+    const wuK = m.wu > 0 ? 1 - m.wu / (m.wuMax || 1) : (m.svPose ? 0.65 : 0);
+    const wuSup = m.svPose ? m.svPose === 2 : !!m.sup;
+    if (wuK > 0 && !m._inner) {
+      ctx.translate(x, y);
+      if (wuSup) { const inf = 1 + 0.22 * wuK; ctx.scale(inf, inf); ctx.translate(Math.sin(t * 70) * 1.5, Math.cos(t * 63) * 1.2); }
+      else { ctx.translate(-Math.cos(a) * 5 * wuK, -Math.sin(a) * 5 * wuK); ctx.scale(1 + 0.08 * wuK, 1 - 0.14 * wuK); }
+      ctx.translate(-x, -y);
+    }
     const sc = m.r / 12;
     S().ell(ctx, x, y + 6 * sc, 13 * sc, 5 * sc, 'rgba(0,0,0,0.35)');
     if (m.nodrop && !m._inner) { // подмога босса (без добычи): лиловый круг призыва под ногами
@@ -757,6 +766,12 @@
       S().circle(ctx, -2 + ex, -13 + bob, 1.7, '#c86aff'); S().circle(ctx, 2 + ex, -13 + bob, 1.7, '#c86aff');
     }
     ctx.restore();
+    if (wuK > 0 && (wuSup || (m.boss && m.act)) && !m._inner) { // пульс контура супер-замаха (и приёма босса)
+      const pl = 0.45 + Math.sin(t * 10) * 0.3, rr = m.r * (1.2 + 0.15 * wuK);
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = `rgba(255,${Math.round(255 - 170 * wuK)},${Math.round(255 - 170 * wuK)},${pl})`;
+      ctx.lineWidth = 2.5; ctx.beginPath(); ctx.ellipse(x, y - m.r * 0.3, rr, rr * 0.8, 0, 0, TAU); ctx.stroke(); ctx.restore();
+    }
     // статусы
     if (m.burn) { if (Math.random() < 0.3) AB.FX.add({ t: 'spark', x: x + (Math.random() - 0.5) * m.r, y: y - m.r, z: 5, vx: 0, vy: 0, vz: 30, g: -30, life: 0.5, size: 1.6, c: Math.random() < 0.5 ? '#ff9a2a' : '#ffd24a' }); }
     if (m.slowT > 0) { ctx.strokeStyle = 'rgba(150,220,255,0.7)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.ellipse(x, y + 4, m.r + 3, (m.r + 3) * 0.45, 0, 0, TAU); ctx.stroke(); }
@@ -770,6 +785,18 @@
       ctx.fillStyle = m.guard ? '#e04a3a' : '#c83a3a'; ctx.fillRect(x - w / 2, hy, w * AB.clamp(m.hp / m.maxHp, 0, 1), 3);
       if (m.guard && (m.type === 'brute' || m.type === 'alpha')) {
         ctx.font = 'bold 9px system-ui'; ctx.fillStyle = '#ffb0a0'; ctx.textAlign = 'center'; ctx.fillText(AB.monDef(m.type).name, x, hy - 5);
+      }
+    }
+    if (!m._inner && AB.Survival && AB.Survival.on(G_ref)) { // Выживание: аффиксы элиты - цветное кольцо и подпись
+      const al = AB.Survival.affixLabel(m);
+      if (m.aff && m.aff.length) {
+        ctx.save(); ctx.globalAlpha = 0.55; ctx.strokeStyle = al.color; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.ellipse(x, y + 4, m.r + 5, (m.r + 5) * 0.45, 0, 0, TAU); ctx.stroke(); ctx.restore();
+      }
+      if (al) {
+        ctx.font = 'bold 9px system-ui'; ctx.textAlign = 'center'; ctx.lineWidth = 3;
+        ctx.strokeStyle = 'rgba(0,0,0,0.75)'; ctx.strokeText(al.text, x, hy - 10);
+        ctx.fillStyle = al.color; ctx.fillText(al.text, x, hy - 10);
       }
     }
   }
@@ -952,6 +979,7 @@
     lvBadge(ctx, x - w / 2 - 3, hy + 2, m.lv);
     ctx.font = 'bold 10px "Nunito", system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,0.7)'; ctx.strokeText(m.en || '', x, top - 16); ctx.fillStyle = '#ffd98a'; ctx.fillText(m.en || '', x, top - 16);
+    if (AB.Survival && AB.Survival.on(G_ref)) { const al = AB.Survival.affixLabel(m); if (al) { ctx.font = 'bold 9px system-ui'; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,0.75)'; ctx.strokeText(al.text, x, top - 27); ctx.fillStyle = al.color; ctx.fillText(al.text, x, top - 27); } }
     if (m.burn || m.slowT > 0 || m.mark > 0) { /* статусы уже нарисованы внутри */ }
   }
 
@@ -2062,7 +2090,7 @@
     for (const b of (G.bolts || [])) drawBoltWarn(ctx, b, t);
     if (ui && ui.sel) { const b = AB.Sim.buildingByRef(G, ui.sel); if (b) selRing(ctx, b.o.x, b.o.y, (b.o.r || 30) + 14, t); }
     for (const mn of G.mines) drawMine(ctx, mn, t);
-    for (const te of G.tele) drawTele(ctx, te, t);
+    if (!(AB.Survival && AB.Survival.on(G))) for (const te of G.tele) drawTele(ctx, te, t); // Выживание: зон на земле нет - читается поза
     for (const s of G.structs) if (s.x > x0 && s.x < x1 && s.y > y0 && s.y < y1) vis.push({ y: s.y, k: 9, o: s });
     if (G.kitchen) vis.push({ y: G.kitchen.y, k: 10, o: G.kitchen });
     if (G.store) vis.push({ y: G.store.y, k: 11, o: G.store });
@@ -2165,6 +2193,11 @@
       ctx.save(); ctx.strokeStyle = `rgba(255,70,50,${pulse})`; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.ellipse(m.x, m.y - m.r * 0.6, rr, rr * 1.05, 0, 0, TAU); ctx.stroke();
       ctx.fillStyle = 'rgba(255,60,40,0.12)'; ctx.fill(); ctx.restore();
+    }
+    for (const m of G.monsters) if (m.boss && m.act && !m.dying && AB.Survival && AB.Survival.on(G)) { // Выживание: пульс во время приёма босса
+      const pl = 0.4 + Math.sin(t * 9) * 0.25, rr = m.r * 1.35;
+      ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.strokeStyle = `rgba(255,120,90,${pl})`; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.ellipse(m.x, m.y - m.r * 0.4, rr, rr * 0.85, 0, 0, TAU); ctx.stroke(); ctx.restore();
     }
     for (const p of G.projs) drawProjectile(ctx, p);
     for (const e of G.eprojs) drawEnemyShot(ctx, e, t);
@@ -2907,7 +2940,9 @@
       const bw = Math.max(260, Math.min(520, SW - 620)), bx = SW / 2 - bw / 2, by = 82;
       panel(ctx, bx - 12, by - 8, bw + 24, 46);
       ctx.font = 'bold 14px "Nunito", system-ui'; ctx.textAlign = 'center'; ctx.fillStyle = '#ffb0a0';
-      ctx.fillText(`☠ ${bossDef.name} · ур. ${boss.lv || G.day}`, SW / 2, by + 4);
+      let bAff = '';
+      if (AB.Survival && AB.Survival.on(G)) { const al = AB.Survival.affixLabel(boss); if (al) bAff = ` · [${al.text}]`; }
+      ctx.fillText(`☠ ${bossDef.name}${bAff} · ур. ${boss.lv || G.day}`, SW / 2, by + 4);
       bar(ctx, bx, by + 14, bw, 14, boss.hp / boss.maxHp, '#ff4a3a', '#8a1a14', `${Math.ceil(boss.hp)} / ${Math.round(boss.maxHp)}`);
       toastY = 160;
     }

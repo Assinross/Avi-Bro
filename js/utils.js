@@ -127,6 +127,7 @@ window.AB = window.AB || {};
   AB.DIFFS = {
     arcade: { name: (window.ARCADE && window.ARCADE.name) || 'Аркада', desc: (window.ARCADE && window.ARCADE.desc) || '' },
     hardcore: { name: 'Хардкор', desc: 'Честная выживалка: меньше здоровья, монстры бьют больнее, голод сильнее.' },
+    survival: { name: (window.SURVIVAL && window.SURVIVAL.name) || 'Выживание', desc: (window.SURVIVAL && window.SURVIVAL.desc) || 'Босс каждую ночь, монеты только с него. Одна жизнь.' },
   };
   AB.difficulty = 'hardcore';
   AB.setDifficulty = function (id) {
@@ -135,6 +136,7 @@ window.AB = window.AB || {};
     for (const k of Object.keys(C)) delete C[k];
     merge(C, BASE);
     if (id === 'arcade' && window.ARCADE && window.ARCADE.set) merge(C, window.ARCADE.set);
+    if (id === 'survival' && window.SURVIVAL && window.SURVIVAL.set) merge(C, window.SURVIVAL.set);
     AB.difficulty = id;
     return id;
   };

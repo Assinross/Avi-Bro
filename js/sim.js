@@ -296,6 +296,7 @@
       xpk: (guard ? cfg.GUARD_XP_MULT : 1) * Math.max(1, Math.sqrt(power)), pw: power, lv,
     };
     if (AB.isBoss(type)) { m.boss = true; m.hunter = true; m.contact = def.contact * dm; m.st = 'chase'; }
+    if (AB.Survival.on(G)) AB.Survival.affixSpawn(G, m); // Выживание: случайные аффиксы элиты
     G.monsters.push(m);
     return m;
   };
@@ -411,6 +412,7 @@
     Sim.msg(G, `Рассвет! Пережито ночей: ${prevDay} из ${cfg.NIGHTS_TO_WIN}`, -1, '#ffd98a');
     if (G.W.towns && G.W.towns.length) Sim.restockTowns(G);
     G.monsters.forEach(m => { if (!m.boss) m.hunter = false; if (m.type === 'shade') m.dying = 1.2; });
+    if (AB.Survival.on(G)) AB.Survival.dawn(G); // Выживание: непобеждённый босс уходит, бросок обвала биржи
     // все живые монстры дорастают до новой ночи
     if (cfg.MONSTER_DAWN_LEVEL) {
       let up = 0;
@@ -651,6 +653,7 @@
     const cfg = C();
     o = o || {};
     dmg *= markMult(G, m, o.mk || o.src) * (cfg.PLAYER_DAMAGE_MULT || 1);
+    if (AB.Survival.on(G)) dmg = AB.Survival.monsterDamageIn(G, m, dmg); // Выживание: броня и щит элит
     m.hp -= dmg; m.hurt = 0.12;
     if (!m.hunter && m.st !== 'return') m.st = 'chase';
     const p = o.p;
@@ -671,6 +674,7 @@
     if (m.hp <= 0) killMonster(G, m, p);
   }
   Sim.damageMonster = damageMonster;
+  Sim.damagePlayer = damagePlayer; // нужен хуку замаха в js/survival.js (function declaration поднимается)
   // Поджог/яд: не затирает более сильный, только обновляет время
   function applyBurn(m, dps, pid) {
     const T = C().BURN_TIME;
@@ -707,6 +711,10 @@
     const i = G.monsters.indexOf(m);
     if (i >= 0) G.monsters.splice(i, 1);
     Sim.fx(G, { k: 'die', x: m.x, y: m.y, t: m.type });
+    if (AB.Survival.on(G) && m.aff && m.aff.indexOf('explosive') >= 0) { // Выживание: ВЗРЫВНОЙ бьёт героев рядом при смерти
+      for (const p of G.players) if (!p.dead && AB.dist2(m.x, m.y, p.x, p.y) < (m.r + 74) ** 2) damagePlayer(G, p, 15 + 3 * (G.day || 1), m);
+      Sim.fx(G, { k: 'boom', x: m.x, y: m.y, r: 70 });
+    }
     if (!m.boss) G.tele = G.tele.filter(t => t.owner !== m.id);
     G.stats.kills++;
     if (m.boss) { bossReward(G, m); return; }
@@ -750,6 +758,7 @@
     const mult = 1 + 0.5 * Math.max(0, (G.bossCount || 1) - 1);
     Sim.dropItem(G, 'meat', Math.max(1, Math.round(R.meat * mult)), m.x, m.y, 40);
     dropCoins(G, m);
+    if (AB.Survival.on(G)) AB.Survival.bossPayout(G, m); // Выживание: монеты только с босса, сразу в казну
     if (mult > 1) Sim.dropItem(G, 'coin', Math.round(25 * (mult - 1)), m.x, m.y, 30);
     Sim.dropItem(G, 'wood', Math.round(R.wood * mult), m.x, m.y, 40);
     if (R.hides) Sim.dropItem(G, 'hide', Math.max(1, Math.round(R.hides * mult)), m.x, m.y, 30);
@@ -771,6 +780,7 @@
     dmg *= a >= 0 ? cfg.ARMOR_K / (cfg.ARMOR_K + a) : (cfg.ARMOR_K - a) / cfg.ARMOR_K;
     if (p.sh > 0) { const ab = Math.min(p.sh, dmg); p.sh -= ab; dmg -= ab; if (dmg <= 0.01) { Sim.fx(G, { k: 'block', x: p.x, y: p.y }); return; } }
     p.hp -= dmg;
+    if (AB.Survival.on(G)) AB.Survival.onPlayerHit(G, p, dmg, src); // Выживание: вампир лечится, ледяной замедляет
     p.hurt = 0.3; Sim.fx(G, { k: 'phit', x: p.x, y: p.y, pid: p.id, n: Math.round(dmg) });
     if (st.adren > 0) p.adrenT = 2;
     if (src && src.hp !== undefined && st.thorns > 0 && !src.dying) damageMonster(G, src, st.thorns, { p, src: 'thorns', noProc: true });
@@ -1121,7 +1131,9 @@
     if (def.kind === 'shot') n += st.proj || 0;
     const fireCd = def.fireCd ? def.fireCd * cdK / atkSpdOf(p) : 0;
     // mult — множитель для яда/огня навыка: весь рост уровня (поджог не складывается от числа снарядов и скорости)
-    return { dmg, cd, range, radius, n, melee, mult: (1 + dmgPctOf(G, p) / 100) * growth * wsK * whet, fireCd, pierce: (def.pierce || 1) + (def.kind === 'shot' ? st.pierce : 0), crit, critMult: cfg.CRIT_MULT + st.critMult, lv };
+    const S = { dmg, cd, range, radius, n, melee, mult: (1 + dmgPctOf(G, p) / 100) * growth * wsK * whet, fireCd, pierce: (def.pierce || 1) + (def.kind === 'shot' ? st.pierce : 0), crit, critMult: cfg.CRIT_MULT + st.critMult, lv };
+    if (AB.Survival.on(G)) { const a = (p.ab || []).find(q => q.id === def.id); if (a && (a.mods || a.pwBonus)) AB.Survival.applyMods(S, a, p); } // Выживание: карты-модификаторы навыка
+    return S;
   };
   // Примерный урон в секунду по одной цели (для карточек навыков)
   Sim.abDps = function (G, p, def, S) {
@@ -1147,7 +1159,8 @@
   Sim.abHitFx = abHitFx;
   function hitAb(G, m, dmg, p, def, S, ang) {
     const c = rnd() * 100 < S.crit;
-    damageMonster(G, m, dmg * (c ? S.critMult : 1), { p, src: 'weapon', ang, crit: c, kb: def.knock || 0, mk: def.kind === 'drone' || def.kind === 'beam' ? 'scope' : null });
+    damageMonster(G, m, dmg * (c ? S.critMult : 1), { p, src: 'weapon', ang, crit: c, kb: (def.knock || 0) + (S._kb || 0), mk: def.kind === 'drone' || def.kind === 'beam' ? 'scope' : null });
+    if (AB.Survival.on(G) && S._cards) AB.Survival.hitMods(G, m, dmg * (c ? S.critMult : 1), p, S); // Выживание: proc-эффекты карт
     abHitFx(G, m, def, dmg, p, S.mult);
   }
   // Сколько навыков взято (начальное оружие не считается)
@@ -1169,9 +1182,10 @@
       return out;
     }
     while (out.length < cfg.ABILITY_CHOICES && cand.length) out.push(pickW(cand));
+    if (AB.Survival.on(G)) out.forEach(o => AB.Survival.rollCard(G, p, o)); // Выживание: карта-эффект к каждому офферу
     // хотя бы один вариант без железа, если такой есть
     if (out.length && out.every(o => o.iron > Sim.ironOf(G, p))) { const free = cand.find(c => !c.iron); if (free) out[out.length - 1] = free; }
-    return out.map(o => ({ id: o.id, lv: o.lv, iron: o.iron }));
+    return out.map(o => ({ id: o.id, lv: o.lv, iron: o.iron, card: o.card }));
   };
   Sim.ensureAbOffers = function (G, p) {
     if (p.ao || !(p.aq > 0)) return;
@@ -1208,6 +1222,7 @@
     // устаревший вариант (уровень навыка уже изменился) — не понижаем, а предлагаем заново
     if (cur && o.lv <= cur.lv) { p.ao = null; Sim.ensureAbOffers(G, p); return; }
     if (cur) cur.lv = Math.min(C().ABILITY_MAX_LEVEL, o.lv); else if (Sim.abLearned(p) < C().ABILITY_MAX) p.ab.push({ id: o.id, lv: 1 });
+    if (AB.Survival.on(G)) AB.Survival.takeCard(G, p, o); // Выживание: применить карту оффера
     p.aq = Math.max(0, p.aq - 1); p.ao = null; p.arr = 0;
     const def = Sim.abDef(o.id);
     Sim.fx(G, { k: 'skill', x: p.x, y: p.y, pid: p.id, s: `${def.name}${o.lv > 1 ? ' ур. ' + o.lv : ''}`, t: Math.min(4, o.lv) });
@@ -1293,7 +1308,7 @@
         const a2 = a0 + (i - (S.n - 1) / 2) * (def.spread || 0.13);
         const life = (S.range * (def.ret ? 1 : 1.3)) / speed;
         G.projs.push({ id: G.nextId++, k: def.pk || 'arrow', x: p.x + Math.cos(a2) * 14, y: p.y + Math.sin(a2) * 14, vx: Math.cos(a2) * speed, vy: Math.sin(a2) * speed,
-          dmg: S.dmg, life, life0: life, pierce: S.pierce, hit: [], owner: p.id, src: 'weapon', crit: S.crit, cm: S.critMult, ab: def.id, bm: S.mult });
+          dmg: S.dmg, life, life0: life, pierce: S.pierce, hit: [], owner: p.id, src: 'weapon', crit: S.crit, cm: S.critMult, ab: def.id, bm: S.mult, home: AB.Survival.on(G) && S._cards && S._cards.home ? 1 : 0 });
       }
       Sim.fx(G, { k: 'shoot', x: p.x, y: p.y, a: a0, w: def.pk });
       return true;
@@ -1521,6 +1536,8 @@
         if (m.burn.tick <= 0) { m.burn.tick = 0.5; damageMonster(G, m, m.burn.dps * 0.5, { p: G.players.find(p => p.id === m.burn.p), src: 'burn', noProc: true }); if (m.dead) continue; }
         if (m.burn && m.burn.t <= 0) m.burn = null;
       }
+      if (AB.Survival.on(G)) { AB.Survival.affixTick(G, m, dt); if (m.dead) continue; } // тик аффиксов элиты
+      if (m.stunT > 0) { m.stunT -= dt; m.vx = 0; m.vy = 0; continue; } // оглушение (карта навыка)
       if (m.sum !== undefined) { // подмога: живёт недолго и уходит вместе со своим боссом
         m.life -= dt;
         if (m.life <= 0 || !list.some(q => q.id === m.sum && !q.dying)) { m.dying = 0.8; continue; }
@@ -1530,7 +1547,8 @@
       const np = nearestPlayer(G, m.x, m.y);
       m.spCd -= dt;
       if (m.sp) { specialStep(G, m, dt); continue; }
-      let tx = null, ty = null, sp = m.speed * (m.slowT > 0 ? 1 - m.slowPct / 100 : 1) * (AB.WX ? AB.WX.speed * AB.WX.monSpeed : 1);
+      const frozen = AB.Survival.on(G) && (m.wu > 0 || m.rec > 0); // Выживание: замах/восстановление - монстр стоит
+      let tx = null, ty = null, sp = m.speed * (m.slowT > 0 ? 1 - m.slowPct / 100 : 1) * (AB.WX ? AB.WX.speed * AB.WX.monSpeed : 1) * (frozen ? 0 : 1);
       let sight = def.sight * (G.isNight ? 1.3 : 1) * (AB.WX ? AB.WX.sight : 1);
       if (m.hunter) sight = 1200;
       if (m.guard) {
@@ -1577,7 +1595,7 @@
       const SP = cfg.MONSTER_SPECIALS[m.type];
       if (SP && m.st === 'chase' && np) {
         if (np.d > m.r + cfg.PLAYER_RADIUS + 10) m.chaseT += dt; else m.chaseT = 0;
-        if (m.spCd <= 0 && m.chaseT >= (SP.chaseTime || 0) && np.d >= SP.minDist && np.d <= SP.maxDist) { startSpecial(G, m, np.p, SP); continue; }
+        if (m.spCd <= 0 && !frozen && m.chaseT >= (SP.chaseTime || 0) && np.d >= SP.minDist && np.d <= SP.maxDist) { startSpecial(G, m, np.p, SP); continue; } // в замах особый приём не начинается
       } else m.chaseT = 0;
       if (def.fearFire) {
         for (const f of G.fires) {
@@ -1591,6 +1609,7 @@
         }
         if (m.dead) continue;
       }
+      if (frozen) sp = 0; // замах сильнее страха огня и прочих смен направления
       // плавное движение: поворот с ограниченной скоростью, разгон, вилянье, обход препятствий
       let want = 0, da = m.hd;
       if (tx !== null) {
@@ -1641,9 +1660,12 @@
       const moved = Math.hypot(m.x - ox, m.y - oy), wantMv = Math.hypot(mvx, mvy);
       if (wantMv > 0.5 && moved < wantMv * 0.35 && m.stuck <= 0) { m.stuck = 0.6; m.side = rnd() < 0.5 ? 1 : -1; }
       m.vx = (m.x - ox) / Math.max(dt, 0.001); m.vy = (m.y - oy) / Math.max(dt, 0.001);
-      if (np && m.st === 'chase' && !def.ranged && np.d < m.r + cfg.PLAYER_RADIUS + 8 && m.atkCd <= 0) {
-        m.atkCd = def.attackCd; m.atk = 0.25; m.chaseT = 0;
-        damagePlayer(G, np.p, m.dmg, m);
+      if (np && m.st === 'chase' && !def.ranged) {
+        if (AB.Survival.on(G)) AB.Survival.tryAttack(G, m, np, dt); // Выживание: замах, удар по позе (js/survival.js)
+        else if (np.d < m.r + cfg.PLAYER_RADIUS + 8 && m.atkCd <= 0) {
+          m.atkCd = def.attackCd; m.atk = 0.25; m.chaseT = 0;
+          damagePlayer(G, np.p, m.dmg, m);
+        }
         if (m.dead) continue;
       }
       m.atk = Math.max(0, (m.atk || 0) - dt);
@@ -1801,7 +1823,7 @@
     if (np.d < m.r + cfg.PLAYER_RADIUS + 6 && m.atkCd <= 0) { m.atkCd = 0.8; m.atk = 0.2; damagePlayer(G, np.p, m.contact, m); }
   }
 
-  function tele(G, m, o) { G.tele.push(Object.assign({ id: G.nextId++, t: 0, owner: m.id, dmg: m.dmg, fr: 0 }, o)); }
+  function tele(G, m, o) { if (AB.Survival.on(G)) return; G.tele.push(Object.assign({ id: G.nextId++, t: 0, owner: m.id, dmg: m.dmg, fr: 0 }, o)); } // в Выживании зон на земле нет - только поза
 
   function startMove(G, m, k, np) {
     const cfg = C(), MV = cfg.BOSS_MOVES[k];
@@ -1872,7 +1894,10 @@
         for (const m of G.monsters.slice()) if (!m.dying && inShape(t, m.x, m.y, m.r)) {
           const c = t.crit > 0 && rnd() * 100 < t.crit;
           damageMonster(G, m, t.dmg * (c ? t.cm : 1), { p, src: 'meteor', noProc: true, crit: c, ang: Math.atan2(m.y - t.y, m.x - t.x) });
-          if (def) abHitFx(G, m, def, t.dmg, p, t.bm);
+          if (def) {
+            abHitFx(G, m, def, t.dmg, p, t.bm);
+            if (AB.Survival.on(G) && t.ab) { const cc = AB.Survival.cardsOf(p, t.ab); if (cc) AB.Survival.hitMods(G, m, t.dmg * (c ? t.cm : 1), p, { _cards: cc }); }
+          }
         }
       } else {
         const src = G.monsters.find(m => m.id === t.owner);
@@ -1893,11 +1918,12 @@
       // самонаведение
       if (pr.ab) {
         const def = Sim.abDef(pr.ab);
-        if (def && def.home) {
+        if (def && (def.home || pr.home)) {
+          const turn = def.home || 3; // самонаведение карты: чуть медленнее врождённого
           const t = nearestMonster(G, pr.x, pr.y, 260, false);
           if (t) {
             const sp = Math.hypot(pr.vx, pr.vy), cur = Math.atan2(pr.vy, pr.vx), want = Math.atan2(t.y - pr.y, t.x - pr.x);
-            const na = cur + AB.clamp(AB.angDiff(cur, want), -def.home * dt, def.home * dt);
+            const na = cur + AB.clamp(AB.angDiff(cur, want), -turn * dt, turn * dt);
             pr.vx = Math.cos(na) * sp; pr.vy = Math.sin(na) * sp;
           }
         }
@@ -1934,6 +1960,7 @@
             damageMonster(G, m, pr.dmg * (c ? pr.cm : 1), { p, src: 'weapon', ang, crit: c, kb: def ? def.knock || 0 : 0, mk: def && def.kind === 'drone' ? 'scope' : null });
             if (def) {
               abHitFx(G, m, def, pr.dmg, p, pr.bm);
+              if (AB.Survival.on(G)) { const cc = AB.Survival.cardsOf(p, pr.ab); if (cc) AB.Survival.hitMods(G, m, pr.dmg * (c ? pr.cm : 1), p, { _cards: cc }); } // Выживание: proc-эффекты карт на снарядах
               if (def.explode) {
                 Sim.fx(G, { k: 'boom', x: pr.x, y: pr.y, r: def.explode, look: def.pk });
                 for (const o of G.monsters.slice()) {
@@ -2727,7 +2754,7 @@
         };
         // редко меняющееся (инвентарь, умения, снаряжение, предложения) - только при изменении и раз в NET_PX_REFRESH с
         const px = {
-          n: p.name, pr: p.prof, inv: p.inv, ab: p.ab.map(a => [a.id, a.lv]), xl: p.xl, aq: p.aq, ao: p.ao, ms: p.mast || {},
+          n: p.name, pr: p.prof, inv: p.inv, ab: p.ab.map(a => [a.id, a.lv, (a.mods || []).join(','), a.pwBonus || 0]), xl: p.xl, aq: p.aq, ao: p.ao, ms: p.mast || {},
           mo: p.mo || [], ax: p.axe || 1, pk: p.pick || 0, bu: p.bagUp || 0, mg: p.mgBought || {}, lv: p.level, q: p.queue, of: p.offers, sks: p.skills.map(q => q.id + ':' + q.tier + ':' + (q.sup || 0)), st: stCompact(p.st), rr: p.rr, swl: p.swl, eq: p.eq || {}, wd: p.wd || [],
         };
         const js = JSON.stringify(px);
@@ -2736,7 +2763,7 @@
       }),
       m: G.monsters.filter(m => m.boss || near(m)).map(m => [m.id, MON_TYPES.indexOf(m.type), r1(m.x), r1(m.y), r1(m.a), Math.round(m.hp), Math.round(m.maxHp), m.hurt > 0 ? 1 : 0,
         (m.guard ? 1 : 0) | (m.hunter ? 2 : 0) | (m.st === 'chase' ? 4 : 0) | ((m.atk || 0) > 0 ? 8 : 0) | (m.burn ? 16 : 0) | (m.slowT > 0 ? 32 : 0) | (m.act ? 64 : 0) | (m.mark > 0 ? 128 : 0) | (m.nodrop ? 256 : 0),
-        m.dying > 0 ? r1(m.dying) : 0, m.act ? m.act.k : 0, m.es ? [Math.round(m.es * 100) / 100, m.en] : 0, m.lv || 1, m.site >= 0 ? m.site : -1]),
+        m.dying > 0 ? r1(m.dying) : 0, m.act ? m.act.k : 0, m.es ? [Math.round(m.es * 100) / 100, m.en] : 0, m.lv || 1, m.site >= 0 ? m.site : -1, m.aff ? m.aff.join(',') : 0, m.wu > 0 ? (m.sup ? 2 : 1) : 0]),
       pr: G.projs.map(p => [p.id, p.k, r1(p.x), r1(p.y), Math.round(p.vx), Math.round(p.vy)]),
       ep: G.eprojs.map(e => [r1(e.x), r1(e.y), Math.round(e.vx), Math.round(e.vy), e.lk || 0]),
       te: G.tele.map(t => [t.sh, r1(t.x), r1(t.y), t.r || 0, r1(t.a || 0), t.len || 0, t.w || 0, Math.round(t.t / t.dur * 100) / 100, t.fr]),
@@ -2797,7 +2824,7 @@
       p.xp = sp.xp; p.arr = sp.arr || 0; p.sh = sp.sh; p.slowT = sp.sl ? 1 : 0; p.slowPct = sp.sl || 0;
       const x = sp.px; // редко меняющееся приходит, только когда изменилось
       if (x) {
-        p.name = x.n; p.prof = x.pr; p.inv = x.inv; p.ab = x.ab.map(a => ({ id: a[0], lv: a[1] })); p.xl = x.xl; p.aq = x.aq; p.ao = x.ao; p.mast = x.ms || {};
+        p.name = x.n; p.prof = x.pr; p.inv = x.inv; p.ab = x.ab.map(a => ({ id: a[0], lv: a[1], mods: a[2] ? a[2].split(',') : [], pwBonus: a[3] || 0 })); p.xl = x.xl; p.aq = x.aq; p.ao = x.ao; p.mast = x.ms || {};
         p.eq = x.eq || {}; p.wd = x.wd || []; p.mo = x.mo; p.axe = x.ax; p.pick = x.pk || 0; p.bagUp = x.bu; p.mgBought = x.mg; p.level = x.lv; p.queue = x.q; p.offers = x.of; p.rr = x.rr; p.swl = x.swl;
         p.skills = x.sks.map(q => { const a = q.split(':'); return { id: a[0], tier: +a[1], sup: +a[2] }; });
         const st = {}; AB.Skills.statKeys().forEach(k => st[k] = x.st[k] || 0); p.st = st;
@@ -2816,6 +2843,7 @@
       m.dying = a[9]; m.r = AB.monRadius(m.type); m.boss = AB.isBoss(m.type); m.lostT = m.lostT || 0;
       if (a[11]) { m.es = a[11][0]; m.en = a[11][1]; m.r *= m.es * eliteK(); m.guard = true; } else { m.es = 0; m.en = null; }
       m.lv = a[12] || 1; m.site = a[13] >= 0 ? a[13] : undefined;
+      m.aff = a[14] ? a[14].split(',') : null; m.svPose = a[15] || 0; // Выживание: аффиксы и замах для позы
       return m;
     });
     G.projs = s.pr.map(a => ({ id: a[0], k: a[1], x: a[2], y: a[3], vx: a[4], vy: a[5] }));
