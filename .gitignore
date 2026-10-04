@@ -1,1 +1,6 @@
 saves/
+
+# артефакты процесса: не относятся к игре
+docs/
+.serena/
+.superpowers/
