@@ -23,6 +23,8 @@ window.SURVIVAL = {
     // (merge утилит сливает объекты рекурсивно, поэтому обнуляем каждый вид явно)
     COIN_DROP: { wolf: [0, 0], ghoul: [0, 0], shade: [0, 0], spider: [0, 0], alpha: [0, 0], spitter: [0, 0], brute: [0, 0], skeleton: [0, 0], zombie: [0, 0], archer: [0, 0], lich: [0, 0], boss: [0, 0], bandit: [0, 0], robber: [0, 0], alien: [0, 0], bonewolf: [0, 0], crone: [0, 0], shroom: [0, 0], bear: [0, 0] },
     CHEST_COINS: [0, 0],           // сундуки без монет
+    // Содержание построек отключено: вся казна с босса идёт в развитие, ничего не списывается
+    UPKEEP: { wall: [0, 0], tower: [0, 0], turret: [0, 0], cannon: [0, 0], module: [0, 0], shop: [0, 0], exchange: [0, 0], workshop: [0, 0], townhall: [0, 0], kitchen: [0, 0], mill: [0, 0], fire: [0, 0] },
     START_COINS: 10,               // на одну дешёвую покупку до первого босса
     // ---- жёсткая кривая монстров ----
     MONSTER_HP_GROWTH: 0.20, MONSTER_HP_GROWTH_SQ: 0.004, // хардкор: 0.12 / 0.0018

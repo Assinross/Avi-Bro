@@ -57,7 +57,7 @@
       case 'swing': Sound.play('swing', near * 0.7); break;
       case 'shoot': {
         const gun = ['bullet', 'pellet', 'nail', 'rivet', 'rocket', 'turret', 'grenade'].includes(ev.w);
-        Sound.play(gun ? 'gun' : ['plasma', 'packet', 'laser', 'drone'].includes(ev.w) ? 'zap' : 'bow', near * (ev.w === 'nail' || ev.w === 'rivet' ? 0.45 : 1));
+        Sound.play(ev.w === 'bolt' ? 'boltw' : gun ? 'gun' : ['plasma', 'packet', 'laser', 'drone'].includes(ev.w) ? 'zap' : 'bow', near * (ev.w === 'nail' || ev.w === 'rivet' ? 0.45 : 1));
         if (ev.w === 'bullet' || ev.w === 'pellet') FX.add({ t: 'flash', x: ev.x + Math.cos(ev.a) * 30, y: ev.y + Math.sin(ev.a) * 30, z: 10, vx: 0, vy: 0, vz: 0, g: 0, life: 0.08, size: 18 });
         break;
       }
@@ -102,9 +102,19 @@
       case 'bolt': FX.add({ t: 'bolt', x: ev.pts[0][0], y: ev.pts[0][1], z: 0, vx: 0, vy: 0, vz: 0, g: 0, life: 0.25, pts: ev.pts, c: ev.c || 0 }); Sound.play('zap', 0.8); break;
       case 'zap': burst(ev.x, ev.y, 3, ['#bfe8ff', '#5aa8ff'], 100, { type: 'spark', g: 0, life: 0.3 }); break;
       case 'strike':
+        if (ev.lk === 'orbital') { // орбитальный удар программиста: лазер с неба прожигает площадь
+          FX.add({ t: 'bolt', x: ev.x, y: ev.y, z: 0, vx: 0, vy: 0, vz: 0, g: 0, life: 0.32, pts: [[ev.x, ev.y - 620], [ev.x, ev.y + 8]], c: '#8ff0ff' });
+          FX.add({ t: 'bolt', x: ev.x, y: ev.y, z: 0, vx: 0, vy: 0, vz: 0, g: 0, life: 0.22, pts: [[ev.x, ev.y - 620], [ev.x, ev.y + 8]], c: '#ffffff' });
+          FX.add({ t: 'ring', x: ev.x, y: ev.y, z: 0, vx: 0, vy: 0, vz: 0, g: 0, life: 0.5, size: ev.r, c: '#8ff0ff' });
+          burst(ev.x, ev.y, 16, ['#8ff0ff', '#ffffff', '#4ac8ff'], 240, { type: 'spark', g: 60, life: 0.6 });
+          FX.lightF = Math.max(FX.lightF || 0, 0.3 + near * 0.5); FX.shake = Math.min(14, FX.shake + 8 * near);
+          Sound.play('laser', Math.max(0.4, near)); break;
+        }
         FX.add({ t: 'strike', x: ev.x, y: ev.y, z: 0, vx: 0, vy: 0, vz: 0, g: 0, life: 0.4, sh: ev.sh, r: ev.r, a: ev.a, len: ev.len, w: ev.w, fr: ev.fr });
         burst(ev.x, ev.y, 14, ev.fr ? ['#ffd24a', '#ff8a2a'] : ['#8a7a60', '#5e5040', '#c0a080'], 220);
         FX.shake = Math.min(14, FX.shake + (near > 0.6 ? 7 : 2)); Sound.play('boom', near); break;
+      case 'miss': FX.text(ev.x, ev.y - 18, 'Мимо', '#c8d0c4'); Sound.play('miss', near * 0.6); break; // цель сместилась - удар прошёл мимо
+      case 'thud': burst(ev.x, ev.y, 4, ['#8a6a44', '#c8a070', '#5e5040'], 90); Sound.play('chop', near * 0.4); break; // снаряд врезался в дерево или постройку
       case 'lightning': {
         const pts = [[ev.x + (Math.random() - 0.5) * 80, ev.y - 520]];
         for (let i = 1; i < 6; i++) pts.push([ev.x + (Math.random() - 0.5) * 60 * (1 - i / 6), ev.y - 520 + i * 104]);
@@ -210,7 +220,7 @@
     const V = window.CONFIG.SOUND_VOLUME * v;
     try {
       switch (k) {
-        case 'chop': noise(0.12, V * 0.9, 900, 2); tone(140, 0.08, 'triangle', V * 0.5, 0.6); break;
+        case 'chop': { const f = 150 + Math.random() * 70; noise(0.06, V * 0.8, 1900, 1.4); tone(f, 0.09, 'triangle', V * 0.55, 0.55); tone(f * 2.7, 0.05, 'square', V * 0.07, 0.5, 0.012); break; } // треск щепы + деревянный стук, высота слегка плавает
         case 'mine': noise(0.08, V * 0.8, 2600, 3); tone(1100 + Math.random() * 300, 0.07, 'square', V * 0.12, 0.3); tone(320, 0.06, 'triangle', V * 0.3, 0.6); break;
         case 'fell': noise(0.5, V, 300, 0.8); tone(90, 0.4, 'sine', V * 0.6, 0.5); break;
         case 'caw': for (let i = 0; i < 2; i++) { noise(0.1, V * 0.35, 1300, 4, i * 0.18); tone(520, 0.11, 'sawtooth', V * 0.12, 0.7, i * 0.18); } break; // карканье
@@ -230,6 +240,9 @@
         case 'click': tone(660, 0.05, 'sine', V * 0.3, 1.2); break;
         case 'boom': noise(0.35, V * 1.1, 250, 0.8); tone(70, 0.3, 'sine', V * 0.5, 0.5); break;
         case 'growl': tone(95, 0.35, 'sawtooth', V * 0.18, 0.7); break;
+        case 'laser': tone(1600, 0.24, 'sawtooth', V * 0.22, 0.1); tone(3400, 0.1, 'square', V * 0.08, 0.4); noise(0.3, V * 0.45, 2600, 2, 0.03); tone(75, 0.3, 'sine', V * 0.5, 0.5, 0.18); break; // прожигающий луч с орбиты
+        case 'boltw': tone(230, 0.13, 'triangle', V * 0.5, 0.4); noise(0.09, V * 0.4, 850, 1.5); break; // тяжёлый арбалетный болт
+        case 'miss': noise(0.09, V * 0.35, 2600, 1.2); break; // свист удара мимо
         case 'zap': noise(0.08, V * 0.5, 4000, 3); tone(1200, 0.06, 'square', V * 0.15, 0.4); break;
         case 'boss': tone(110, 2.2, 'sawtooth', V * 0.3, 0.6); tone(82, 2.2, 'sine', V * 0.5, 0.7, 0.2); noise(1.2, V * 0.4, 150, 0.5); break;
       }

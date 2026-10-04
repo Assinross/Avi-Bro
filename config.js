@@ -307,6 +307,10 @@ window.CONFIG = {
   // чтобы вместе со скоростью и доп. снарядами получилась одна и та же общая сила у всех навыков.
   ABILITY_LEVEL: { dmg: 0.8, cd: 0.08, radius: 0.06, countAt: [3, 5] }, // radius — рост радиуса волн, аур, мин и ударов с неба за уровень
   ABILITY_IRON: [0, 0, 0, 1, 2, 3, 4], // Железо для улучшения навыка до уровня 1..7 (6-й ур. = 3, 7-й = 4)
+  // Честность боя (общие для всех режимов): помехи, дистанция и увороты
+  ABILITY_RANGE_MULT: 0.7,    // Дальность навыков с базовой дальностью >= 120 умножается на это: лес, дома и рельеф мешают стрельбе, бить через полкарты нельзя
+  MELEE_BONUS: 1.5,           // Урон навыков ближнего боя (kind 'melee') x это: плата за риск - бить вплотную к монстру
+  MISS_MOVE: { from: 30, div: 280, cap: 35 }, // Промах по движущейся цели: шанс % = (скорость цели - from) / div x 100, потолок cap
   ABILITY_CHOICES: 3,         // Сколько вариантов предлагается при повышении уровня опыта
   // ОПЫТ: шкала заполняется всё медленнее. Нужно опыта на уровень n: base + lin·(n−1) + sq·(n−1)²
   // (sq было 1.6 — прокачка вставала после ~25 ур.; 0.9 тянет выборы до 60+ ночи)
@@ -361,14 +365,14 @@ window.CONFIG = {
     // (Было 2–4 урона в секунду: у охотника лук был втрое слабее остальных навыков.)
     // У охотника дальше учтены «Меткость» +1, метка (+20%) и крит 8%; ближний бой бьёт сильнее, но в упор.
     { id: 'h_start', prof: 'hunter',     start: true, name: 'Охотничий лук',   icon: '➹', kind: 'shot',  dmg: 3.4, cd: 0.8, range: 250, speed: 540, n: 1, pierce: 1, pk: 'arrow', desc: 'Начальное оружие: стрелы в ближайшего врага' },
-    { id: 'e_start', prof: 'engineer',   start: true, name: 'Гаечный ключ',    icon: '⚲', kind: 'melee', dmg: 4.2, cd: 0.7, range: 60,  arc: 110, melee: true, knock: 7, desc: 'Начальное оружие: удар тяжёлым ключом' },
+    { id: 'e_start', prof: 'engineer',   start: true, name: 'Гаечный ключ',    icon: '⚲', kind: 'melee', dmg: 5.4, cd: 0.65, range: 60,  arc: 125, melee: true, knock: 10, desc: 'Начальное оружие: удар тяжёлым ключом' },
     { id: 'p_start', prof: 'programmer', start: true, name: 'Лазерная указка', icon: '⌁', kind: 'beam',  dmg: 4.6, cd: 0.9, range: 230, width: 9, look: 'laser', desc: 'Начальное оружие: луч сквозь всех врагов на линии' },
-    { id: 'a_start', prof: 'architect',  start: true, name: 'Молоток',         icon: '⚒', kind: 'melee', dmg: 4.4, cd: 0.8, range: 62,  arc: 115, melee: true, knock: 9, desc: 'Начальное оружие: удар строительным молотком' },
+    { id: 'a_start', prof: 'architect',  start: true, name: 'Молоток',         icon: '⚒', kind: 'melee', dmg: 5.6, cd: 0.7, range: 62,  arc: 130, melee: true, knock: 12, desc: 'Начальное оружие: удар строительным молотком' },
     // ---------------- ОХОТНИК ----------------
     { id: 'h_bow',    prof: 'hunter', name: 'Лук',                 icon: '➶', kind: 'shot',   dmg: 4.3, cd: 0.8,  range: 270, speed: 560, n: 1, pierce: 1, pk: 'arrow', desc: 'Стрелы в ближайшего врага' },
-    { id: 'h_xbow',   prof: 'hunter', name: 'Арбалет',             icon: '⇸', kind: 'shot',   dmg: 6.8, cd: 1.35, range: 320, speed: 720, n: 1, pierce: 3, pk: 'bolt', desc: 'Тяжёлый болт пробивает трёх врагов' },
+    { id: 'h_xbow',   prof: 'hunter', name: 'Арбалет',             icon: '⇸', kind: 'shot',   dmg: 6.0, cd: 1.35, range: 320, speed: 720, n: 1, pierce: 3, pk: 'bolt', desc: 'Тяжёлый болт пробивает трёх врагов' },
     { id: 'h_knives', prof: 'hunter', name: 'Метательные ножи',    icon: '✢', kind: 'shot',   dmg: 1.2, cd: 0.7,  range: 180, speed: 520, n: 3, spread: 0.25, pk: 'knife', desc: 'Веер из трёх ножей' },
-    { id: 'h_spear',  prof: 'hunter', name: 'Копьё',               icon: '↟', kind: 'melee',  dmg: 5.2, cd: 0.8,  range: 82,  arc: 40, melee: true, knock: 8, desc: 'Длинный колющий удар' },
+    { id: 'h_spear',  prof: 'hunter', name: 'Копьё',               icon: '↟', kind: 'melee',  dmg: 6.4, cd: 0.75,  range: 90,  arc: 45, melee: true, knock: 10, desc: 'Длинный колющий удар' },
     { id: 'h_trap',   prof: 'hunter', name: 'Капканы',             icon: '⊓', kind: 'mine',   dmg: 14,  cd: 5,    radius: 45, n: 3, slow: 90, slowT: 2, look: 'trap', desc: 'Ставит капканы: урон и остановка врага' },
     { id: 'h_net',    prof: 'hunter', name: 'Ловчая сеть',         icon: '#', kind: 'shot',   dmg: 3,   cd: 3,    range: 240, speed: 420, n: 1, explode: 70, slow: 60, slowT: 3, pk: 'net', desc: 'Сеть замедляет всех врагов в области' },
     { id: 'h_fire',   prof: 'hunter', name: 'Огненные стрелы',     icon: '☄', kind: 'shot',   dmg: 2.6, cd: 1.0,  range: 260, speed: 540, n: 1, burn: 2.5, pk: 'firearrow', desc: 'Стрелы поджигают врагов' },
@@ -396,14 +400,14 @@ window.CONFIG = {
     { id: 'p_virus',  prof: 'programmer', name: 'Вирус',           icon: '☣', kind: 'chain',  dmg: 3.5, cd: 1.6,  range: 240, n: 5, burn: 1.5, look: 'virus', desc: 'Заражает цепочку врагов: урон и яд' },
     { id: 'p_nano',   prof: 'programmer', name: 'Рой нанитов',     icon: '⁘', kind: 'aura',   dmg: 3,   radius: 80, slow: 15, slowT: 0.6, desc: 'Облако нанитов грызёт врагов рядом (урон в секунду)' },
     { id: 'p_plasma', prof: 'programmer', name: 'Плазмомёт',       icon: '◉', kind: 'shot',   dmg: 5,   cd: 1.0,  range: 280, speed: 600, n: 1, pierce: 4, pk: 'plasma', desc: 'Сгусток плазмы пробивает четырёх врагов' },
-    { id: 'p_orbital',prof: 'programmer', name: 'Орбитальный удар',icon: '⊚', kind: 'strike', dmg: 24,  cd: 6,    range: 400, radius: 90, n: 1, windup: 1.0, desc: 'Спутник бьёт по площади' },
+    { id: 'p_orbital',prof: 'programmer', name: 'Орбитальный удар',icon: '⊚', kind: 'strike', dmg: 24,  cd: 6,    range: 400, radius: 90, n: 1, windup: 1.0, lk: 'orbital', desc: 'Спутник прожигает площадь лучом с орбиты' },
     { id: 'p_emp',    prof: 'programmer', name: 'ЭМИ-импульс',     icon: '◎', kind: 'nova',   dmg: 3,   cd: 6,    radius: 170, slow: 80, slowT: 2.5, desc: 'Почти останавливает всех врагов рядом' },
     { id: 'p_bot',    prof: 'programmer', name: 'Сторожевой бот',  icon: '⚙', kind: 'turret', dmg: 1.3, cd: 10,   range: 260, n: 2, life: 25, fireCd: 0.45, look: 'bot', desc: 'Ставит бота, который стреляет лазером' },
     { id: 'p_wall',   prof: 'programmer', name: 'Файрвол',         icon: '▣', kind: 'orbit',  dmg: 4,   cd: 0.85, radius: 70, n: 3, speed: 2, look: 'cube', desc: 'Кубы-файрволы вращаются вокруг' },
     { id: 'p_packet', prof: 'programmer', name: 'Пакеты данных',   icon: '⇶', kind: 'shot',   dmg: 2.2, cd: 0.8,  range: 320, speed: 380, n: 2, home: 6, pk: 'packet', desc: 'Самонаводящиеся пакеты' },
     { id: 'p_glitch', prof: 'programmer', name: 'Глитч',           icon: '▚', kind: 'strike', dmg: 11,  cd: 3.5,  range: 300, radius: 45, n: 3, windup: 0.5, desc: 'Сбой реальности бьёт по трём врагам' },
     // ---------------- АРХИТЕКТОР ----------------
-    { id: 'a_hammer', prof: 'architect', name: 'Молот строителя',  icon: '⚒', kind: 'melee',  dmg: 3.8, cd: 0.7,  range: 62,  arc: 110, knock: 12, melee: true, desc: 'Широкий удар молотом' },
+    { id: 'a_hammer', prof: 'architect', name: 'Молот строителя',  icon: '⚒', kind: 'melee',  dmg: 5.0, cd: 0.65,  range: 62,  arc: 125, knock: 14, melee: true, desc: 'Широкий удар молотом' },
     { id: 'a_brick',  prof: 'architect', name: 'Кирпичи',          icon: '▬', kind: 'shot',   dmg: 5,   cd: 0.9,  range: 230, speed: 450, n: 1, knock: 15, pk: 'brick', desc: 'Бросает кирпичи, отбрасывая врагов' },
     { id: 'a_trowel', prof: 'architect', name: 'Мастерок',         icon: '◭', kind: 'shot',   dmg: 3.3, cd: 1.3,  range: 200, speed: 400, n: 1, pierce: 99, ret: true, pk: 'trowel', desc: 'Мастерок летит сквозь врагов и возвращается' },
     { id: 'a_quake',  prof: 'architect', name: 'Землетрясение',    icon: '≋', kind: 'nova',   dmg: 11,  cd: 3.5,  radius: 120, slow: 40, slowT: 1.5, melee: true, desc: 'Сотрясение земли вокруг' },
@@ -755,8 +759,8 @@ window.CONFIG = {
     workshop: { name: 'Мастерская',  cost: 18, hp: 200, radius: 20, prof: 'engineer',   key: 'H' },
     townhall: { name: 'Ратуша',      cost: 25, hp: 300, radius: 24, prof: 'architect',  key: 'H' },
   },
-  TURRET: { damage: 8, engScale: 2.0, cooldown: 0.8, range: 260, projSpeed: 620, baseMax: 2, perEng: 4 }, // Турель: урон = damage + инженерия × engScale; максимум = baseMax + инженерия / perEng
-  CANNON: { cost: 15, damage: 40, engScale: 5, cooldown: 1.1, range: 330, projSpeed: 620, splash: 65 },
+  TURRET: { damage: 8, engScale: 2.0, cooldown: 0.8, range: 190, projSpeed: 620, baseMax: 2, perEng: 4 }, // Турель: урон = damage + инженерия × engScale; максимум = baseMax + инженерия / perEng
+  CANNON: { cost: 15, damage: 40, engScale: 5, cooldown: 1.1, range: 230, projSpeed: 620, splash: 65 },
   STRUCT_DMG_PER_NIGHT: 0.10, // (было 0.06: к 99-й ×6.9 против ×20 HP — турели не пробивали)
   // Улучшения построек (U рядом). Каждая профессия улучшает свою часть:
   TOWER_LEVELS:  { max: 5, cost: [15, 25, 40, 60], hp: 0.3, range: 0.12 }, // Архитектор: прочность +30%, дальность +12% за уровень
