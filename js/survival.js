@@ -168,8 +168,15 @@
   };
 
   /* ====================== ЭКОНОМИКА: МОНЕТЫ С БОССА ====================== */
-  // Награда за убитого босса — сразу в казну, с учётом контрактов и обвала биржи.
-  SV.bossPayout = function (G, m) {
+  // Доля HP босса этой ночи: в первые ночи слабее, к SV_BOSS_HP.full - полный (хук из spawnBoss).
+  SV.bossHpK = function (night) {
+    const H = C().SV_BOSS_HP;
+    if (!H || night >= H.full) return 1;
+    return H.start + (1 - H.start) * (Math.max(1, night) - 1) / Math.max(1, H.full - 1);
+  };
+
+  // Полная награда за босса этой ночи с учётом контрактов и обвала биржи.
+  function bossCoins(G) {
     const cfg = C(), B = cfg.SV_BOSS_COINS, night = G.day || 1;
     let n = B.base + B.perNight * (night - 1) + Math.floor(rnd() * (B.dice + 1));
     let mult = 1;
@@ -177,9 +184,14 @@
       const rate = (cfg.SV_CONTRACTS || {})[s.kind];
       if (rate) mult += rate * (AB.Sim.bl(s) || 1);
     }
+    if (G.svCrash) mult *= 0.5;
+    return Math.round(n * mult);
+  }
+
+  // Награда за убитого босса — сразу в казну, с учётом контрактов и обвала биржи.
+  SV.bossPayout = function (G, m) {
     const crash = !!G.svCrash;
-    if (crash) mult *= 0.5;
-    n = Math.round(n * mult);
+    const n = bossCoins(G);
     G.coins += n;
     G.svBossKills = (G.svBossKills || 0) + 1;
     AB.Sim.msg(G, `Босс повержен: казна +${n} $` + (crash ? ' · обвал биржи!' : ''), -1, crash ? '#ff9d7a' : '#ffd24a');
@@ -191,9 +203,12 @@
     const cfg = C(), B = cfg.SV_BOSS_COINS;
     const boss = G.monsters.find(m => m.boss && !m.dying && !m.dead);
     if (boss) {
+      // доля награды по снятому HP, но не меньше miss
+      const frac = Math.max(0, Math.min(1, 1 - boss.hp / boss.maxHp));
+      const n = Math.max(B.miss, Math.round(bossCoins(G) * frac));
       boss.nodrop = true; boss.dying = 1.2;
-      G.coins += B.miss;
-      AB.Sim.msg(G, `Босс ушёл с рассветом. Из его логова вынесли ${B.miss} $`, -1, '#c8b890');
+      G.coins += n;
+      AB.Sim.msg(G, `Босс ушёл с рассветом, сняли ${Math.round(frac * 100)}% его здоровья: казна +${n} $`, -1, '#c8b890');
     }
     G.svCrash = G.structs.some(s => s.kind === 'exchange') && rnd() < (cfg.SV_CRASH_CHANCE || 0);
   };

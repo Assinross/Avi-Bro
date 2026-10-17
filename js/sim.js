@@ -464,7 +464,7 @@
       if (!AB.freeSpot(G.W, x, y, 30) && t < 35) continue;
       if (AB.dist(x, y, G.W.camp.x, G.W.camp.y) > Sim.fowRadius(G) - 60 && t < 38) continue;
       const m = Sim.spawnMonster(G, type, x, y, false, 0, 1, G.day); // босс — по номеру ночи
-      const k = Sim.activeCount(G) > 1 ? cfg.BOSS_COOP_HP : 1;
+      const k = (Sim.activeCount(G) > 1 ? cfg.BOSS_COOP_HP : 1) * (AB.Survival.on(G) ? AB.Survival.bossHpK(G.day) : 1); // Выживание: босс первых ночей слабее
       m.hp *= k; m.maxHp *= k;
       G.bossCount++;
       Sim.msg(G, `Приближается босс: ${cfg.BOSSES[type].name}! Уходите из красных зон!`, -1, '#ff6a5a');
