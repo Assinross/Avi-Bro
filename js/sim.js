@@ -1012,7 +1012,7 @@
   function shoot(G, x, y, t, speed, dmg, k, src, extra) {
     const d = AB.dist(x, y, t.x, t.y), tt = d / speed;
     const a = Math.atan2(t.y + t.vy * tt - y, t.x + t.vx * tt - x);
-    G.projs.push(Object.assign({ id: G.nextId++, k, x, y, vx: Math.cos(a) * speed, vy: Math.sin(a) * speed, dmg, life: (d * 1.4 + 60) / speed, pierce: 1, hit: [], src }, extra || {}));
+    G.projs.push(Object.assign({ id: G.nextId++, k, x, y, vx: Math.cos(a) * speed, vy: Math.sin(a) * speed, dmg, life: (d * 1.4 + 60) / speed, pierce: 1, hit: [], src, d0: d }, extra || {}));
   }
 
   // Дроны, мины, аура, клинки, метеориты, молнии
@@ -1339,7 +1339,7 @@
         const a2 = a0 + (i - (S.n - 1) / 2) * (def.spread || 0.13);
         const life = (S.range * (def.ret ? 1 : 1.3)) / speed;
         G.projs.push({ id: G.nextId++, k: def.pk || 'arrow', x: p.x + Math.cos(a2) * 14, y: p.y + Math.sin(a2) * 14, vx: Math.cos(a2) * speed, vy: Math.sin(a2) * speed,
-          dmg: S.dmg, life, life0: life, pierce: S.pierce, hit: [], owner: p.id, src: 'weapon', crit: S.crit, cm: S.critMult, ab: def.id, bm: S.mult, home: AB.Survival.on(G) && S._cards && S._cards.home ? 1 : 0 });
+          dmg: S.dmg, life, life0: life, d0: d, pierce: S.pierce, hit: [], owner: p.id, src: 'weapon', crit: S.crit, cm: S.critMult, ab: def.id, bm: S.mult, home: AB.Survival.on(G) && S._cards && S._cards.home ? 1 : 0 });
       }
       Sim.fx(G, { k: 'shoot', x: p.x, y: p.y, a: a0, w: def.pk });
       return true;
@@ -2888,7 +2888,7 @@
       m: G.monsters.filter(m => m.boss || near(m)).map(m => [m.id, MON_TYPES.indexOf(m.type), r1(m.x), r1(m.y), r1(m.a), Math.round(m.hp), Math.round(m.maxHp), m.hurt > 0 ? 1 : 0,
         (m.guard ? 1 : 0) | (m.hunter ? 2 : 0) | (m.st === 'chase' ? 4 : 0) | ((m.atk || 0) > 0 ? 8 : 0) | (m.burn ? 16 : 0) | (m.slowT > 0 ? 32 : 0) | (m.act ? 64 : 0) | (m.mark > 0 ? 128 : 0) | (m.nodrop ? 256 : 0),
         m.dying > 0 ? r1(m.dying) : 0, m.act ? m.act.k : 0, m.es ? [Math.round(m.es * 100) / 100, m.en] : 0, m.lv || 1, m.site >= 0 ? m.site : -1, m.aff ? m.aff.join(',') : 0, m.wu > 0 ? (m.sup ? 2 : 1) : 0]),
-      pr: G.projs.map(p => [p.id, p.k, r1(p.x), r1(p.y), Math.round(p.vx), Math.round(p.vy)]),
+      pr: G.projs.map(p => [p.id, p.k, r1(p.x), r1(p.y), Math.round(p.vx), Math.round(p.vy), Math.round(p.d0 || 0)]),
       ep: G.eprojs.map(e => [r1(e.x), r1(e.y), Math.round(e.vx), Math.round(e.vy), e.lk || 0]),
       te: G.tele.map(t => [t.sh, r1(t.x), r1(t.y), t.r || 0, r1(t.a || 0), t.len || 0, t.w || 0, Math.round(t.t / t.dur * 100) / 100, t.fr]),
       stc: G.structs.map(q => [q.id, q.kind, r1(q.x), r1(q.y), Math.round(q.hp), Math.round(q.mhp), q.owner, q.armed ? 1 : 0, q.mod ? 1 : 0, r1(q.a), q.stock ? q.stock.length : 0, q.stock && q.stock.length ? Math.round(q.sellT / C().SHOP.sellTime * 100) / 100 : 0, q.tl || 1, q.cl || 1, q.ml || 1, q.up || {}, q.bl || 1, q.bmod || 0, q.logs || 0]),
@@ -2971,7 +2971,7 @@
       m.aff = a[14] ? a[14].split(',') : null; m.svPose = a[15] || 0; // Выживание: аффиксы и замах для позы
       return m;
     });
-    G.projs = s.pr.map(a => ({ id: a[0], k: a[1], x: a[2], y: a[3], vx: a[4], vy: a[5] }));
+    G.projs = s.pr.map(a => ({ id: a[0], k: a[1], x: a[2], y: a[3], vx: a[4], vy: a[5], d0: a[6] || 0 }));
     G.eprojs = s.ep.map(a => ({ x: a[0], y: a[1], vx: a[2], vy: a[3], lk: a[4] || 0 }));
     G.tele = s.te.map(a => ({ sh: a[0], x: a[1], y: a[2], r: a[3], a: a[4], len: a[5], w: a[6], prog: a[7], fr: a[8] }));
     G.structs = s.stc.map(a => ({ id: a[0], kind: a[1], x: a[2], y: a[3], hp: a[4], mhp: a[5], owner: a[6], armed: !!a[7], mod: !!a[8], a: a[9], r: cfg.STRUCTURES[a[1]].radius, stockN: a[10], sellP: a[11], tl: a[12], cl: a[13], ml: a[14], up: a[15], bl: a[16], bmod: a[17] || null, logs: a[18] || 0 }));

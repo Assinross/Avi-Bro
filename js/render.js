@@ -1879,12 +1879,99 @@
     knife: ['spin', '#d4dde3', 8], trowel: ['spin', '#c9d3da', 9], boomerang: ['spin', '#a8743a', 10], net: ['net', '#e8e0c8', 12],
     firearrow: ['arrow', '#ff8a2a', 18], dart: ['dart', '#7ad04a', 9], bolt: ['arrow', '#9aa2a8', 14], arrow: ['arrow', '#c8a06a', 18],
     turret: ['box', '#ffd24a', 4], cannon: ['ball', '#4a4f55', 5],
+    wrench: ['wrench', '#aab4bc', 9], hammer: ['hammer', '#8a9098', 10], spear: ['spear', '#c8a06a', 24],
   };
-  function drawProjectile(ctx, p) {
-    const a = Math.atan2(p.vy, p.vx), L = PK[p.k] || PK.arrow, sh = L[0], col = L[1], sz = L[2];
-    ctx.save(); ctx.translate(p.x, p.y - 10);
-    if (sh === 'spin' || sh === 'net') ctx.rotate(R.time * (sh === 'net' ? 4 : 16)); else ctx.rotate(a);
-    if (sh === 'streak') {
+  // ПСЕВДО-3D СНАРЯДОВ (только картинка, у хоста и гостя одинаково): снаряд летит на высоте по дуге,
+  // высота дуги = дистанция до цели × LOB; на земле тень, за снарядом след, при вылете и попадании - искры.
+  const LOB = { grenade: 0.22, boulder: 0.24, cannon: 0.12, brick: 0.14, net: 0.16, knife: 0.08, trowel: 0.12, boomerang: 0.1,
+    wrench: 0.16, hammer: 0.18, spear: 0.06, arrow: 0.07, firearrow: 0.07, bolt: 0.04, dart: 0.03 };
+  const TUMBLE = { wrench: 14, hammer: 11, knife: 18, trowel: 14, boomerang: 16 }; // кувыркание в объёме: скорость оборота
+  const projMem = new Map();
+  const rgbOf = (c) => (c[0] === '#' ? c : `rgb(${c})`);
+  function drawProjectiles(ctx, G) {
+    const seen = new Set();
+    for (const p of G.projs) {
+      seen.add(p.id);
+      let m = projMem.get(p.id);
+      if (!m) { m = { x0: p.x, y0: p.y, tr: [] }; projMem.set(p.id, m); if (!R.lowQ) launchFx(p); }
+      const L = PK[p.k] || PK.arrow, D = p.d0 || 240;
+      const f = Math.min(1, AB.dist(m.x0, m.y0, p.x, p.y) / Math.max(60, D));
+      const z = 10 + Math.min(48, D * (LOB[p.k] || 0)) * Math.sin(Math.PI * f);
+      const sx = p.x, sy = p.y - z;
+      const a = m.px !== undefined && (Math.abs(sx - m.px) + Math.abs(sy - m.py)) > 0.3 ? Math.atan2(sy - m.py, sx - m.px) : Math.atan2(p.vy, p.vx);
+      m.px = sx; m.py = sy; m.gx = p.x; m.gy = p.y; m.k = p.k;
+      // тень на земле: чем выше снаряд, тем она меньше и бледнее
+      if (L[0] !== 'streak' && L[0] !== 'glow') {
+        const h = Math.min(1, (z - 10) / 60), rx = (L[2] * 0.55 + 2) * (1 - h * 0.5);
+        ctx.fillStyle = `rgba(0,0,0,${0.3 * (1 - h * 0.6)})`; ctx.beginPath(); ctx.ellipse(p.x, p.y + 2, rx, rx * 0.4, 0, 0, TAU); ctx.fill();
+      }
+      // след
+      if (!R.lowQ) {
+        m.tr.push([sx, sy]); if (m.tr.length > 8) m.tr.shift();
+        if (m.tr.length > 2) {
+          const glow = L[0] === 'streak' || L[0] === 'glow' || p.k === 'firearrow' || p.k === 'rocket';
+          ctx.save(); if (glow) ctx.globalCompositeOperation = 'lighter';
+          ctx.strokeStyle = glow ? rgbOf(p.k === 'rocket' || p.k === 'firearrow' ? '255,150,60' : L[1]) : 'rgba(255,255,255,0.55)';
+          ctx.lineCap = 'round';
+          for (let i = 1; i < m.tr.length; i++) {
+            const k = i / m.tr.length;
+            ctx.globalAlpha = k * (glow ? 0.5 : 0.28); ctx.lineWidth = (glow ? 3 : 2) * k + 0.5;
+            ctx.beginPath(); ctx.moveTo(m.tr[i - 1][0], m.tr[i - 1][1]); ctx.lineTo(m.tr[i][0], m.tr[i][1]); ctx.stroke();
+          }
+          ctx.restore();
+        }
+      }
+      drawProjectile(ctx, p, sx, sy, a);
+    }
+    for (const [id, m] of projMem) if (!seen.has(id)) { if (!R.lowQ && m.gx !== undefined) hitFx(G, m); projMem.delete(id); }
+  }
+  // Вылет: искры у стволов, вихрь воздуха у метательного
+  function launchFx(p) {
+    const a = Math.atan2(p.vy, p.vx), gun = ['nail', 'rivet', 'pellet', 'turret', 'cannon', 'bullet', 'rifle'].includes(p.k);
+    for (let i = 0; i < (gun ? 4 : 2); i++) {
+      const s = 60 + Math.random() * 80, da = (Math.random() - 0.5) * 0.7;
+      AB.FX.add({ t: 'spark', x: p.x, y: p.y, z: 10, vx: Math.cos(a + da) * s, vy: Math.sin(a + da) * s, vz: 10 + Math.random() * 20, g: 60, life: 0.18 + Math.random() * 0.12, size: gun ? 1.6 : 1.2, c: gun ? '#ffe08a' : '#f4f0e0' });
+    }
+    if (gun) AB.FX.add({ t: 'flash', x: p.x + Math.cos(a) * 6, y: p.y + Math.sin(a) * 6, z: 10, vx: 0, vy: 0, vz: 0, g: 0, life: 0.06, size: 7 });
+  }
+  // Исчезновение: рядом с монстром - искры попадания, тяжёлое метательное оземь - пыль
+  function hitFx(G, m) {
+    const hit = G.monsters.some(q => !q.dying && AB.dist2(q.x, q.y, m.gx, m.gy) < (q.r + 26) ** 2);
+    const L = PK[m.k] || PK.arrow, c = rgbOf(L[1]);
+    if (hit) {
+      for (let i = 0; i < 6; i++) {
+        const a = Math.random() * TAU, s = 50 + Math.random() * 110;
+        AB.FX.add({ t: 'spark', x: m.gx, y: m.gy, z: m.gy - m.py, vx: Math.cos(a) * s, vy: Math.sin(a) * s * 0.6, vz: 20 + Math.random() * 50, g: 160, life: 0.25 + Math.random() * 0.2, size: 1.6, c: i % 2 ? '#ffffff' : c });
+      }
+      AB.FX.add({ t: 'flash', x: m.gx, y: m.gy, z: m.gy - m.py, vx: 0, vy: 0, vz: 0, g: 0, life: 0.07, size: 9 });
+    } else if (LOB[m.k] >= 0.12) {
+      AB.FX.add({ t: 'smoke', x: m.gx, y: m.gy, z: 0, vx: 0, vy: 0, vz: 6, g: 0, life: 0.6, size: 6, c: 'rgba(150,135,110,' });
+    }
+  }
+  function drawProjectile(ctx, p, sx, sy, a) {
+    const L = PK[p.k] || PK.arrow, sh = L[0], col = L[1], sz = L[2], tb = TUMBLE[p.k];
+    ctx.save(); ctx.translate(sx, sy);
+    if (tb) { const ph = R.time * tb + (p.id || 0); ctx.rotate(ph); ctx.scale(1, 0.55 + 0.45 * Math.abs(Math.cos(ph * 0.5))); } // оборот в объёме
+    else if (sh === 'net') ctx.rotate(R.time * 4); else ctx.rotate(a);
+    if (sh === 'wrench') {
+      ctx.fillStyle = '#16100b'; ctx.fillRect(-sz - 1, -2.5, sz * 1.6 + 2, 5);
+      ctx.fillStyle = col; ctx.fillRect(-sz, -1.5, sz * 1.6, 3); ctx.fillStyle = 'rgba(255,255,255,0.45)'; ctx.fillRect(-sz, -1.5, sz * 1.6, 1);
+      ctx.fillStyle = '#16100b'; ctx.beginPath(); ctx.arc(sz * 0.7, 0, 5, 0, TAU); ctx.fill();
+      ctx.fillStyle = col; ctx.beginPath(); ctx.arc(sz * 0.7, 0, 4, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#16100b'; ctx.fillRect(sz * 0.7, -1.6, 5, 3.2);
+      S().circle(ctx, -sz + 1.5, 0, 2.4, '#16100b'); S().circle(ctx, -sz + 1.5, 0, 1.6, col);
+    } else if (sh === 'hammer') {
+      ctx.fillStyle = '#16100b'; ctx.fillRect(-sz - 1, -2, sz * 1.5 + 2, 4);
+      ctx.fillStyle = '#9a6a3a'; ctx.fillRect(-sz, -1.2, sz * 1.5, 2.4);
+      ctx.fillStyle = '#16100b'; ctx.fillRect(sz * 0.3, -6, 8, 12);
+      ctx.fillStyle = col; ctx.fillRect(sz * 0.3 + 1, -5, 6, 10); ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.fillRect(sz * 0.3 + 1, -5, 6, 2);
+    } else if (sh === 'spear') {
+      ctx.strokeStyle = '#140c08'; ctx.lineWidth = 3.4; ctx.beginPath(); ctx.moveTo(-sz, 0); ctx.lineTo(sz * 0.55, 0); ctx.stroke();
+      ctx.strokeStyle = col; ctx.lineWidth = 1.8; ctx.stroke();
+      ctx.fillStyle = '#16100b'; ctx.beginPath(); ctx.moveTo(sz * 0.55 + 10, 0); ctx.lineTo(sz * 0.55 - 1, -4.2); ctx.lineTo(sz * 0.55 - 1, 4.2); ctx.fill();
+      ctx.fillStyle = '#dfe8ee'; ctx.beginPath(); ctx.moveTo(sz * 0.55 + 8, 0); ctx.lineTo(sz * 0.55, -3); ctx.lineTo(sz * 0.55, 3); ctx.fill();
+      ctx.fillStyle = '#b8563a'; ctx.fillRect(sz * 0.3, -2.2, 3, 4.4);
+    } else if (sh === 'streak') {
       ctx.globalCompositeOperation = 'lighter';
       const g = ctx.createLinearGradient(-sz, 0, 3, 0); g.addColorStop(0, `rgba(${col},0)`); g.addColorStop(1, `rgba(${col},1)`);
       ctx.strokeStyle = g; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(-sz, 0); ctx.lineTo(3, 0); ctx.stroke();
@@ -2247,7 +2334,7 @@
       ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.strokeStyle = `rgba(255,120,90,${pl})`; ctx.lineWidth = 3;
       ctx.beginPath(); ctx.ellipse(m.x, m.y - m.r * 0.4, rr, rr * 0.85, 0, 0, TAU); ctx.stroke(); ctx.restore();
     }
-    for (const p of G.projs) drawProjectile(ctx, p);
+    drawProjectiles(ctx, G);
     for (const e of G.eprojs) drawEnemyShot(ctx, e, t);
     for (const b of (G.bots || [])) if (b.x > x0 && b.x < x1 && b.y > y0 && b.y < y1) drawBot(ctx, b, t);
     for (const p of G.players) {

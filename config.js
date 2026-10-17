@@ -364,14 +364,14 @@ window.CONFIG = {
     // (Было 2–4 урона в секунду: у охотника лук был втрое слабее остальных навыков.)
     // У охотника дальше учтены «Меткость» +1, метка (+20%) и крит 8%; ближний бой бьёт сильнее, но в упор.
     { id: 'h_start', prof: 'hunter',     start: true, name: 'Охотничий лук',   icon: '➹', kind: 'shot',  dmg: 3.4, cd: 0.8, range: 250, speed: 540, n: 1, pierce: 1, pk: 'arrow', desc: 'Начальное оружие: стрелы в ближайшего врага' },
-    { id: 'e_start', prof: 'engineer',   start: true, name: 'Гаечный ключ',    icon: '⚲', kind: 'melee', dmg: 5.4, cd: 0.65, range: 60,  arc: 125, melee: true, knock: 10, desc: 'Начальное оружие: удар тяжёлым ключом' },
+    { id: 'e_start', prof: 'engineer',   start: true, name: 'Гаечный ключ',    icon: '⚲', kind: 'shot',  dmg: 4.6, cd: 0.7, range: 230, speed: 480, n: 1, pierce: 2, knock: 8, pk: 'wrench', desc: 'Начальное оружие: метает гаечные ключи, ключ пробивает двух врагов' },
     { id: 'p_start', prof: 'programmer', start: true, name: 'Лазерная указка', icon: '⌁', kind: 'beam',  dmg: 4.6, cd: 0.9, range: 230, width: 9, look: 'laser', desc: 'Начальное оружие: луч сквозь всех врагов на линии' },
-    { id: 'a_start', prof: 'architect',  start: true, name: 'Молоток',         icon: '⚒', kind: 'melee', dmg: 5.6, cd: 0.7, range: 62,  arc: 130, melee: true, knock: 12, desc: 'Начальное оружие: удар строительным молотком' },
+    { id: 'a_start', prof: 'architect',  start: true, name: 'Молоток',         icon: '⚒', kind: 'shot',  dmg: 5.2, cd: 0.8, range: 230, speed: 460, n: 1, pierce: 1, knock: 12, pk: 'hammer', desc: 'Начальное оружие: метает строительный молоток' },
     // ---------------- ОХОТНИК ----------------
     { id: 'h_bow',    prof: 'hunter', name: 'Лук',                 icon: '➶', kind: 'shot',   dmg: 4.3, cd: 0.8,  range: 270, speed: 560, n: 1, pierce: 1, pk: 'arrow', desc: 'Стрелы в ближайшего врага' },
     { id: 'h_xbow',   prof: 'hunter', name: 'Арбалет',             icon: '⇸', kind: 'shot',   dmg: 6.0, cd: 1.35, range: 320, speed: 720, n: 1, pierce: 3, pk: 'bolt', desc: 'Тяжёлый болт пробивает трёх врагов' },
     { id: 'h_knives', prof: 'hunter', name: 'Метательные ножи',    icon: '✢', kind: 'shot',   dmg: 1.2, cd: 0.7,  range: 180, speed: 520, n: 3, spread: 0.25, pk: 'knife', desc: 'Веер из трёх ножей' },
-    { id: 'h_spear',  prof: 'hunter', name: 'Копьё',               icon: '↟', kind: 'melee',  dmg: 6.4, cd: 0.75,  range: 90,  arc: 45, melee: true, knock: 10, desc: 'Длинный колющий удар' },
+    { id: 'h_spear',  prof: 'hunter', name: 'Копьё',               icon: '↟', kind: 'shot',   dmg: 7.5, cd: 0.9,  range: 260, speed: 620, n: 1, pierce: 3, knock: 10, pk: 'spear', desc: 'Метательное копьё пробивает трёх врагов' },
     { id: 'h_trap',   prof: 'hunter', name: 'Капканы',             icon: '⊓', kind: 'mine',   dmg: 14,  cd: 5,    radius: 45, n: 3, slow: 90, slowT: 2, look: 'trap', desc: 'Ставит капканы: урон и остановка врага' },
     { id: 'h_net',    prof: 'hunter', name: 'Ловчая сеть',         icon: '#', kind: 'shot',   dmg: 3,   cd: 3,    range: 240, speed: 420, n: 1, explode: 70, slow: 60, slowT: 3, pk: 'net', desc: 'Сеть замедляет всех врагов в области' },
     { id: 'h_fire',   prof: 'hunter', name: 'Огненные стрелы',     icon: '☄', kind: 'shot',   dmg: 2.6, cd: 1.0,  range: 260, speed: 540, n: 1, burn: 2.5, pk: 'firearrow', desc: 'Стрелы поджигают врагов' },
@@ -406,7 +406,7 @@ window.CONFIG = {
     { id: 'p_packet', prof: 'programmer', name: 'Пакеты данных',   icon: '⇶', kind: 'shot',   dmg: 2.2, cd: 0.8,  range: 320, speed: 380, n: 2, home: 6, pk: 'packet', desc: 'Самонаводящиеся пакеты' },
     { id: 'p_glitch', prof: 'programmer', name: 'Глитч',           icon: '▚', kind: 'strike', dmg: 11,  cd: 3.5,  range: 300, radius: 45, n: 3, windup: 0.5, desc: 'Сбой реальности бьёт по трём врагам' },
     // ---------------- АРХИТЕКТОР ----------------
-    { id: 'a_hammer', prof: 'architect', name: 'Молот строителя',  icon: '⚒', kind: 'melee',  dmg: 5.0, cd: 0.65,  range: 62,  arc: 125, knock: 14, melee: true, desc: 'Широкий удар молотом' },
+    { id: 'a_hammer', prof: 'architect', name: 'Молот строителя',  icon: '⚒', kind: 'shot',   dmg: 6.0, cd: 0.8,  range: 220, speed: 420, n: 1, pierce: 2, knock: 14, pk: 'hammer', desc: 'Метает тяжёлый молот, он пробивает двух врагов' },
     { id: 'a_brick',  prof: 'architect', name: 'Кирпичи',          icon: '▬', kind: 'shot',   dmg: 5,   cd: 0.9,  range: 230, speed: 450, n: 1, knock: 15, pk: 'brick', desc: 'Бросает кирпичи, отбрасывая врагов' },
     { id: 'a_trowel', prof: 'architect', name: 'Мастерок',         icon: '◭', kind: 'shot',   dmg: 3.3, cd: 1.3,  range: 200, speed: 400, n: 1, pierce: 99, ret: true, pk: 'trowel', desc: 'Мастерок летит сквозь врагов и возвращается' },
     { id: 'a_quake',  prof: 'architect', name: 'Землетрясение',    icon: '≋', kind: 'nova',   dmg: 11,  cd: 3.5,  radius: 120, slow: 40, slowT: 1.5, melee: true, desc: 'Сотрясение земли вокруг' },
