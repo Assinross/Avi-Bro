@@ -1394,6 +1394,34 @@
     for (const q of pts) { const g = ctx.createRadialGradient(q[0], q[1], 0, q[0], q[1], q[2]); g.addColorStop(0, `rgba(255,190,80,${0.35 * nf * (0.9 + Math.sin(t * 3 + q[0]) * 0.1)})`); g.addColorStop(1, 'rgba(255,160,60,0)'); ctx.fillStyle = g; ctx.fillRect(q[0] - q[2], q[1] - q[2], q[2] * 2, q[2] * 2); }
     ctx.restore();
   }
+  // Робот-лесоруб: корпус на гусеницах, рука с топором, бревна на спине
+  function drawLumberBot(ctx, b, t, me) {
+    b.rx = b.rx === undefined ? b.x : b.rx + (b.x - b.rx) * 0.3; b.ry = b.ry === undefined ? b.y : b.ry + (b.y - b.ry) * 0.3; // у гостя сглаживаем рывки снимков
+    const x = b.rx, y = b.ry, dir = Math.cos(b.a || 0) < 0 ? -1 : 1, bob = b.mv ? Math.sin(t * 18) * 0.8 : 0;
+    ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.beginPath(); ctx.ellipse(x, y + 1, 12, 4, 0, 0, TAU); ctx.fill();
+    // гусеницы
+    ctx.fillStyle = '#1a1a1a'; ctx.fillRect(x - 11, y - 6, 22, 7);
+    ctx.fillStyle = '#4a4a48'; for (let i = 0; i < 5; i++) ctx.fillRect(x - 10 + ((i * 4.5 + (b.mv ? t * 30 : 0)) % 21), y - 5, 2, 5);
+    // бревна на спине
+    for (let i = 0; i < (b.n || 0); i++) { const ly = y - 24 - i * 4 + bob; ctx.fillStyle = '#6a4a2a'; ctx.fillRect(x - 12 * dir - 7, ly, 14, 4); S().circle(ctx, x - 12 * dir - 7, ly + 2, 2, '#c89a5a'); S().circle(ctx, x - 12 * dir + 7, ly + 2, 2, '#c89a5a'); }
+    // корпус
+    ctx.fillStyle = '#111'; ctx.fillRect(x - 9, y - 21 + bob, 18, 16);
+    ctx.fillStyle = '#e8a23a'; ctx.fillRect(x - 8, y - 20 + bob, 16, 14);
+    ctx.fillStyle = '#c8822a'; ctx.fillRect(x - 8, y - 9 + bob, 16, 3);
+    ctx.fillStyle = '#1a2a32'; ctx.fillRect(x - 5 + dir * 1.5, y - 18 + bob, 10, 6);
+    S().circle(ctx, x - 2 + dir * 2, y - 15 + bob, 1.5, '#7affb0'); S().circle(ctx, x + 2 + dir * 2, y - 15 + bob, 1.5, '#7affb0');
+    // антенна
+    ctx.fillStyle = '#111'; ctx.fillRect(x - 0.5, y - 27 + bob, 1, 6); S().circle(ctx, x, y - 28 + bob, 1.8, Math.sin(t * 6) > 0 ? '#ff5a3a' : '#5a1a10');
+    // рука с топором: взмах при ударе
+    const sw = b.sw > 0 ? -1.1 + (0.25 - b.sw) * 6 : -0.3;
+    ctx.save(); ctx.translate(x + 8 * dir, y - 14 + bob); ctx.scale(dir, 1); ctx.rotate(sw);
+    ctx.fillStyle = '#5a5a5a'; ctx.fillRect(0, -1.5, 11, 3);
+    ctx.fillStyle = '#8a6a42'; ctx.fillRect(9, -6, 2, 12);
+    ctx.fillStyle = '#c8d0d8'; ctx.beginPath(); ctx.moveTo(11, -6); ctx.lineTo(16, -4); ctx.lineTo(16, 2); ctx.lineTo(11, 0); ctx.fill();
+    ctx.restore();
+    if (me && AB.dist2(me.x, me.y, x, y) < 90 * 90) label(ctx, b.st === 2 ? `Робот-лесоруб · везёт ${b.n}` : 'Робот-лесоруб', x, y - 36, '#ffc46b');
+  }
+
   function drawStruct(ctx, s, t, near) {
     const x = s.x, y = s.y;
     if (s.kind === 'wall') {
@@ -2112,6 +2140,7 @@
     for (const s of G.structs) if (s.x > x0 && s.x < x1 && s.y > y0 && s.y < y1) vis.push({ y: s.y, k: 9, o: s });
     if (G.kitchen) vis.push({ y: G.kitchen.y, k: 10, o: G.kitchen });
     if (G.store) vis.push({ y: G.store.y, k: 11, o: G.store });
+    if (G.lbot) vis.push({ y: G.lbot.y, k: 15, o: G.lbot });
     if (G.merchant) vis.push({ y: G.merchant.y, k: 12, o: G.merchant });
     updateBirds(G, Math.min(dt, 0.05), t);
     for (const tn of (W.towns || [])) for (const tr of tn.traders) if (tr.x > x0 && tr.x < x1 && tr.y > y0 && tr.y < y1) vis.push({ y: tr.y, k: 14, o: tr });
@@ -2203,6 +2232,7 @@
         case 11: see(markAll(o.x, o.y, 56, 88)); drawStore(ctx, o, t); ctx.globalAlpha = 1; break;
         case 12: see(markAll(o.x + 22, o.y, 46, 70)); drawMerchant(ctx, o, t); ctx.globalAlpha = 1; break;
         case 13: drawHen(ctx, o, t); break;
+        case 15: drawLumberBot(ctx, o, t, me); break;
       }
     }
     // монстры за препятствиями: красный контур поверх

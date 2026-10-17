@@ -2117,6 +2117,7 @@
     for (const b of W.bushes) if (b.berries === 0) { b.t -= dt; if (b.t <= 0) { b.berries = 1; G.bushDirty.add(b.id); } }
     updateKitchen(G, dt);
     updateStore(G, dt);
+    updateLumberBot(G, dt);
     // костёр жжёт монстров (нежить — сильнее)
     G.fireT -= dt;
     if (G.fireT <= 0) {
@@ -2190,6 +2191,53 @@
     if (f && S.coal > 0 && S.feedT <= 0 && Sim.fuelFits(G, f, cfg.FUEL_VALUES.coal)) {
       S.feedT = 0.5; S.coal--; Sim.feedFire(G, f, cfg.FUEL_VALUES.coal);
       Sim.fx(G, { k: 'feed', x: f.x, y: f.y });
+    }
+  }
+
+  // Робот-лесоруб (модификация лесопилки): рубит ближайшее к лесопилке дерево и везёт бревна на лесопилку или в углежог
+  function updateLumberBot(G, dt) {
+    const cfg = C(), L = cfg.LUMBERBOT, S = G.store, W = G.W;
+    if (!Sim.hasMod(S, 'robot')) { G.lbot = null; return; }
+    const b = G.lbot || (G.lbot = { x: S.x + 30, y: S.y + 40, st: 0, tid: -1, n: 0, cd: 0, a: 0, scan: 0 });
+    const moveTo = (x, y, r) => {
+      const d = AB.dist(b.x, b.y, x, y);
+      if (d <= r) return true;
+      const k = Math.min(1, L.speed * dt / d);
+      b.a = Math.atan2(y - b.y, x - b.x); b.x += (x - b.x) * k; b.y += (y - b.y) * k; b.mv = 1;
+      return false;
+    };
+    b.mv = 0; b.cd -= dt; b.scan -= dt; b.sw = Math.max(0, (b.sw || 0) - dt);
+    if (b.st === 2) { // везёт бревна
+      const kiln = S.botTo === 'kiln' && G.structs.find(s => s.kind === 'kiln');
+      const tg = kiln || S;
+      if (!moveTo(tg.x, tg.y + 30, 20)) return;
+      if (kiln) { kiln.logs = (kiln.logs || 0) + b.n; b.n = 0; }
+      else { const n = Math.min(b.n, cfg.MILL.queueMax - S.logs); if (n <= 0) return; S.logs += n; b.n -= n; if (b.n > 0) return; }
+      Sim.fx(G, { k: 'build', x: tg.x, y: tg.y });
+      b.st = 0;
+      return;
+    }
+    let t = b.tid >= 0 ? W.trees[b.tid] : null;
+    if (!t || t.dead || t.gone) {
+      t = null; b.tid = -1; b.st = 0;
+      if (b.scan > 0) { moveTo(S.x + 30, S.y + 40, 4); return; }
+      b.scan = 2; // поиск по всем деревьям - не чаще раза в 2 с, пока подходящих нет
+      let bd = L.search ** 2;
+      for (const q of W.trees) { if (!q || q.dead || q.gone) continue; const d = AB.dist2(q.x, q.y, S.x, S.y); if (d < bd) { bd = d; t = q; } }
+      if (!t) return;
+      b.tid = t.id; b.st = 1;
+    }
+    if (!moveTo(t.x, t.y + 8, 12 + 9 * (t.s || 1))) return;
+    b.a = Math.atan2(t.y - b.y, t.x - b.x);
+    if (b.cd > 0) return;
+    b.cd = L.hitEvery; b.sw = 0.25;
+    t.hp -= cfg.TREE_HP / L.hits; t.shake = 0.35; if (W.treeAct) W.treeAct.add(t);
+    G.treeDirty.add(t.id);
+    Sim.fx(G, { k: 'chop', x: t.x, y: t.y - 10, id: t.id });
+    if (t.hp <= 1e-6) {
+      t.dead = true; t.hp = 0; t.sap = -1; t.regrow = cfg.STUMP_TO_SAPLING; t.sg = 0;
+      Sim.fx(G, { k: 'fell', x: t.x, y: t.y, v: t.v });
+      b.n = L.carry; b.st = 2; b.tid = -1;
     }
   }
 
@@ -2455,6 +2503,7 @@
     if (c === 'bmod') { setMod(G, p, x, y); return; }
     if (c === 'build3') { buildEcon(G, p, x, y); return; }
     if (c === 'build4') { buildKiln(G, p, x, y); return; }
+    if (c === 'botto') { G.store.botTo = x === 'kiln' ? 'kiln' : 'mill'; Sim.msg(G, `Робот-лесоруб возит бревна ${x === 'kiln' ? 'в углежог' : 'на лесопилку'}`, -1, '#c8a06a'); return; }
     if (c === 'cbuy' || c === 'csell') { if (AB.Survival.on(G)) { Sim.msg(G, 'В Выживании биржа - контракт на награду босса и не торгует AviCoin', p.id, '#ff9d7a'); return; } cryptoTrade(G, p, c, x); return; }
     if (c === 'axeup') {
       const A = cfg.AXE_UPGRADE, lv = p.axe || 1;
@@ -2591,6 +2640,7 @@
     } else if (kind === 'mill') {
       title = 'Лесопилка'; desc = 'Подойдите — бревна, железо, камень и шкуры из рюкзака выгрузятся (шкуры — в кладовую, лавка продаёт их сама; шкуры можно сдать и правым кликом). Пилит бревна в доски.';
       now = [`На складе: доски ${o.planks}, уголь ${o.coal || 0}, железо ${o.iron || 0}, камень ${o.stone || 0}, шкуры ${o.hides || 0}`, `Пилит одновременно: ${Sim.millLines(o)} бревна (сейчас ${(o.saws || []).length})`, `Бревна в очереди: ${o.logs}/${cfg.MILL.queueMax}`];
+      if (Sim.hasMod(o, 'robot')) now.push(`Робот-лесоруб возит бревна ${o.botTo === 'kiln' ? 'в углежог' : 'на лесопилку'}`);
       push('mill', 'Лесопилка', o.lvl, cfg.MILL.maxLevel, millLvlCost(o.lvl), o.up, 'any', `${Sim.millLines({ lvl: o.lvl + 1 })} бревен пилится одновременно`);
     } else {
       const S = cfg.STRUCTURES[o.kind], up = o.up || {}, bl = Sim.bl(o);
@@ -2848,7 +2898,8 @@
       d: G.drops.filter(near).map(d => d.v > 1 ? [d.id, d.k, r1(d.x), r1(d.y), d.v] : [d.id, d.k, r1(d.x), r1(d.y)]),
       f: G.fires.map(f => [r1(f.x), r1(f.y), r1(f.fuel), f.main ? 1 : 0, f.lvl, f.mod ? 1 : 0, f.lm, f.cap || Sim.fireCap(G, f), f.bmod || 0, f.town === undefined ? -1 : f.town]),
       ch: W.sites.filter(s2 => s2.opened).map(s2 => s2.id),
-      so: [G.store.x, G.store.y, G.store.logs, G.store.planks, G.store.lvl, G.store.up, (G.store.saws || []).map(v => Math.round(v)), G.store.coal || 0, G.store.bmod || 0, G.store.iron || 0, G.store.stone || 0, G.store.hides || 0],
+      so: [G.store.x, G.store.y, G.store.logs, G.store.planks, G.store.lvl, G.store.up, (G.store.saws || []).map(v => Math.round(v)), G.store.coal || 0, G.store.bmod || 0, G.store.iron || 0, G.store.stone || 0, G.store.hides || 0, G.store.botTo || 0],
+      lb: G.lbot ? [r1(G.lbot.x), r1(G.lbot.y), G.lbot.st, G.lbot.n, r1(G.lbot.a), G.lbot.mv || 0, G.lbot.sw > 0 ? 1 : 0] : 0,
       eco: [G.coins, G.fireUp, G.debt, G.upkeepLast, Math.round(G.crypto.price * 10) / 10, G.crypto.held, G.crypto.hist],
       bag: G.players.map(p => p.bagUp || 0),
       kl: [G.kitchen.lvl, G.kitchen.up, G.kitchen.bmod || 0],
@@ -2931,7 +2982,8 @@
     G.drops = s.d.map(a => { const o = dmap.get(a[0]); return { id: a[0], k: a[1], x: a[2], y: a[3], v: a[4] || 1, age: o ? o.age : 0 }; });
     G.fires = s.f.map((a, i) => ({ id: i, x: a[0], y: a[1], fuel: a[2], main: !!a[3], lvl: a[4], mod: !!a[5], lm: a[6], cap: a[7], bmod: a[8] || null, town: a[9] >= 0 ? a[9] : undefined }));
     s.ch.forEach(id => { if (W.sites[id]) W.sites[id].opened = true; });
-    if (s.so) G.store = { x: s.so[0], y: s.so[1], logs: s.so[2], planks: s.so[3], lvl: s.so[4], up: s.so[5], saws: s.so[6], coal: s.so[7], bmod: s.so[8] || null, iron: s.so[9] || 0, stone: s.so[10] || 0, hides: s.so[11] || 0 };
+    if (s.so) G.store = { x: s.so[0], y: s.so[1], logs: s.so[2], planks: s.so[3], lvl: s.so[4], up: s.so[5], saws: s.so[6], coal: s.so[7], bmod: s.so[8] || null, iron: s.so[9] || 0, stone: s.so[10] || 0, hides: s.so[11] || 0, botTo: s.so[12] || null };
+    if (s.lb !== undefined) G.lbot = s.lb ? { x: s.lb[0], y: s.lb[1], st: s.lb[2], n: s.lb[3], a: s.lb[4], mv: s.lb[5], sw: s.lb[6] ? 0.25 : 0 } : null;
     if (s.eco) { G.coins = s.eco[0]; G.fireUp = s.eco[1]; G.debt = s.eco[2]; G.upkeepLast = s.eco[3]; G.crypto = { price: s.eco[4], held: s.eco[5], hist: s.eco[6] }; }
     if (s.bag) G.players.forEach((p, i) => { p.bagUp = s.bag[i] || 0; });
     if (s.kc) G.kitchen = { x: s.kc[0], y: s.kc[1], slots: s.kc[2].map(a => ({ k: a[0], prog: a[1] })), queue: new Array(s.kc[3]), ready: s.kc[4] || {}, lvl: s.kl ? s.kl[0] : 1, up: s.kl ? s.kl[1] : 0, bmod: s.kl && s.kl[2] || null };

@@ -761,6 +761,9 @@ window.CONFIG = {
   },
   // УГЛЕЖОГ: подойдите - бревна из рюкзака уходят в печь; за каждые logsPerCoal бревен из печи выпадает уголь
   KILN: { radius: 55, logsPerCoal: 20 },
+  // РОБОТ-ЛЕСОРУБ (модификация лесопилки): speed - пикс/с, hits - ударов на дерево, hitEvery - секунд между ударами,
+  // carry - бревен с одного дерева, search - ищет деревья не дальше этого от лесопилки
+  LUMBERBOT: { speed: 80, hits: 8, hitEvery: 0.8, carry: 3, search: 700 },
   TURRET: { damage: 8, engScale: 2.0, cooldown: 0.8, range: 190, projSpeed: 620, baseMax: 2, perEng: 4 }, // Турель: урон = damage + инженерия × engScale; максимум = baseMax + инженерия / perEng
   CANNON: { cost: 15, damage: 40, engScale: 5, cooldown: 1.1, range: 230, projSpeed: 620, splash: 65 },
   STRUCT_DMG_PER_NIGHT: 0.10, // (было 0.06: к 99-й ×6.9 против ×20 HP — турели не пробивали)
@@ -781,6 +784,7 @@ window.CONFIG = {
     mill: [
       { id: 'saw',     name: 'Пилорама',          desc: 'Пилит на 50% быстрее' },
       { id: 'eco',     name: 'Экономная пила',    desc: '35% шанс получить из бревна 2 доски' },
+      { id: 'robot',   name: 'Робот-лесоруб',     desc: 'Маленький робот сам рубит ближайшие деревья и возит по 3 бревна на лесопилку или в углежог (выбор в меню лесопилки)' },
     ],
     fire: [
       { id: 'signal',  name: 'Сигнальный огонь',  desc: 'Свет и обзор костра +40%' },

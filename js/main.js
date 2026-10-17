@@ -920,6 +920,14 @@
       if (lv < AB.Sim.axeMax()) { const ac = AB.Sim.axeCost(G, lv); btn.textContent = `Улучшить: ${ac.coins} $ + ${ac.planks} досок${ac.iron ? ` + ${ac.iron} железа` : ''}`; } else btn.textContent = 'Максимальный уровень';
       btn.addEventListener('click', () => { AB.Sound.play('click', 1); sendCmd2('axeup', 'mill', 0); });
       box2.appendChild(el);
+      // робот-лесоруб: куда возить бревна
+      if (AB.Sim.hasMod(G.store, 'robot')) {
+        const rb = document.createElement('div'); rb.className = 'asp';
+        const hasKiln = G.structs.some(q => q.kind === 'kiln'), to = G.store.botTo === 'kiln' ? 'kiln' : 'mill';
+        rb.innerHTML = `<div class="ah"><span>Робот-лесоруб</span><span>${to === 'kiln' ? 'в углежог' : 'на лесопилку'}</span></div><div class="an">Куда робот возит бревна${hasKiln ? '' : ' (углежог ещё не построен - пока везёт на лесопилку)'}:</div><button class="btn small${to === 'mill' ? ' gold' : ''}">На лесопилку</button> <button class="btn small${to === 'kiln' ? ' gold' : ''}">В углежог</button>`;
+        rb.querySelectorAll('button').forEach((bt, i) => bt.addEventListener('click', () => { AB.Sound.play('click', 1); sendCmd2('botto', i ? 'kiln' : 'mill', 0); }));
+        box2.appendChild(rb);
+      }
     }
     const mb = $('bpMods'); mb.innerHTML = '';
     if (!b.mods.length) mb.innerHTML = '<div class="note left">У этого здания нет модификаций.</div>';
