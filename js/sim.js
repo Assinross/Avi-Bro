@@ -376,6 +376,7 @@
     updatePlayers(G, dt);
     updateStructs(G, dt);
     updateMonsters(G, dt);
+    updateDeer(G, dt);
     updateTele(G, dt);
     updateProjectiles(G, dt);
     updateEnemyShots(G, dt);
@@ -777,14 +778,16 @@
     Sim.fx(G, { k: 'snd', s: 'chest' });
   }
 
-  function damagePlayer(G, p, dmg, src) {
+  function damagePlayer(G, p, dmg, src, pure) { // pure - урон мимо брони, уклонения, щита и множителя сложности (олень)
     if (p.dead) return;
     const cfg = C(), st = p.st;
+    if (!pure) {
     if (st.dodge > 0 && rnd() * 100 < Math.min(cfg.DODGE_CAP, st.dodge)) { Sim.fx(G, { k: 'dodge', x: p.x, y: p.y }); return; }
     const a = st.armor || 0;
     dmg *= cfg.MONSTER_DAMAGE_MULT || 1;
     dmg *= a >= 0 ? cfg.ARMOR_K / (cfg.ARMOR_K + a) : (cfg.ARMOR_K - a) / cfg.ARMOR_K;
     if (p.sh > 0) { const ab = Math.min(p.sh, dmg); p.sh -= ab; dmg -= ab; if (dmg <= 0.01) { Sim.fx(G, { k: 'block', x: p.x, y: p.y }); return; } }
+    }
     p.hp -= dmg;
     if (AB.Survival.on(G)) AB.Survival.onPlayerHit(G, p, dmg, src); // Выживание: вампир лечится, ледяной замедляет
     p.hurt = 0.3; Sim.fx(G, { k: 'phit', x: p.x, y: p.y, pid: p.id, n: Math.round(dmg) });
@@ -801,6 +804,62 @@
       Sim.fx(G, { k: 'pdie', x: p.x, y: p.y, pid: p.id });
       if (G.players.length > 1 && G.players.some(o => !o.dead)) Sim.msg(G, `${p.name} погиб! Возрождение через ${cfg.RESPAWN_TIME} с`, -1, '#ff8a8a');
     }
+  }
+
+  // Олень: ночной бессмертный дух леса (не монстр - в G.monsters его нет, навыки и турели его не видят)
+  function updateDeer(G, dt) {
+    const cfg = C(), D = cfg.DEER;
+    if (!D || !G.isNight || G.day < D.from) { G.deer = null; return; }
+    const lit = (x, y) => G.fires.find(f => f.fuel > 0 && AB.dist(x, y, f.x, f.y) < fireLight(f) + D.lightPad);
+    const alive = G.players.filter(p => !p.dead && !p.left);
+    if (!alive.length) return;
+    let d = G.deer;
+    if (!d) { // появляется раз за ночь в темноте вдали от героя
+      if (G.deerNight === G.day) return;
+      const p = alive[Math.floor(rnd() * alive.length)];
+      for (let i = 0; i < 30; i++) {
+        const a = rnd() * TAU, r = AB.lerp(D.spawnDist[0], D.spawnDist[1], rnd()), x = p.x + Math.cos(a) * r, y = p.y + Math.sin(a) * r;
+        if (x < 200 || y < 200 || x > G.W.size - 200 || y > G.W.size - 200 || lit(x, y)) continue;
+        d = G.deer = { x, y, a: 0, wu: 0, cd: 0, mv: 0, tid: -1, wx: x, wy: y };
+        G.deerNight = G.day;
+        Sim.msg(G, 'В лесу бродит олень. Его не убить: увидите - бегите по прямой или к огню', -1, '#ff8a8a');
+        break;
+      }
+      if (!d) return;
+    }
+    d.cd -= dt; d.mv = 0;
+    const spd = D.speed * (AB.WX ? AB.WX.speed : 1);
+    // цель: ближайший герой в темноте; ушёл далеко или к огню - теряет
+    let t = d.tid >= 0 ? alive.find(p => p.id === d.tid) : null;
+    if (t && (AB.dist(t.x, t.y, d.x, d.y) > D.lose || lit(t.x, t.y))) t = null;
+    if (!t) { let bd = D.sight; for (const p of alive) { const r = AB.dist(p.x, p.y, d.x, d.y); if (r < bd && !lit(p.x, p.y)) { bd = r; t = p; } } }
+    d.tid = t ? t.id : -1;
+    if (d.wu > 0) { // замах на бегу: удар, если герой всё ещё рядом
+      d.wu -= dt;
+      if (d.wu <= 0) {
+        d.cd = D.attackCd;
+        if (t && AB.dist(t.x, t.y, d.x, d.y) <= D.reach * 1.3 && !lit(t.x, t.y)) damagePlayer(G, t, t.mhp / D.hits * 1.08, null, true); // с запасом на реген между ударами
+      }
+    }
+    let tx, ty;
+    if (t) {
+      const r = AB.dist(t.x, t.y, d.x, d.y);
+      if (r <= D.reach && d.cd <= 0 && !(d.wu > 0)) { d.wu = D.windup; d.a = Math.atan2(t.y - d.y, t.x - d.x); Sim.fx(G, { k: 'snd', s: 'growl' }); return; }
+      tx = t.x; ty = t.y;
+    } else { // бродит рядом с героями
+      const near = alive.reduce((b, p) => (AB.dist2(p.x, p.y, d.x, d.y) < AB.dist2(b.x, b.y, d.x, d.y) ? p : b), alive[0]);
+      if (AB.dist(d.x, d.y, d.wx, d.wy) < 10 || AB.dist(near.x, near.y, d.wx, d.wy) > 900) { const a = rnd() * TAU, r = 300 + rnd() * 350; d.wx = near.x + Math.cos(a) * r; d.wy = near.y + Math.sin(a) * r; }
+      tx = d.wx; ty = d.wy;
+    }
+    const r = AB.dist(tx, ty, d.x, d.y);
+    if (r < 1) return;
+    const k = Math.min(r, spd * (t ? 1 : 0.45) * dt) / r, nx = d.x + (tx - d.x) * k, ny = d.y + (ty - d.y) * k;
+    d.a = Math.atan2(ty - d.y, tx - d.x);
+    const f = lit(nx, ny);
+    if (f && !lit(d.x, d.y)) { if (!t) { d.wx = d.x; d.wy = d.y; } return; } // к свету не подходит
+    if (f) { const a = Math.atan2(d.y - f.y, d.x - f.x); d.x += Math.cos(a) * spd * dt; d.y += Math.sin(a) * spd * dt; d.mv = 1; return; } // оказался в свете - уходит
+    const rc = AB.resolveCollision(G.W, AB.clamp(nx, 100, G.W.size - 100), AB.clamp(ny, 100, G.W.size - 100), cfg.PLAYER_RADIUS); // деревья и камни мешают, как герою
+    d.x = rc[0]; d.y = rc[1]; d.mv = 1;
   }
 
   /* ======================= ИГРОКИ ======================= */
@@ -2899,6 +2958,7 @@
       f: G.fires.map(f => [r1(f.x), r1(f.y), r1(f.fuel), f.main ? 1 : 0, f.lvl, f.mod ? 1 : 0, f.lm, f.cap || Sim.fireCap(G, f), f.bmod || 0, f.town === undefined ? -1 : f.town]),
       ch: W.sites.filter(s2 => s2.opened).map(s2 => s2.id),
       so: [G.store.x, G.store.y, G.store.logs, G.store.planks, G.store.lvl, G.store.up, (G.store.saws || []).map(v => Math.round(v)), G.store.coal || 0, G.store.bmod || 0, G.store.iron || 0, G.store.stone || 0, G.store.hides || 0, G.store.botTo || 0],
+      dr: G.deer ? [r1(G.deer.x), r1(G.deer.y), r1(G.deer.a), G.deer.wu > 0 ? 1 : 0, G.deer.mv] : 0,
       lb: G.lbot ? [r1(G.lbot.x), r1(G.lbot.y), G.lbot.st, G.lbot.n, r1(G.lbot.a), G.lbot.mv || 0, G.lbot.sw > 0 ? 1 : 0] : 0,
       eco: [G.coins, G.fireUp, G.debt, G.upkeepLast, Math.round(G.crypto.price * 10) / 10, G.crypto.held, G.crypto.hist],
       bag: G.players.map(p => p.bagUp || 0),
@@ -2983,6 +3043,7 @@
     G.fires = s.f.map((a, i) => ({ id: i, x: a[0], y: a[1], fuel: a[2], main: !!a[3], lvl: a[4], mod: !!a[5], lm: a[6], cap: a[7], bmod: a[8] || null, town: a[9] >= 0 ? a[9] : undefined }));
     s.ch.forEach(id => { if (W.sites[id]) W.sites[id].opened = true; });
     if (s.so) G.store = { x: s.so[0], y: s.so[1], logs: s.so[2], planks: s.so[3], lvl: s.so[4], up: s.so[5], saws: s.so[6], coal: s.so[7], bmod: s.so[8] || null, iron: s.so[9] || 0, stone: s.so[10] || 0, hides: s.so[11] || 0, botTo: s.so[12] || null };
+    if (s.dr !== undefined) G.deer = s.dr ? { x: s.dr[0], y: s.dr[1], a: s.dr[2], wu: s.dr[3], mv: s.dr[4] } : null;
     if (s.lb !== undefined) G.lbot = s.lb ? { x: s.lb[0], y: s.lb[1], st: s.lb[2], n: s.lb[3], a: s.lb[4], mv: s.lb[5], sw: s.lb[6] ? 0.25 : 0 } : null;
     if (s.eco) { G.coins = s.eco[0]; G.fireUp = s.eco[1]; G.debt = s.eco[2]; G.upkeepLast = s.eco[3]; G.crypto = { price: s.eco[4], held: s.eco[5], hist: s.eco[6] }; }
     if (s.bag) G.players.forEach((p, i) => { p.bagUp = s.bag[i] || 0; });

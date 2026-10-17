@@ -1394,6 +1394,42 @@
     for (const q of pts) { const g = ctx.createRadialGradient(q[0], q[1], 0, q[0], q[1], q[2]); g.addColorStop(0, `rgba(255,190,80,${0.35 * nf * (0.9 + Math.sin(t * 3 + q[0]) * 0.1)})`); g.addColorStop(1, 'rgba(255,160,60,0)'); ctx.fillStyle = g; ctx.fillRect(q[0] - q[2], q[1] - q[2], q[2] * 2, q[2] * 2); }
     ctx.restore();
   }
+  // Олень: тёмный силуэт с ветвистыми рогами и светящимися глазами; в замахе опускает рога, глаза краснеют
+  function drawDeer(ctx, d, t) {
+    d.rx = d.rx === undefined ? d.x : d.rx + (d.x - d.rx) * 0.3; d.ry = d.ry === undefined ? d.y : d.ry + (d.y - d.ry) * 0.3;
+    const x = d.rx, y = d.ry, dir = Math.cos(d.a || 0) < 0 ? -1 : 1, run = d.mv ? t * 11 : 0, wu = d.wu > 0;
+    ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.beginPath(); ctx.ellipse(x, y + 1, 20, 6, 0, 0, TAU); ctx.fill();
+    ctx.save(); ctx.translate(x, y); ctx.scale(dir, 1);
+    const body = '#2a1e16', dark = '#140e0a';
+    // ноги
+    ctx.strokeStyle = dark; ctx.lineWidth = 3; ctx.lineCap = 'round';
+    for (const [lx, ph] of [[-11, 0], [-7, Math.PI], [9, Math.PI], [13, 0]]) { const sw = Math.sin(run + ph) * 5; ctx.beginPath(); ctx.moveTo(lx, -22); ctx.lineTo(lx + sw * 0.5, -11); ctx.lineTo(lx + sw, 0); ctx.stroke(); }
+    // туловище и шея
+    const hy = wu ? -26 : -40, hx = wu ? 22 : 18; // голова: в замахе опущена вперёд
+    ctx.fillStyle = dark; ctx.beginPath(); ctx.ellipse(0, -26, 17, 9, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = body; ctx.beginPath(); ctx.ellipse(0, -26, 15.5, 7.5, 0, 0, TAU); ctx.fill();
+    ctx.strokeStyle = dark; ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(11, -29); ctx.lineTo(hx - 3, hy + 4); ctx.stroke();
+    ctx.strokeStyle = body; ctx.lineWidth = 4; ctx.stroke();
+    ctx.fillStyle = dark; ctx.beginPath(); ctx.ellipse(hx + 2, hy + 2, 7, 4.5, wu ? 0.5 : 0.2, 0, TAU); ctx.fill();
+    // рога
+    ctx.strokeStyle = '#d8ccb0'; ctx.lineWidth = 1.6;
+    const ax = hx - 1, ay = hy - 2, up = wu ? 0.9 : 0;
+    for (const s of [-1, 1]) {
+      ctx.beginPath(); ctx.moveTo(ax, ay);
+      const bx = ax + s * 3 + up * 10, by = ay - 16 + up * 8;
+      ctx.lineTo(bx, by);
+      ctx.moveTo(ax + s * 1.5 + up * 4, ay - 6 + up * 3); ctx.lineTo(ax + s * 8 + up * 9, ay - 11 + up * 6);
+      ctx.moveTo(ax + s * 2.5 + up * 8, ay - 11 + up * 6); ctx.lineTo(ax - s * 4 + up * 14, ay - 19 + up * 10);
+      ctx.moveTo(bx, by); ctx.lineTo(bx + s * 5 + up * 3, by - 4);
+      ctx.stroke();
+    }
+    // глаза
+    ctx.globalCompositeOperation = 'lighter';
+    const ec = wu ? '255,60,40' : '235,240,255', pl = 0.75 + Math.sin(t * 5) * 0.2;
+    S().circle(ctx, hx + 4, hy + 1, 1.6, `rgba(${ec},${pl})`); S().circle(ctx, hx + 4, hy + 1, 5, `rgba(${ec},${0.25 * pl})`);
+    ctx.restore();
+  }
+
   // Робот-лесоруб: корпус на гусеницах, рука с топором, бревна на спине
   function drawLumberBot(ctx, b, t, me) {
     b.rx = b.rx === undefined ? b.x : b.rx + (b.x - b.rx) * 0.3; b.ry = b.ry === undefined ? b.y : b.ry + (b.y - b.ry) * 0.3; // у гостя сглаживаем рывки снимков
@@ -2228,6 +2264,7 @@
     if (G.kitchen) vis.push({ y: G.kitchen.y, k: 10, o: G.kitchen });
     if (G.store) vis.push({ y: G.store.y, k: 11, o: G.store });
     if (G.lbot) vis.push({ y: G.lbot.y, k: 15, o: G.lbot });
+    if (G.deer) vis.push({ y: G.deer.y, k: 16, o: G.deer });
     if (G.merchant) vis.push({ y: G.merchant.y, k: 12, o: G.merchant });
     updateBirds(G, Math.min(dt, 0.05), t);
     for (const tn of (W.towns || [])) for (const tr of tn.traders) if (tr.x > x0 && tr.x < x1 && tr.y > y0 && tr.y < y1) vis.push({ y: tr.y, k: 14, o: tr });
@@ -2320,6 +2357,7 @@
         case 12: see(markAll(o.x + 22, o.y, 46, 70)); drawMerchant(ctx, o, t); ctx.globalAlpha = 1; break;
         case 13: drawHen(ctx, o, t); break;
         case 15: drawLumberBot(ctx, o, t, me); break;
+        case 16: drawDeer(ctx, o, t); break;
       }
     }
     // монстры за препятствиями: красный контур поверх
