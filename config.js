@@ -383,13 +383,13 @@ window.CONFIG = {
     // ---------------- ИНЖЕНЕР ----------------
     { id: 'e_nail',   prof: 'engineer', name: 'Гвоздомёт',         icon: '⁞', kind: 'shot',   dmg: 1.5, cd: 0.25, range: 230, speed: 700, n: 1, pk: 'nail', desc: 'Очень быстрая стрельба гвоздями' },
     { id: 'e_shotgun',prof: 'engineer', name: 'Дробовик',          icon: '⁂', kind: 'shot',   dmg: 1.3, cd: 1.1,  range: 160, speed: 650, n: 6, spread: 0.12, pk: 'pellet', desc: 'Залп дробью вблизи' },
-    { id: 'e_flame',  prof: 'engineer', name: 'Огнемёт',           icon: '♨', kind: 'melee',  dmg: 0.8, cd: 0.2,  range: 95,  arc: 50, burn: 2, look: 'flame', desc: 'Струя огня поджигает врагов' },
+    { id: 'e_flame',  prof: 'engineer', name: 'Огнемёт',           icon: '♨', kind: 'shot',   dmg: 1.4, cd: 0.35, range: 200, speed: 380, n: 1, pierce: 2, burn: 2, pk: 'flame', desc: 'Огненные сгустки летят сквозь двух врагов и поджигают' },
     { id: 'e_mines',  prof: 'engineer', name: 'Мины',              icon: '✺', kind: 'mine',   dmg: 14,  cd: 4,    radius: 70, n: 5, desc: 'Ставит мины у себя под ногами' },
     { id: 'e_nade',   prof: 'engineer', name: 'Гранаты',           icon: '●', kind: 'shot',   dmg: 7,   cd: 2,    range: 260, speed: 380, n: 1, explode: 75, pk: 'grenade', desc: 'Граната взрывается по площади' },
     { id: 'e_tesla',  prof: 'engineer', name: 'Тесла-катушка',     icon: 'ϟ', kind: 'chain',  dmg: 6,   cd: 1.4,  range: 200, n: 3, desc: 'Молния перескакивает между врагами' },
     { id: 'e_turret', prof: 'engineer', name: 'Переносная турель', icon: '⛭', kind: 'turret', dmg: 2,   cd: 12,   range: 240, n: 2, life: 20, fireCd: 0.6, look: 'turret', desc: 'Ставит временную турель рядом' },
     { id: 'e_rocket', prof: 'engineer', name: 'Ракеты',            icon: '➚', kind: 'shot',   dmg: 6,   cd: 2.5,  range: 380, speed: 420, n: 2, home: 4, explode: 60, pk: 'rocket', desc: 'Самонаводящиеся ракеты со взрывом' },
-    { id: 'e_saw',    prof: 'engineer', name: 'Циркулярная пила',  icon: '❂', kind: 'orbit',  dmg: 5,   cd: 0.8,  radius: 55, n: 2, speed: 3.2, melee: true, look: 'saw', desc: 'Пилы вращаются вокруг вас' },
+    { id: 'e_saw',    prof: 'engineer', name: 'Циркулярная пила',  icon: '❂', kind: 'shot',   dmg: 4.5, cd: 1.3,  range: 220, speed: 420, n: 1, pierce: 99, ret: true, pk: 'sawblade', desc: 'Пильный диск летит сквозь врагов и возвращается (бьёт дважды)' },
     { id: 'e_hammer', prof: 'engineer', name: 'Паровой молот',     icon: '⚒', kind: 'nova',   dmg: 10,  cd: 3,    radius: 90, knock: 30, slow: 50, slowT: 1, melee: true, desc: 'Удар о землю отбрасывает врагов' },
     { id: 'e_weld',   prof: 'engineer', name: 'Сварочный луч',     icon: '═', kind: 'beam',   dmg: 4.5, cd: 1.2,  range: 260, width: 16, burn: 1.5, look: 'weld', desc: 'Раскалённый луч сквозь врагов' },
     // ---------------- ПРОГРАММИСТ ----------------

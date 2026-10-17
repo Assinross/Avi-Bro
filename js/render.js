@@ -1916,11 +1916,12 @@
     firearrow: ['arrow', '#ff8a2a', 18], dart: ['dart', '#7ad04a', 9], bolt: ['arrow', '#9aa2a8', 14], arrow: ['arrow', '#c8a06a', 18],
     turret: ['box', '#ffd24a', 4], cannon: ['ball', '#4a4f55', 5],
     wrench: ['wrench', '#aab4bc', 9], hammer: ['hammer', '#8a9098', 10], spear: ['spear', '#c8a06a', 24],
+    flame: ['glow', '#ff8a2a', 6], sawblade: ['saw', '#c8d0d8', 9],
   };
   // ПСЕВДО-3D СНАРЯДОВ (только картинка, у хоста и гостя одинаково): снаряд летит на высоте по дуге,
   // высота дуги = дистанция до цели × LOB; на земле тень, за снарядом след, при вылете и попадании - искры.
   const LOB = { grenade: 0.22, boulder: 0.24, cannon: 0.12, brick: 0.14, net: 0.16, knife: 0.08, trowel: 0.12, boomerang: 0.1,
-    wrench: 0.16, hammer: 0.18, spear: 0.06, arrow: 0.07, firearrow: 0.07, bolt: 0.04, dart: 0.03 };
+    wrench: 0.16, hammer: 0.18, spear: 0.06, sawblade: 0.05, flame: 0.04, arrow: 0.07, firearrow: 0.07, bolt: 0.04, dart: 0.03 };
   const TUMBLE = { wrench: 14, hammer: 11, knife: 18, trowel: 14, boomerang: 16 }; // кувыркание в объёме: скорость оборота
   const projMem = new Map();
   const rgbOf = (c) => (c[0] === '#' ? c : `rgb(${c})`);
@@ -1945,7 +1946,7 @@
       if (!R.lowQ) {
         m.tr.push([sx, sy]); if (m.tr.length > 8) m.tr.shift();
         if (m.tr.length > 2) {
-          const glow = L[0] === 'streak' || L[0] === 'glow' || p.k === 'firearrow' || p.k === 'rocket';
+          const glow = L[0] === 'streak' || L[0] === 'glow' || p.k === 'firearrow' || p.k === 'rocket' || p.k === 'sawblade';
           ctx.save(); if (glow) ctx.globalCompositeOperation = 'lighter';
           ctx.strokeStyle = glow ? rgbOf(p.k === 'rocket' || p.k === 'firearrow' ? '255,150,60' : L[1]) : 'rgba(255,255,255,0.55)';
           ctx.lineCap = 'round';
@@ -1964,6 +1965,11 @@
   // Вылет: искры у стволов, вихрь воздуха у метательного
   function launchFx(p) {
     const a = Math.atan2(p.vy, p.vx), gun = ['nail', 'rivet', 'pellet', 'turret', 'cannon', 'bullet', 'rifle'].includes(p.k);
+    if (p.k === 'flame') { // язык пламени и дым у сопла
+      for (let i = 0; i < 3; i++) { const s = 40 + Math.random() * 60, da = (Math.random() - 0.5) * 0.5; AB.FX.add({ t: 'spark', x: p.x, y: p.y, z: 10, vx: Math.cos(a + da) * s, vy: Math.sin(a + da) * s, vz: 20, g: -40, life: 0.3, size: 2, c: ['#ff9a2a', '#ffd24a', '#ff5a2a'][i] }); }
+      AB.FX.add({ t: 'smoke', x: p.x, y: p.y, z: 12, vx: Math.cos(a) * 20, vy: Math.sin(a) * 20, vz: 14, g: -4, life: 0.9, size: 4, c: 'rgba(90,80,70,' });
+      return;
+    }
     for (let i = 0; i < (gun ? 4 : 2); i++) {
       const s = 60 + Math.random() * 80, da = (Math.random() - 0.5) * 0.7;
       AB.FX.add({ t: 'spark', x: p.x, y: p.y, z: 10, vx: Math.cos(a + da) * s, vy: Math.sin(a + da) * s, vz: 10 + Math.random() * 20, g: 60, life: 0.18 + Math.random() * 0.12, size: gun ? 1.6 : 1.2, c: gun ? '#ffe08a' : '#f4f0e0' });
@@ -1989,7 +1995,14 @@
     ctx.save(); ctx.translate(sx, sy);
     if (tb) { const ph = R.time * tb + (p.id || 0); ctx.rotate(ph); ctx.scale(1, 0.55 + 0.45 * Math.abs(Math.cos(ph * 0.5))); } // оборот в объёме
     else if (sh === 'net') ctx.rotate(R.time * 4); else ctx.rotate(a);
-    if (sh === 'wrench') {
+    if (sh === 'saw') { // пильный диск: плоское быстрое вращение, зубья и блик
+      ctx.rotate(R.time * 22 - a);
+      ctx.scale(1, 0.62); // лежит почти плашмя - вид в перспективе
+      ctx.fillStyle = '#16100b'; ctx.beginPath(); for (let i = 0; i < 12; i++) { const an = i / 12 * TAU, r = i % 2 ? sz + 1 : sz + 3.5; ctx.lineTo(Math.cos(an) * r, Math.sin(an) * r); } ctx.fill();
+      ctx.fillStyle = col; ctx.beginPath(); for (let i = 0; i < 12; i++) { const an = i / 12 * TAU, r = i % 2 ? sz : sz + 2.4; ctx.lineTo(Math.cos(an) * r, Math.sin(an) * r); } ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.beginPath(); ctx.arc(0, 0, sz * 0.75, -2.4, -1.2); ctx.lineTo(0, 0); ctx.fill();
+      S().circle(ctx, 0, 0, 2.6, '#16100b'); S().circle(ctx, 0, 0, 1.6, '#6a7078');
+    } else if (sh === 'wrench') {
       ctx.fillStyle = '#16100b'; ctx.fillRect(-sz - 1, -2.5, sz * 1.6 + 2, 5);
       ctx.fillStyle = col; ctx.fillRect(-sz, -1.5, sz * 1.6, 3); ctx.fillStyle = 'rgba(255,255,255,0.45)'; ctx.fillRect(-sz, -1.5, sz * 1.6, 1);
       ctx.fillStyle = '#16100b'; ctx.beginPath(); ctx.arc(sz * 0.7, 0, 5, 0, TAU); ctx.fill();
