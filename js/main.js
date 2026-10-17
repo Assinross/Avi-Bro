@@ -390,6 +390,7 @@
       if (k === 'KeyY') command('build2');
       if (k === 'KeyU') command('upnear');
       if (k === 'KeyH') command('build3');
+      if (k === 'KeyG') command('build4');
       if (k === 'KeyE') command('eat');
       if (k === 'KeyF') setAutoPick(!App.autoPick);
       if (k === 'CapsLock') setRunAlways(!App.runAlways, true);
@@ -447,7 +448,7 @@
       const hit = uiHit(cx, cy);
       if (hit) { clickBtn(hit); return; }
       // режим стройки с верхней панели: клик по земле ставит постройку
-      if (App.buildMode) { command(App.buildMode); if (App.buildMode === 'build3') App.buildMode = null; return; }
+      if (App.buildMode) { command(App.buildMode); if (App.buildMode === 'build3' || App.buildMode === 'build4') App.buildMode = null; return; }
       // клик по предмету на земле
       const d = dropUnderMouse();
       if (d) {

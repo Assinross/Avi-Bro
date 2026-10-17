@@ -599,8 +599,9 @@
   Sim.millLines = (S) => C().MILL.linesPerLevel * (S.lvl || 1);
   Sim.millCap = () => Infinity;
   // Модификация здания и проверки
-  Sim.hasMod = (o, id) => !!o && o.bmod === id;
-  Sim.anyStructMod = (G, kind, id) => G.structs.some(s => s.kind === kind && s.bmod === id);
+  // модификации копятся списком; старые сохранения хранят одну строкой
+  Sim.hasMod = (o, id) => !!o && !!o.bmod && (Array.isArray(o.bmod) ? o.bmod.includes(id) : o.bmod === id);
+  Sim.anyStructMod = (G, kind, id) => G.structs.some(s => s.kind === kind && Sim.hasMod(s, id));
 
   // Опыт, монеты и еда не падают на землю, а сразу у добытчика p (нет его - у ближайшего живого игрока).
   // Остальное (дерево, шкуры, руда...) - на землю, как раньше; и еда тоже, если живых игроков нет
@@ -875,7 +876,7 @@
     const missing = 1 - p.hp / p.mhp;
     let dmgPct = st.dmgPct + st.berserk * Math.floor(missing * 10);
     if (st.syn_nest > 0 && nearStruct(G, p.x, p.y, 80, ['tower'])) dmgPct += st.syn_nest;
-    if (G.structs.some(s => s.kind === 'tower' && s.bmod === 'loop' && AB.dist2(s.x, s.y, p.x, p.y) < 100 * 100)) dmgPct += 20;
+    if (G.structs.some(s => s.kind === 'tower' && Sim.hasMod(s, 'loop') && AB.dist2(s.x, s.y, p.x, p.y) < 100 * 100)) dmgPct += 20;
     return dmgPct;
   }
   const atkSpdOf = (p) => Math.max(0.5, 1 + (p.st.atkSpd + (p.adrenT > 0 ? p.st.adren : 0)) / 100);
@@ -1448,6 +1449,7 @@
         }
         continue;
       }
+      if (s.kind === 'kiln') { updateKiln(G, s); continue; }
       if (s.kind === 'workshop' || s.kind === 'townhall') continue;
       const modLv = 1 + cfg.MODULE_LEVELS.mult * ((s.ml || 1) - 1);
       if (G.debt > 0) continue;
@@ -1472,11 +1474,11 @@
         }
         if (s.kind === 'tower') range *= 1 + cfg.TOWER_LEVELS.range * ((s.tl || 1) - 1);
         if (s.kind === 'turret') {
-          if (s.bmod === 'rapid') { cdv /= 1.5; dmg *= 0.75; }
-          if (s.bmod === 'heavy') { dmg *= 1.8; cdv *= 1.3; }
-          if (s.bmod === 'inc') extra.ign = 6 * (1 + cfg.STRUCT_DMG_PER_NIGHT * (G.day - 1));
+          if (Sim.hasMod(s, 'rapid')) { cdv /= 1.5; dmg *= 0.75; }
+          if (Sim.hasMod(s, 'heavy')) { dmg *= 1.8; cdv *= 1.3; }
+          if (Sim.hasMod(s, 'inc')) extra.ign = 6 * (1 + cfg.STRUCT_DMG_PER_NIGHT * (G.day - 1));
         }
-        if (G.structs.some(o => o !== s && o.kind === 'tower' && o.bmod === 'look' && AB.dist2(o.x, o.y, s.x, s.y) < 180 * 180)) range *= 1.25;
+        if (G.structs.some(o => o !== s && o.kind === 'tower' && Sim.hasMod(o, 'look') && AB.dist2(o.x, o.y, s.x, s.y) < 180 * 180)) range *= 1.25;
         dmg *= 1 + cfg.STRUCT_DMG_PER_NIGHT * (G.day - 1);
         range *= 1 + (T.syn_targeting || 0) / 100;
         if (s.cd <= 0) {
@@ -1670,11 +1672,11 @@
         const dx = m.x - s.x, dy = m.y - s.y, rr = m.r + s.r, d = Math.hypot(dx, dy);
         if (d < rr + 4 && d > 0.01) {
           if (d < rr) { m.x = s.x + dx / d * rr; m.y = s.y + dy / d * rr; }
-          if (s.kind === 'wall' && (s.bmod === 'spikes' || s.bmod === 'wire')) {
+          if (s.kind === 'wall' && (Sim.hasMod(s, 'spikes') || Sim.hasMod(s, 'wire'))) {
             m.spikeT = (m.spikeT || 0) - dt;
             if (m.spikeT <= 0) {
               m.spikeT = 0.5;
-              if (s.bmod === 'wire') { m.slowT = 1; m.slowPct = Math.max(m.slowPct || 0, 40); }
+              if (Sim.hasMod(s, 'wire')) { m.slowT = 1; m.slowPct = Math.max(m.slowPct || 0, 40); }
               else damageMonster(G, m, 5 * (1 + cfg.STRUCT_DMG_PER_NIGHT * (G.day - 1)), { src: 'fence', noProc: true });
             }
           }
@@ -2139,7 +2141,7 @@
     }
   }
 
-  // Лесопилка: очередь бревен → доски на общий склад (G.store.planks); углежог даёт уголь (G.store.coal)
+  // Лесопилка: очередь бревен → доски на общий склад (G.store.planks)
   function updateStore(G, dt) {
     const cfg = C(), M = cfg.MILL, S = G.store;
     for (const p of G.players) {
@@ -2177,7 +2179,6 @@
       S.saws[i] += dt * k;
       if (S.saws[i] < M.sawTime) continue;
       S.saws.splice(i, 1);
-      if (Sim.hasMod(S, 'coal') && (++S.coalCnt) % (cfg.MILL.coalEvery || 20) === 0) { S.coal = (S.coal || 0) + 1; Sim.fx(G, { k: 'saw', x: S.x, y: S.y }); continue; }
       let n = M.planksPerLog;
       if (Sim.hasMod(S, 'eco') && rnd() < 0.35) n++;
       S.planks += n;
@@ -2189,6 +2190,23 @@
     if (f && S.coal > 0 && S.feedT <= 0 && Sim.fuelFits(G, f, cfg.FUEL_VALUES.coal)) {
       S.feedT = 0.5; S.coal--; Sim.feedFire(G, f, cfg.FUEL_VALUES.coal);
       Sim.fx(G, { k: 'feed', x: f.x, y: f.y });
+    }
+  }
+
+  // Углежог: бревна из рюкзака уходят в печь; за каждые KILN.logsPerCoal бревен из печи выпадает уголь
+  function updateKiln(G, s) {
+    const K = C().KILN;
+    for (const p of G.players) {
+      if (p.dead || !(p.inv.wood > 0) || AB.dist2(p.x, p.y, s.x, s.y) > K.radius ** 2) continue;
+      s.logs = (s.logs || 0) + p.inv.wood;
+      Sim.msg(G, `В углежог: бревна ×${p.inv.wood} (${s.logs % K.logsPerCoal}/${K.logsPerCoal} до угля)`, p.id, '#c8a06a');
+      p.inv.wood = 0;
+      Sim.fx(G, { k: 'build', x: s.x, y: s.y });
+    }
+    while ((s.logs || 0) >= K.logsPerCoal) {
+      s.logs -= K.logsPerCoal;
+      Sim.dropItem(G, 'coal', 1, s.x, s.y + s.r + 20, 12);
+      Sim.fx(G, { k: 'saw', x: s.x, y: s.y });
     }
   }
 
@@ -2222,7 +2240,7 @@
         G.coins += tax;
         Sim.msg(G, `Ратуша собрала налог: +${tax} $`, -1, '#ffd24a');
       }
-      if (th && th.bmod === 'bank' && G.coins > 0) { const b = Math.min(20, Math.ceil(G.coins * 0.05)); G.coins += b; Sim.msg(G, `Банк: +${b} $ процентов`, -1, '#ffd24a'); }
+      if (th && Sim.hasMod(th, 'bank') && G.coins > 0) { const b = Math.min(20, Math.ceil(G.coins * 0.05)); G.coins += b; Sim.msg(G, `Банк: +${b} $ процентов`, -1, '#ffd24a'); }
       if (G.crypto.held > 0 && Sim.anyStructMod(G, 'exchange', 'stake')) { const t = Math.max(1, Math.floor(G.crypto.held * 0.05)); G.crypto.held += t; Sim.msg(G, `Стейкинг: +${t} AviCoin`, -1, '#9fdcff'); }
     }
     const total = Sim.upkeepTotal(G);
@@ -2436,6 +2454,7 @@
     if (c === 'bup') { upgradeNear(G, p, y, x); return; }
     if (c === 'bmod') { setMod(G, p, x, y); return; }
     if (c === 'build3') { buildEcon(G, p, x, y); return; }
+    if (c === 'build4') { buildKiln(G, p, x, y); return; }
     if (c === 'cbuy' || c === 'csell') { if (AB.Survival.on(G)) { Sim.msg(G, 'В Выживании биржа - контракт на награду босса и не торгует AviCoin', p.id, '#ff9d7a'); return; } cryptoTrade(G, p, c, x); return; }
     if (c === 'axeup') {
       const A = cfg.AXE_UPGRADE, lv = p.axe || 1;
@@ -2581,6 +2600,7 @@
       if (o.kind === 'turret') { desc = 'Автоматически стреляет по монстрам. Урон растёт с инженерией владельца и с каждой ночью.'; now = [`Прочность: ${Math.round(o.hp)}/${Math.round(o.mhp)}`, o.mod ? 'Модуль «Наведение»' : 'Без модуля']; }
       if (o.kind === 'shop') { if (AB.Survival.on(G)) { desc = 'Контракт Выживания: не торгует - каждый уровень лавки повышает награду за босса.'; now = [`Контракт: +${Math.round(cfg.SV_CONTRACTS.shop * Sim.bl(o) * 100)}% к награде босса`]; } else { desc = 'Подойдите со шкурами, готовой едой или досками — товары сдаются и медленно продаются, рядом появляются монеты.'; now = [`Товаров: ${o.stockN !== undefined ? o.stockN : (o.stock || []).length}`, `Продажа: ${Math.round(Sim.shopSellTime(o) * 10) / 10} с/товар`]; } }
       if (o.kind === 'exchange') { if (AB.Survival.on(G)) { desc = 'Контракт Выживания: не майнит и не торгует - каждый уровень биржи повышает награду за босса (изредка ночь-обвал).'; now = [`Контракт: +${Math.round(cfg.SV_CONTRACTS.exchange * Sim.bl(o) * 100)}% к награде босса`]; } else { desc = 'Майнит монеты. Подойдите, чтобы покупать и продавать AviCoin.'; now = [`Майнинг: ${Sim.exMine(G, o)} $ раз в ${Math.round(Sim.exRate(o))} с`, `Курс: ${G.crypto.price} $`]; } }
+      if (o.kind === 'kiln') { desc = `Подойдите - бревна из рюкзака уйдут в печь. За каждые ${cfg.KILN.logsPerCoal} бревен из углежога выпадает уголь: отнесите его в главный костёр.`; now = [`Бревен в печи: ${(o.logs || 0) % cfg.KILN.logsPerCoal}/${cfg.KILN.logsPerCoal}`, `Прочность: ${Math.round(o.hp)}/${Math.round(o.mhp)}`]; }
       if (o.kind === 'workshop') { desc = `Подойдите, чтобы улучшить топор. На ур. ${cfg.PICKAXE_CRAFT.workshopLevel} здесь делают кирку. Каждый уровень мастерской усиливает боевые навыки всех игроков.`; now = [`Урон навыков: +${Math.round(cfg.BUILD_UPGRADES.workshop.abDmg * (bl - 1) * 100)}%`]; }
       if (o.kind === 'townhall') { if (AB.Survival.on(G)) { desc = 'Контракт Выживания: каждый уровень ратуши повышает награду за босса.'; now = [`Контракт: +${Math.round(cfg.SV_CONTRACTS.townhall * Sim.bl(o) * 100)}% к награде босса`]; } else { desc = 'Снижает содержание всех построек и каждый рассвет собирает налог.'; now = [`Скидка на содержание: ${Sim.thDiscount(o)}%`, `Налог: ~${Sim.thTax(G, o)} $/день`]; } }
       if (o.kind === 'tower') push('tl', 'Вышка', o.tl || 1, cfg.TOWER_LEVELS.max, cfg.TOWER_LEVELS.cost[(o.tl || 1) - 1], up.tl, 'architect', `+${cfg.TOWER_LEVELS.hp * 100}% прочности, +${cfg.TOWER_LEVELS.range * 100}% дальности`);
@@ -2596,7 +2616,7 @@
     // модификации
     const mk = kind === 'struct' ? o.kind : kind === 'fire' ? (o.main ? 'fire' : null) : kind;
     const noMod = AB.Survival.on(G) && (mk === 'shop' || mk === 'exchange' || mk === 'townhall' || mk === 'workshop'); // в Выживании у эконом-зданий нет модов - только контракт
-    const mods = !noMod && mk && cfg.BUILD_MODS[mk] ? cfg.BUILD_MODS[mk].map(m => Object.assign({ on: o.bmod === m.id }, m)) : [];
+    const mods = !noMod && mk && cfg.BUILD_MODS[mk] ? cfg.BUILD_MODS[mk].map(m => Object.assign({ on: Sim.hasMod(o, m.id) }, m)) : [];
     return { o, kind, title, desc, now, asp, mods, ref: Sim.refOf(o, kind) };
   };
   // Ссылки на здания для команд: 'k' кухня, 'm' лесопилка, 'f<id>' костёр, 's<id>' постройка
@@ -2643,12 +2663,12 @@
   };
 
   // эффекты уровней
-  Sim.shopSellTime = (s) => C().SHOP.sellTime / (1 + C().BUILD_UPGRADES.shop.speed * (Sim.bl(s) - 1)) / (s.bmod === 'fair' ? 2 : 1);
-  Sim.shopPrice = (s, k) => Math.max(1, Math.round((C().SHOP.prices[k] || 1) * (1 + C().BUILD_UPGRADES.shop.price * (Sim.bl(s) - 1)) * (s.bmod === 'buyer' ? 1.4 : 1) * (s.bmod === 'butcher' && k.startsWith('cooked') ? 2 : 1)));
+  Sim.shopSellTime = (s) => C().SHOP.sellTime / (1 + C().BUILD_UPGRADES.shop.speed * (Sim.bl(s) - 1)) / (Sim.hasMod(s, 'fair') ? 2 : 1);
+  Sim.shopPrice = (s, k) => Math.max(1, Math.round((C().SHOP.prices[k] || 1) * (1 + C().BUILD_UPGRADES.shop.price * (Sim.bl(s) - 1)) * (Sim.hasMod(s, 'buyer') ? 1.4 : 1) * (Sim.hasMod(s, 'butcher') && k.startsWith('cooked') ? 2 : 1)));
   Sim.exRate = (s) => C().EXCHANGE.mineEvery / (1 + C().BUILD_UPGRADES.exchange.rate * (Sim.bl(s) - 1));
-  Sim.exMine = (G, s) => { const o = G.players.find(p => p.id === s.owner) || { st: {} }; return (C().EXCHANGE.mineCoins + Math.floor((o.st.eng || 0) / 4) + C().BUILD_UPGRADES.exchange.mine * (Sim.bl(s) - 1)) * (s.bmod === 'farm' ? 2 : 1); };
-  Sim.thDiscount = (s) => C().TOWNHALL.upkeepDiscount + C().BUILD_UPGRADES.townhall.discount * (Sim.bl(s) - 1) + (s.bmod === 'treasury' ? 20 : 0);
-  Sim.thTax = (G, s) => Math.round((C().TOWNHALL.taxBase + Math.floor(G.structs.length / C().TOWNHALL.taxPerStructs)) * (1 + C().BUILD_UPGRADES.townhall.tax * (Sim.bl(s) - 1)) * (s.bmod === 'tax' ? 2 : 1));
+  Sim.exMine = (G, s) => { const o = G.players.find(p => p.id === s.owner) || { st: {} }; return (C().EXCHANGE.mineCoins + Math.floor((o.st.eng || 0) / 4) + C().BUILD_UPGRADES.exchange.mine * (Sim.bl(s) - 1)) * (Sim.hasMod(s, 'farm') ? 2 : 1); };
+  Sim.thDiscount = (s) => C().TOWNHALL.upkeepDiscount + C().BUILD_UPGRADES.townhall.discount * (Sim.bl(s) - 1) + (Sim.hasMod(s, 'treasury') ? 20 : 0);
+  Sim.thTax = (G, s) => Math.round((C().TOWNHALL.taxBase + Math.floor(G.structs.length / C().TOWNHALL.taxPerStructs)) * (1 + C().BUILD_UPGRADES.townhall.tax * (Sim.bl(s) - 1)) * (Sim.hasMod(s, 'tax') ? 2 : 1));
 
   function upgradeNear(G, p, key, ref) {
     const cfg = C(), b = ref ? Sim.buildingByRef(G, ref) : Sim.nearestBuilding(G, p);
@@ -2699,8 +2719,7 @@
     if (Sim.woodOf(G, p) < MC.planks || G.coins < MC.coins) { Sim.msg(G, `Модификация стоит ${MC.planks} досок и ${MC.coins} $`, p.id, '#ff9d7a'); return; }
     Sim.spendWood(G, p, MC.planks); G.coins -= MC.coins;
     const o = b.o;
-    if (o.bmod === 'fort') { o.mhp /= 1.8; o.hp = Math.min(o.hp, o.mhp); }
-    o.bmod = id;
+    o.bmod = (Array.isArray(o.bmod) ? o.bmod : o.bmod ? [o.bmod] : []).concat(id); // моды дополняют друг друга
     if (id === 'fort') { o.mhp *= 1.8; o.hp *= 1.8; }
     Sim.msg(G, `${b.title}: модификация «${m.name}»`, -1, '#8fe08a');
     Sim.fx(G, { k: 'module', x: o.x, y: o.y });
@@ -2714,6 +2733,15 @@
     const d = AB.dist(p.x, p.y, x, y);
     if (d > cfg.BUILD_RANGE) { x = p.x + (x - p.x) / d * cfg.BUILD_RANGE; y = p.y + (y - p.y) / d * cfg.BUILD_RANGE; }
     buildStruct(G, p, kind, x, y);
+  }
+
+  // Углежог (клавиша G): строит любой игрок, один на команду
+  function buildKiln(G, p, x, y) {
+    const cfg = C();
+    if (G.structs.some(q => q.kind === 'kiln')) { Sim.msg(G, 'Углежог уже построен', p.id, '#ff9d7a'); return; }
+    const d = AB.dist(p.x, p.y, x, y);
+    if (d > cfg.BUILD_RANGE) { x = p.x + (x - p.x) / d * cfg.BUILD_RANGE; y = p.y + (y - p.y) / d * cfg.BUILD_RANGE; }
+    buildStruct(G, p, 'kiln', x, y);
   }
 
   function cryptoTrade(G, p, c, n) {
@@ -2813,7 +2841,7 @@
       pr: G.projs.map(p => [p.id, p.k, r1(p.x), r1(p.y), Math.round(p.vx), Math.round(p.vy)]),
       ep: G.eprojs.map(e => [r1(e.x), r1(e.y), Math.round(e.vx), Math.round(e.vy), e.lk || 0]),
       te: G.tele.map(t => [t.sh, r1(t.x), r1(t.y), t.r || 0, r1(t.a || 0), t.len || 0, t.w || 0, Math.round(t.t / t.dur * 100) / 100, t.fr]),
-      stc: G.structs.map(q => [q.id, q.kind, r1(q.x), r1(q.y), Math.round(q.hp), Math.round(q.mhp), q.owner, q.armed ? 1 : 0, q.mod ? 1 : 0, r1(q.a), q.stock ? q.stock.length : 0, q.stock && q.stock.length ? Math.round(q.sellT / C().SHOP.sellTime * 100) / 100 : 0, q.tl || 1, q.cl || 1, q.ml || 1, q.up || {}, q.bl || 1, q.bmod || 0]),
+      stc: G.structs.map(q => [q.id, q.kind, r1(q.x), r1(q.y), Math.round(q.hp), Math.round(q.mhp), q.owner, q.armed ? 1 : 0, q.mod ? 1 : 0, r1(q.a), q.stock ? q.stock.length : 0, q.stock && q.stock.length ? Math.round(q.sellT / C().SHOP.sellTime * 100) / 100 : 0, q.tl || 1, q.cl || 1, q.ml || 1, q.up || {}, q.bl || 1, q.bmod || 0, q.logs || 0]),
       mc: G.merchant ? [G.merchant.x, G.merchant.y] : 0,
       mn: G.mines.map(q => [r1(q.x), r1(q.y), q.look || 0]),
       bt: G.bots.map(b => [b.id, b.ab, r1(b.x), r1(b.y), r1(b.a), Math.round(b.life / b.max * 100) / 100]),
@@ -2895,7 +2923,7 @@
     G.projs = s.pr.map(a => ({ id: a[0], k: a[1], x: a[2], y: a[3], vx: a[4], vy: a[5] }));
     G.eprojs = s.ep.map(a => ({ x: a[0], y: a[1], vx: a[2], vy: a[3], lk: a[4] || 0 }));
     G.tele = s.te.map(a => ({ sh: a[0], x: a[1], y: a[2], r: a[3], a: a[4], len: a[5], w: a[6], prog: a[7], fr: a[8] }));
-    G.structs = s.stc.map(a => ({ id: a[0], kind: a[1], x: a[2], y: a[3], hp: a[4], mhp: a[5], owner: a[6], armed: !!a[7], mod: !!a[8], a: a[9], r: cfg.STRUCTURES[a[1]].radius, stockN: a[10], sellP: a[11], tl: a[12], cl: a[13], ml: a[14], up: a[15], bl: a[16], bmod: a[17] || null }));
+    G.structs = s.stc.map(a => ({ id: a[0], kind: a[1], x: a[2], y: a[3], hp: a[4], mhp: a[5], owner: a[6], armed: !!a[7], mod: !!a[8], a: a[9], r: cfg.STRUCTURES[a[1]].radius, stockN: a[10], sellP: a[11], tl: a[12], cl: a[13], ml: a[14], up: a[15], bl: a[16], bmod: a[17] || null, logs: a[18] || 0 }));
     G.merchant = s.mc ? { x: s.mc[0], y: s.mc[1] } : null;
     G.mines = s.mn.map(a => ({ x: a[0], y: a[1], look: a[2] || null }));
     G.bots = (s.bt || []).map(a => ({ id: a[0], ab: a[1], x: a[2], y: a[3], a: a[4], lf: a[5] }));

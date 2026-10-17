@@ -1398,8 +1398,8 @@
     const x = s.x, y = s.y;
     if (s.kind === 'wall') {
       Bd().draw(ctx, 'wall' + Math.min(3, s.bl || 1), x, y);
-      if (s.bmod === 'spikes') { ctx.fillStyle = '#c8c0b0'; for (const dx of [-15, -5, 5, 15]) { ctx.beginPath(); ctx.moveTo(x + dx - 2, y + 2); ctx.lineTo(x + dx + 2, y + 2); ctx.lineTo(x + dx, y + 11); ctx.fill(); } }
-      if (s.bmod === 'wire') { ctx.strokeStyle = '#9aa4ac'; ctx.lineWidth = 1; for (let i = 0; i < 2; i++) { ctx.beginPath(); for (let k = 0; k <= 12; k++) { const px = x - 18 + k * 3, py = y - 22 + i * 8 + (k % 2 ? -1.5 : 1.5); k ? ctx.lineTo(px, py) : ctx.moveTo(px, py); } ctx.stroke(); } }
+      if (AB.Sim.hasMod(s, 'spikes')) { ctx.fillStyle = '#c8c0b0'; for (const dx of [-15, -5, 5, 15]) { ctx.beginPath(); ctx.moveTo(x + dx - 2, y + 2); ctx.lineTo(x + dx + 2, y + 2); ctx.lineTo(x + dx, y + 11); ctx.fill(); } }
+      if (AB.Sim.hasMod(s, 'wire')) { ctx.strokeStyle = '#9aa4ac'; ctx.lineWidth = 1; for (let i = 0; i < 2; i++) { ctx.beginPath(); for (let k = 0; k <= 12; k++) { const px = x - 18 + k * 3, py = y - 22 + i * 8 + (k % 2 ? -1.5 : 1.5); k ? ctx.lineTo(px, py) : ctx.moveTo(px, py); } ctx.stroke(); } }
       if (s.mod) { ctx.strokeStyle = `rgba(140,210,255,${0.5 + Math.sin(t * 20) * 0.4})`; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(x - 16, y - 26); for (let i = 1; i <= 4; i++) ctx.lineTo(x - 16 + i * 8, y - 26 + (i % 2 ? -3 : 3)); ctx.stroke(); drawModuleLight(ctx, x, y - 42, t); }
     } else if (s.kind === 'tower') {
       Bd().draw(ctx, 'tower' + Math.min(3, s.tl || 1), x, y);
@@ -1412,7 +1412,7 @@
         ctx.restore();
         S().circle(ctx, x, y - 80, 7.5, '#111'); S().circle(ctx, x, y - 80, 6.3, '#3a3f45'); S().circle(ctx, x - 2, y - 82, 2, '#8a9098');
       }
-      if (s.bmod === 'light') { ctx.save(); ctx.globalCompositeOperation = 'lighter'; S().circle(ctx, x + 18, y - 90, 4, 'rgba(255,240,180,0.9)'); S().circle(ctx, x + 18, y - 90, 9, 'rgba(255,240,180,0.25)'); ctx.restore(); }
+      if (AB.Sim.hasMod(s, 'light')) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; S().circle(ctx, x + 18, y - 90, 4, 'rgba(255,240,180,0.9)'); S().circle(ctx, x + 18, y - 90, 9, 'rgba(255,240,180,0.25)'); ctx.restore(); }
       if (s.mod) drawModuleLight(ctx, x - 16, y - 90, t);
     } else if (s.kind === 'shop') {
       Bd().draw(ctx, 'shop', x, y);
@@ -1458,6 +1458,24 @@
       if (Math.random() < 0.05) AB.FX.add({ t: 'spark', x: x - 26, y: y - 8, z: 4, vx: (Math.random() - 0.5) * 60, vy: 0, vz: 50, g: 150, life: 0.4, size: 1.5, c: '#ffd24a' });
       windowGlow(ctx, [[x - 31, y - 25, 16], [x + 29, y - 25, 16]], t);
       if (near) label(ctx, 'Мастерская', x, y - 110, '#ffb23a');
+    } else if (s.kind === 'kiln') {
+      // углежог: каменный купол с трубой, в устье тлеют угли, рядом поленница
+      ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.beginPath(); ctx.ellipse(x, y + 2, 30, 9, 0, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#6a4a2a'; for (let i = 0; i < 3; i++) ctx.fillRect(x + 16, y - 6 - i * 5, 14, 4);
+      ctx.fillStyle = '#4a3220'; for (let i = 0; i < 3; i++) { S().circle(ctx, x + 16, y - 4 - i * 5, 2, '#8a6a42'); S().circle(ctx, x + 30, y - 4 - i * 5, 2, '#8a6a42'); }
+      ctx.fillStyle = '#5a5650'; ctx.beginPath(); ctx.moveTo(x - 24, y); ctx.quadraticCurveTo(x - 24, y - 44, x - 2, y - 44); ctx.quadraticCurveTo(x + 20, y - 44, x + 20, y); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = '#3a3632'; ctx.lineWidth = 1;
+      for (const [sx, sy] of [[-16, -10], [-4, -18], [8, -12], [-12, -28], [2, -32], [12, -24]]) { ctx.beginPath(); ctx.ellipse(x + sx, y + sy, 5, 3, 0, 0, TAU); ctx.stroke(); }
+      ctx.fillStyle = '#4a4640'; ctx.fillRect(x + 4, y - 58, 8, 18); ctx.fillStyle = '#2a2622'; ctx.fillRect(x + 3, y - 60, 10, 3);
+      const fl = 0.55 + Math.sin(t * 7) * 0.15 + Math.sin(t * 19) * 0.08;
+      ctx.fillStyle = '#1a1210'; ctx.beginPath(); ctx.ellipse(x - 2, y - 5, 8, 7, 0, Math.PI, 0); ctx.fill();
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      const g = ctx.createRadialGradient(x - 2, y - 6, 1, x - 2, y - 6, 16); g.addColorStop(0, `rgba(255,120,40,${fl})`); g.addColorStop(1, 'rgba(255,90,20,0)');
+      ctx.fillStyle = g; ctx.fillRect(x - 18, y - 22, 32, 22); ctx.restore();
+      if (Math.random() < 0.1) AB.FX.add({ t: 'smoke', x: x + 8, y: y - 60, z: 0, vx: 3 + Math.random() * 4, vy: -3, vz: 16, g: -4, life: 2.4, size: 6, c: 'rgba(90,90,90,' });
+      const per = C().KILN.logsPerCoal, have = (s.logs || 0) % per;
+      if (have > 0 || near) hpBar(ctx, x, y + 22, 34, have / per, '#ff9a4a');
+      if (near) label(ctx, `Углежог · бревна ${have}/${per} до угля`, x, y - 74, '#ffb36b');
     } else if (s.kind === 'townhall') {
       Bd().draw(ctx, 'townhall', x, y);
       if (Math.random() < 0.06) AB.FX.add({ t: 'smoke', x: x - 45, y: y - 100, z: 0, vx: 4 + Math.random() * 4, vy: -3, vz: 16, g: -4, life: 2.2, size: 6, c: 'rgba(120,120,120,' });
@@ -2113,7 +2131,7 @@
     const markAll = (x, base, hw, h) => { let any = false; for (const e of occ) if (e.y < base - 2 && e.y > base - h && Math.abs(e.x - x) < hw + (e.r || 10)) { any = true; if (e.type) e._occ = 1; } return any; };
     for (const m of G.monsters) m._occ = 0;
     const SEE = 0.45; // прозрачность препятствия, за которым кто-то стоит
-    const OCC_BOX = { townhall: [66, 112], workshop: [52, 100], exchange: [50, 100], shop: [50, 86], tower: [26, 128], wall: [20, 44], turret: [14, 38] };
+    const OCC_BOX = { kiln: [50, 64], townhall: [66, 112], workshop: [52, 100], exchange: [50, 100], shop: [50, 86], tower: [26, 128], wall: [20, 44], turret: [14, 38] };
     const see = (on) => { if (on) ctx.globalAlpha = SEE; };
     const windK = { storm: 2.4, rain: 1.5, snow: 1.2 }[(G.wx && G.wx.id) || ''] || 0.8; // сила ветра для крон
     for (const v of vis) {
@@ -2294,7 +2312,7 @@
       else { const L = AB.Towns.LIGHT[d.kind]; lights.push([d.x, d.y + L[0], L[1], L[2]]); }
     }
     // окна и фонари зданий
-    const LB = { townhall: [-10, -30, 95], workshop: [0, -24, 85], exchange: [0, -22, 80], shop: [0, -30, 60] };
+    const LB = { kiln: [-2, -8, 55], townhall: [-10, -30, 95], workshop: [0, -24, 85], exchange: [0, -22, 80], shop: [0, -30, 60] };
     for (const st of G.structs) { const l = LB[st.kind]; if (l && inView(st.x, st.y)) lights.push([st.x + l[0], st.y + l[1], l[2], 0.45]); }
     if (G.kitchen) lights.push([G.kitchen.x - 10, G.kitchen.y - 20, 70, 0.4]);
     if (G.store) lights.push([G.store.x, G.store.y - 20, 60, 0.3]);
@@ -2307,13 +2325,13 @@
     if (!me || me.dead) return [[cam.x, cam.y, 1e9]];
     const vrw = AB.visionRadius(R.w, R.h, G.nightF) * (R.wxVis || 1) / z;
     const out = [[me.x, me.y - 6, vrw + 10]];
-    for (const st of G.structs) if (st.kind === 'tower') out.push([st.x, st.y, C().STRUCTURES.tower.vision * (st.bmod === 'light' ? 1.6 : 1) + 10]);
+    for (const st of G.structs) if (st.kind === 'tower') out.push([st.x, st.y, C().STRUCTURES.tower.vision * (AB.Sim.hasMod(st, 'light') ? 1.6 : 1) + 10]);
     for (const l of lights) out.push([l[0], l[1], l[2] * 0.9 + 10]);
     return out;
   }
   // ---------- тени ----------
   // Высота построек для теней (как у полупрозрачности OCC_BOX)
-  const OCC_BOX_H = { townhall: 112, workshop: 100, exchange: 100, shop: 86, tower: 128, wall: 44, turret: 38 };
+  const OCC_BOX_H = { kiln: 60, townhall: 112, workshop: 100, exchange: 100, shop: 86, tower: 128, wall: 44, turret: 38 };
   // Днём - от солнца: утром на запад и длинные, к полудню короткие (вверх), к закату длинные на восток.
   // Ночью - от ближайшего огня, если объект в его свете. Все тени - две заливки на кадр (дёшево).
   function sunDir(G) {
@@ -2412,7 +2430,7 @@
       fctx.globalAlpha = 1; fctx.imageSmoothingEnabled = true;
       fctx.drawImage(visC, 0, 0, vw * q, vh * q);
     } else cut(center[0], center[1], vr, 1);
-    for (const st of G.structs) if (st.kind === 'tower') { const [sx, sy] = toS(st.x, st.y); cut(sx, sy, C().STRUCTURES.tower.vision * (st.bmod === 'light' ? 1.6 : 1) * z * s, 0.8); }
+    for (const st of G.structs) if (st.kind === 'tower') { const [sx, sy] = toS(st.x, st.y); cut(sx, sy, C().STRUCTURES.tower.vision * (AB.Sim.hasMod(st, 'light') ? 1.6 : 1) * z * s, 0.8); }
     for (const l of lights) { const [sx, sy] = toS(l[0], l[1]); cut(sx, sy, l[2] * z * s * 0.9, 0.85 * l[3]); }
     fctx.globalAlpha = 1; fctx.globalCompositeOperation = 'source-over';
     // --- туман войны: за границей открытой земли — плотная клубящаяся пелена
@@ -2738,6 +2756,7 @@
         const eb = cfg.ECON_BUILDINGS[me.prof];
         const ebShort = { shop: 'Лавка', exchange: 'Биржа', workshop: 'Мастерская', townhall: 'Ратуша' };
         if (eb && !G.structs.some(q => q.kind === eb && q.owner === me.id)) pal.push({ cmd: 'build3', key: 'H', name: ebShort[eb] || cfg.STRUCTURES[eb].name, cost: bc2(cfg.STRUCTURES[eb].cost) });
+        if (!G.structs.some(q => q.kind === 'kiln')) pal.push({ cmd: 'build4', key: 'G', name: cfg.STRUCTURES.kiln.name, cost: bc2(cfg.STRUCTURES.kiln.cost) });
         const bw = 66, bh = 56, gp = 6;
         const totw = pal.length * (bw + gp) - gp;
         // по центру, но не заезжая на панель ресурсов справа; если места нет — вторым рядом под ней
@@ -2905,6 +2924,7 @@
       else if (st.moduleBuild > 0) hints.push(['T', `Модуль (${cfg.MODULE_COST})`]);
       const eb = cfg.ECON_BUILDINGS[me.prof];
       if (eb && !G.structs.some(q => q.kind === eb && q.owner === me.id)) hints.push(['H', `${cfg.STRUCTURES[eb].name} (${bc(cfg.STRUCTURES[eb].cost)})`]);
+      if (!G.structs.some(q => q.kind === 'kiln')) hints.push(['G', `${cfg.STRUCTURES.kiln.name} (${bc(cfg.STRUCTURES.kiln.cost)})`]);
       const ui2 = AB.Sim.upgradeInfo(G, me);
       if (ui2 && ui2.lvl < ui2.max && ui2.cost != null && AB.Sim.canUpgrade(me, ui2)) hints.push(['U', `Улучшить: ${ui2.name}`]);
       hints.push(['Tab', 'Сборка']);
@@ -3073,6 +3093,7 @@
       const eb = cfg.ECON_BUILDINGS[me.prof];
       const ebShort = { shop: 'Лавка', exchange: 'Биржа', workshop: 'Мастерская', townhall: 'Ратуша' };
       if (eb && !G.structs.some(q => q.kind === eb && q.owner === me.id)) pal.push({ cmd: 'build3', name: ebShort[eb] || cfg.STRUCTURES[eb].name, cost: bc2(cfg.STRUCTURES[eb].cost) });
+      if (!G.structs.some(q => q.kind === 'kiln')) pal.push({ cmd: 'build4', name: cfg.STRUCTURES.kiln.name, cost: bc2(cfg.STRUCTURES.kiln.cost) });
       const bm = pal.find(it => it.cmd === ui.buildMode);
       if (bm && woodHave < bm.cost) R.buildBlocked = bm.cmd;
       if (panelOpen === 'build') {
