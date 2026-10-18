@@ -2216,6 +2216,13 @@
         ctx.fillStyle = '#8a5a30'; ctx.fillRect(x - 1, y - 11, 2, 11);
         ctx.fillStyle = i % 2 ? '#e0503a' : '#ffd24a'; ctx.fillRect(x - 1, y - 12, 5, 3);
       }
+      // граница поселений: за неё не заходит олень
+      ctx.strokeStyle = 'rgba(190,220,255,0.35)'; ctx.setLineDash([18, 14]);
+      for (const tn of W.towns || []) {
+        if (tn.x + tn.r < x0 || tn.x - tn.r > x1 || tn.y + tn.r < y0 || tn.y - tn.r > y1) continue;
+        ctx.beginPath(); ctx.arc(tn.x, tn.y, tn.r, 0, TAU); ctx.stroke();
+      }
+      ctx.setLineDash([]);
       ctx.restore();
     }
     // что видно сквозь туман

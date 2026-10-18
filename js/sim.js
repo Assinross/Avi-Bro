@@ -806,39 +806,47 @@
     }
   }
 
-  // Олень: ночной бессмертный дух леса (не монстр - в G.monsters его нет, навыки и турели его не видят)
+  // Олень: ночной бессмертный дух леса (не монстр - в G.monsters его нет, навыки и турели его не видят).
+  // Бродит по лесу; гонится только за героями вне безопасных зон (территория лагеря и поселения),
+  // сам в эти зоны не заходит - скользит вдоль пунктирной границы.
+  Sim.safeZones = (G) => [[G.W.camp.x, G.W.camp.y, Sim.territory(G)]].concat((G.W.towns || []).map(tn => [tn.x, tn.y, tn.r]));
   function updateDeer(G, dt) {
     const cfg = C(), D = cfg.DEER;
     if (!D || !G.isNight || G.day < D.from) { G.deer = null; return; }
-    const lit = (x, y) => G.fires.find(f => f.fuel > 0 && AB.dist(x, y, f.x, f.y) < fireLight(f) + D.lightPad);
+    const zones = Sim.safeZones(G);
+    const inZone = (x, y, pad) => zones.some(z => AB.dist(x, y, z[0], z[1]) < z[2] + (pad || 0));
+    const pushOut = (x, y) => { // точку внутри зоны - на её границу (с запасом)
+      for (const z of zones) { const r = AB.dist(x, y, z[0], z[1]), R = z[2] + D.zonePad; if (r < R) { const a = r > 0.1 ? Math.atan2(y - z[1], x - z[0]) : rnd() * TAU; x = z[0] + Math.cos(a) * R; y = z[1] + Math.sin(a) * R; } }
+      return [x, y];
+    };
     const alive = G.players.filter(p => !p.dead && !p.left);
     if (!alive.length) return;
     let d = G.deer;
-    if (!d) { // появляется раз за ночь в темноте вдали от героя
+    if (!d) { // появляется раз за ночь в лесу, вне безопасных зон
       if (G.deerNight === G.day) return;
       const p = alive[Math.floor(rnd() * alive.length)];
-      for (let i = 0; i < 30; i++) {
+      for (let i = 0; i < 40; i++) {
         const a = rnd() * TAU, r = AB.lerp(D.spawnDist[0], D.spawnDist[1], rnd()), x = p.x + Math.cos(a) * r, y = p.y + Math.sin(a) * r;
-        if (x < 200 || y < 200 || x > G.W.size - 200 || y > G.W.size - 200 || lit(x, y)) continue;
-        d = G.deer = { x, y, a: 0, wu: 0, cd: 0, mv: 0, tid: -1, wx: x, wy: y };
+        if (x < 200 || y < 200 || x > G.W.size - 200 || y > G.W.size - 200 || inZone(x, y, D.zonePad)) continue;
+        d = G.deer = { x, y, a: 0, wu: 0, cd: 0, mv: 0, tid: null, wx: x, wy: y };
         G.deerNight = G.day;
-        Sim.msg(G, 'В лесу бродит олень. Его не убить: увидите - бегите по прямой или к огню', -1, '#ff8a8a');
+        Sim.msg(G, 'В лесу бродит олень. Его не убить: за пунктирной границей лагеря он вас не тронет', -1, '#ff8a8a');
         break;
       }
       if (!d) return;
     }
     d.cd -= dt; d.mv = 0;
     const spd = D.speed * (AB.WX ? AB.WX.speed : 1);
-    // цель: ближайший герой в темноте; ушёл далеко или к огню - теряет
-    let t = d.tid >= 0 ? alive.find(p => p.id === d.tid) : null;
-    if (t && (AB.dist(t.x, t.y, d.x, d.y) > D.lose || lit(t.x, t.y))) t = null;
-    if (!t) { let bd = D.sight; for (const p of alive) { const r = AB.dist(p.x, p.y, d.x, d.y); if (r < bd && !lit(p.x, p.y)) { bd = r; t = p; } } }
-    d.tid = t ? t.id : -1;
-    if (d.wu > 0) { // замах на бегу: удар, если герой всё ещё рядом
+    // цель: ближайший герой вне безопасных зон; вернулся в зону или ушёл далеко - теряет
+    let t = d.tid != null ? alive.find(p => p.id === d.tid) : null; // id героя бывает и строкой
+    if (t && (AB.dist(t.x, t.y, d.x, d.y) > D.lose || inZone(t.x, t.y))) t = null;
+    if (!t) { let bd = D.sight; for (const p of alive) { const r = AB.dist(p.x, p.y, d.x, d.y); if (r < bd && !inZone(p.x, p.y)) { bd = r; t = p; } } }
+    d.tid = t ? t.id : null;
+    if (d.wu > 0) { // замах на бегу: удар, если герой всё ещё рядом и не в зоне
       d.wu -= dt;
       if (d.wu <= 0) {
         d.cd = D.attackCd;
-        if (t && AB.dist(t.x, t.y, d.x, d.y) <= D.reach * 1.3 && !lit(t.x, t.y)) damagePlayer(G, t, t.mhp / D.hits * 1.08, null, true); // с запасом на реген между ударами
+        if (t && AB.dist(t.x, t.y, d.x, d.y) <= D.reach * 1.3 && !inZone(t.x, t.y)) damagePlayer(G, t, t.mhp / D.hits * 1.08, null, true); // с запасом на реген между ударами
       }
     }
     let tx, ty;
@@ -846,20 +854,23 @@
       const r = AB.dist(t.x, t.y, d.x, d.y);
       if (r <= D.reach && d.cd <= 0 && !(d.wu > 0)) { d.wu = D.windup; d.a = Math.atan2(t.y - d.y, t.x - d.x); Sim.fx(G, { k: 'snd', s: 'growl' }); return; }
       tx = t.x; ty = t.y;
-    } else { // бродит рядом с героями
+    } else { // бродит по лесу неподалёку от героев
       const near = alive.reduce((b, p) => (AB.dist2(p.x, p.y, d.x, d.y) < AB.dist2(b.x, b.y, d.x, d.y) ? p : b), alive[0]);
-      if (AB.dist(d.x, d.y, d.wx, d.wy) < 10 || AB.dist(near.x, near.y, d.wx, d.wy) > 900) { const a = rnd() * TAU, r = 300 + rnd() * 350; d.wx = near.x + Math.cos(a) * r; d.wy = near.y + Math.sin(a) * r; }
+      if (AB.dist(d.x, d.y, d.wx, d.wy) < 12 || AB.dist(near.x, near.y, d.wx, d.wy) > D.roam[1] + 300) {
+        const a = rnd() * TAU, r = AB.lerp(D.roam[0], D.roam[1], rnd());
+        [d.wx, d.wy] = pushOut(AB.clamp(near.x + Math.cos(a) * r, 150, G.W.size - 150), AB.clamp(near.y + Math.sin(a) * r, 150, G.W.size - 150));
+      }
       tx = d.wx; ty = d.wy;
     }
     const r = AB.dist(tx, ty, d.x, d.y);
     if (r < 1) return;
-    const k = Math.min(r, spd * (t ? 1 : 0.45) * dt) / r, nx = d.x + (tx - d.x) * k, ny = d.y + (ty - d.y) * k;
+    const k = Math.min(r, spd * (t ? 1 : 0.45) * dt) / r;
     d.a = Math.atan2(ty - d.y, tx - d.x);
-    const f = lit(nx, ny);
-    if (f && !lit(d.x, d.y)) { if (!t) { d.wx = d.x; d.wy = d.y; } return; } // к свету не подходит
-    if (f) { const a = Math.atan2(d.y - f.y, d.x - f.x); d.x += Math.cos(a) * spd * dt; d.y += Math.sin(a) * spd * dt; d.mv = 1; return; } // оказался в свете - уходит
+    const [nx, ny] = pushOut(d.x + (tx - d.x) * k, d.y + (ty - d.y) * k); // границу зоны не пересекает - скользит вдоль неё
     const rc = AB.resolveCollision(G.W, AB.clamp(nx, 100, G.W.size - 100), AB.clamp(ny, 100, G.W.size - 100), cfg.PLAYER_RADIUS); // деревья и камни мешают, как герою
-    d.x = rc[0]; d.y = rc[1]; d.mv = 1;
+    if (inZone(rc[0], rc[1], D.zonePad - 1)) return; // препятствие вытолкнуло в зону - стоит на границе
+    d.mv = AB.dist(rc[0], rc[1], d.x, d.y) > 0.05 ? 1 : 0; d.x = rc[0]; d.y = rc[1];
+    if (!t && !d.mv) { d.wx = d.x; d.wy = d.y; } // упёрся при блуждании - выберет новую точку
   }
 
   /* ======================= ИГРОКИ ======================= */
